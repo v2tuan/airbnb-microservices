@@ -1,14 +1,17 @@
 package com.identityservice.service.Impl;
 
+import com.identityservice.dto.request.IntrospectRequest;
 import com.identityservice.dto.request.LoginRequest;
 import com.identityservice.dto.response.AuthenticationResponse;
+import com.identityservice.dto.response.IntrospectResponse;
 import com.identityservice.entity.Account;
+import com.identityservice.exception.AppException;
+import com.identityservice.exception.ErrorCode;
 import com.identityservice.repository.AccountRepository;
 import com.identityservice.service.IAuthenticationService;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.JWSSigner;
+import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import lombok.AccessLevel;
@@ -22,6 +25,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
+import java.text.ParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.StringJoiner;
 import java.util.UUID;
@@ -37,6 +42,10 @@ public class AuthenticationService implements IAuthenticationService {
     @NonFinal
     @Value("${jwt.signerKey}")
     String signerKey;
+
+    @NonFinal
+    @Value("${jwt.refreshable-duration}")
+    protected long REFRESHABLE_DURATION;
 
     @Override
     public AuthenticationResponse login(LoginRequest loginRequest) {
@@ -54,6 +63,19 @@ public class AuthenticationService implements IAuthenticationService {
         return AuthenticationResponse.builder()
                 .token(token)
                 .build();
+    }
+
+    @Override
+    public IntrospectResponse introspect(IntrospectRequest request) {
+        String token = request.getToken();
+        boolean isValid = true;
+
+        try {
+            verifyToken(token, false);
+        } catch (Exception e) {
+            isValid = false;
+        }
+        return IntrospectResponse.builder().valid(isValid).build();
     }
 
     private String generateToken(Account account) {
@@ -132,5 +154,25 @@ public class AuthenticationService implements IAuthenticationService {
         }
 
         return joiner.toString();
+    }
+
+    private SignedJWT verifyToken(String token, boolean isRefresh) throws JOSEException, ParseException {
+        JWSVerifier verifier = new MACVerifier(signerKey.getBytes());
+
+        SignedJWT signedJWT = SignedJWT.parse(token);
+
+        Date expiryTime = (isRefresh)
+                ? new Date(signedJWT.getJWTClaimsSet().getIssueTime()
+                .toInstant().plus(REFRESHABLE_DURATION, ChronoUnit.SECONDS).toEpochMilli())
+                : signedJWT.getJWTClaimsSet().getExpirationTime();
+
+        var verified = signedJWT.verify(verifier);
+
+        if (!(verified && expiryTime.after(new Date()))) throw new AppException(ErrorCode.UNAUTHENTICATED);
+
+//        if (invalidatedTokenRepository.existsById(signedJWT.getJWTClaimsSet().getJWTID()))
+//            throw new AppException(ErrorCode.UNAUTHENTICATED);
+
+        return signedJWT;
     }
 }

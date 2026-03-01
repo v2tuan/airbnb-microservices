@@ -1,9 +1,11 @@
 package com.identityservice.controller;
 
+import com.identityservice.dto.request.IntrospectRequest;
 import com.identityservice.dto.request.LoginRequest;
 import com.identityservice.dto.request.RegisterRequest;
 import com.identityservice.dto.response.ApiResponse;
 import com.identityservice.dto.response.AuthenticationResponse;
+import com.identityservice.dto.response.IntrospectResponse;
 import com.identityservice.service.IAccountService;
 import com.identityservice.service.IAuthenticationService;
 import lombok.AccessLevel;
@@ -37,6 +39,14 @@ public class AuthentiationController {
         System.out.println(result);
         return ApiResponse.<AuthenticationResponse>builder()
                 .message("Login successful!")
+                .data(result)
+                .build();
+    }
+
+    @PostMapping("/introspect")
+    ApiResponse<IntrospectResponse> authenticate(@RequestBody IntrospectRequest request) {
+        IntrospectResponse result = authenticationService.introspect(request);
+        return ApiResponse.<IntrospectResponse>builder()
                 .data(result)
                 .build();
     }
