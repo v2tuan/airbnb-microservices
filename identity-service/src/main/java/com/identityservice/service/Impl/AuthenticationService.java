@@ -135,7 +135,7 @@ public class AuthenticationService implements IAuthenticationService {
         try {
             SignedJWT signedJWT = new SignedJWT(header, claims);
 
-            JWSSigner signer = new MACSigner(signerKey);
+            JWSSigner signer = new MACSigner(signerKey.getBytes());
 
             signedJWT.sign(signer);
 
