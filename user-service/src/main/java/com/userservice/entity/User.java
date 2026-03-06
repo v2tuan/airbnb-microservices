@@ -7,7 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.Type;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,7 +25,7 @@ public class User {
     @Column(nullable = false)
     private String lastName;
 
-    private LocalDate dateOfBirth;
+    private LocalDateTime dateOfBirth;
     private String gender;
     private String avatarUrl;
     private String bio;
@@ -45,8 +45,8 @@ public class User {
     private HostProfile hostProfile;
 
     @CreationTimestamp
-    private LocalDate createdAt;
+    private LocalDateTime createdAt;
 
     @UpdateTimestamp
-    private LocalDate updatedAt;
+    private LocalDateTime updatedAt;
 }

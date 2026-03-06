@@ -6,6 +6,6 @@ public record PreferenceUpdateRequestDTO(
     String currency,
     String language,
     String timezone,
-    Map<String, Object> notifications // Cho JSONB
+    Map<String, Object> notificationSettings // Cho JSONB
 ) {
 }

@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -24,7 +24,7 @@ public class UserAddress {
   @Column(nullable = false, length= 50)
   private String addressType; //home, work
 
-  @Column(nullable = false, length = 255)
+  @Column(nullable = false, length = 254)
   private String streetAddress;
 
   @Column(nullable = false, length = 100)
@@ -43,5 +43,5 @@ public class UserAddress {
 
   @CreationTimestamp
   @Column(nullable = false, updatable=false)
-  private LocalDate createdAt;
+  private LocalDateTime createdAt;
 }

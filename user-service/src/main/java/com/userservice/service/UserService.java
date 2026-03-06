@@ -1,10 +1,11 @@
 package com.userservice.service;
 
 import com.userservice.dto.request.PreferenceUpdateRequestDTO;
+import com.userservice.dto.response.AddressResponseDTO;
 import com.userservice.dto.response.UserProfileResponseDTO;
 import com.userservice.entity.*;
 import com.userservice.repository.*;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,12 +29,20 @@ public class UserService {
     User user = userRepository.findByIdWithAddresses(userId)
         .orElseThrow(() -> new RuntimeException("User not found"));
 
+    //map list<useraddress> sang list<addressresponsedto>
+    List<AddressResponseDTO> addressDTO = user.getAddresses().stream()
+        .map(addr -> new AddressResponseDTO(
+            addr.getAddressId(),
+            addr.getAddressType(),
+            addr.getStreetAddress() + ", " + addr.getCity() + ", " + addr.getCountry(),
+            addr.getIsDefault()
+            )).toList();
     //map entity to DTO
     return new UserProfileResponseDTO(
         user.getUserId(),
         user.getFirstName() + " " + user.getLastName(),
         user.getAvatarUrl(),
-        user.getAddresses(),
+        addressDTO,
         user.getHostProfile() != null
     );
   }
@@ -52,7 +61,7 @@ public class UserService {
     pref.setCurrency(dto.currency());
     pref.setLanguage(dto.language());
     pref.setTimezone(dto.timezone());
-    pref.setNotificationSettings(dto.notifications()); // Lưu dạng JSONB
+    pref.setNotificationSettings(dto.notificationSettings()); // Lưu dạng JSONB
 
     preferenceRepository.save(pref);
   }

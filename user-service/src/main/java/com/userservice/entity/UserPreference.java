@@ -7,7 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,8 +40,8 @@ public class UserPreference {
   private Map<String, Object> notificationSettings;
 
   @CreationTimestamp
-  private LocalDate createdAt;
+  private LocalDateTime createdAt;
 
   @UpdateTimestamp
-  private LocalDate updatedAt;
+  private LocalDateTime updatedAt;
 }
