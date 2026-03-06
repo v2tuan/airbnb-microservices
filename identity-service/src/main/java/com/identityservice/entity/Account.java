@@ -24,9 +24,10 @@ public class Account extends BaseEntity {
     String password;
     Boolean isActive;
     Boolean isVerified;
+    boolean enabled = true;
 
     @ManyToMany
-    @JoinTable(name = "user_role",
+    @JoinTable(name = "user_roles",
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
     Set<Role> roles;

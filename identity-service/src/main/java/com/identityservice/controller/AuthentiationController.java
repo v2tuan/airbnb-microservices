@@ -33,15 +33,15 @@ public class AuthentiationController {
                 .message("Register successful!").build();
     }
 
-    @PostMapping("/login")
-    ApiResponse<AuthenticationResponse> login(@RequestBody LoginRequest loginRequest) {
-        var result = authenticationService.login(loginRequest);
-        System.out.println(result);
-        return ApiResponse.<AuthenticationResponse>builder()
-                .message("Login successful!")
-                .data(result)
-                .build();
-    }
+//    @PostMapping("/login")
+//    ApiResponse<AuthenticationResponse> login(@RequestBody LoginRequest loginRequest) {
+//        var result = authenticationService.login(loginRequest);
+//        System.out.println(result);
+//        return ApiResponse.<AuthenticationResponse>builder()
+//                .message("Login successful!")
+//                .data(result)
+//                .build();
+//    }
 
     @PostMapping("/introspect")
     ApiResponse<IntrospectResponse> authenticate(@RequestBody IntrospectRequest request) {

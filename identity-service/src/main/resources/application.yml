@@ -25,3 +25,10 @@ spring:
 jwt:
   signerKey: "1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij"
   refreshable-duration: 3600
+
+app:
+  issuer: "http://localhost:8080/identity"
+
+logging:
+  level:
+    org.springframework.security: DEBUG
