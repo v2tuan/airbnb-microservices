@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Repository
 public interface UserAddressRepository extends JpaRepository<UserAddress, UUID> {
-  List<UserAddress> findByUserId(UUID userId); //lay danh sach dia chi tu userId
+  List<UserAddress> findByUserUserId(UUID userUserId);
 
   @Query("UPDATE UserAddress a SET a.isDefault = false WHERE a.user.userId = :userId")
   @Modifying

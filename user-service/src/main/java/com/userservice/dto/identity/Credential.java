@@ -1,15 +1,15 @@
-package com.identityservice.dto.response;
+package com.userservice.dto.identity;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.Date;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AuthenticationResponse {
-    String token;
+public class Credential {
+    String type;
+    String value;
+    boolean temporary;
 }
