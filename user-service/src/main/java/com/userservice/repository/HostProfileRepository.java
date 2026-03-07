@@ -10,6 +10,6 @@ import java.util.UUID;
 
 @Repository
 public interface HostProfileRepository extends JpaRepository<HostProfile, UUID> {
-  Optional<HostProfile> findByUserId(UUID userId);
+  Optional<HostProfile> findByUserUserId(UUID userId);
   List<HostProfile> findByIsSuperhostTrue(); // Lấy danh sách các Superhost
 }

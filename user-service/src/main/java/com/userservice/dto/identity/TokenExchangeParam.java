@@ -1,4 +1,4 @@
-package com.identityservice.dto.request;
+package com.userservice.dto.identity;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -8,6 +8,9 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class IntrospectRequest {
-    String token;
+public class TokenExchangeParam {
+    String grant_type;
+    String client_id;
+    String client_secret;
+    String scope;
 }
