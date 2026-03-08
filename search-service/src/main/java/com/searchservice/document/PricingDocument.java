@@ -1,17 +1,16 @@
 package com.searchservice.document;
 
-import lombok.Data;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
-@Data
-public class AmenityDocument {
-  @Field(type = FieldType.Keyword)
-  private String amenityId;
+public class PricingDocument {
+  @Field(type = FieldType.Float)
+  private String baseFree;
 
   @Field(type = FieldType.Keyword)
-  private String name;
+  private String currency;
 
-  @Field(type = FieldType.Keyword)
-  private String category;
+  @Field(type = FieldType.Float)
+  private String cleaningFee;
+
 }

@@ -1,17 +1,12 @@
 package com.searchservice.document;
 
-import lombok.Data;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
-@Data
-public class AmenityDocument {
+public class PhotoDocument {
   @Field(type = FieldType.Keyword)
-  private String amenityId;
+  private String photoUrl;
 
-  @Field(type = FieldType.Keyword)
-  private String name;
-
-  @Field(type = FieldType.Keyword)
-  private String category;
+  @Field(type = FieldType.Boolean)
+  private Boolean isCover;
 }

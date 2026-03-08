@@ -7,7 +7,8 @@ import org.springframework.data.elasticsearch.core.geo.GeoPoint;
 
 @Data
 public class LocationDocument {
-  @Field(type= FieldType.Text, analyzer = "standard")
+
+  @Field(type = FieldType.Text)
   private String address;
 
   @Field(type = FieldType.Keyword)
@@ -19,5 +20,7 @@ public class LocationDocument {
   @Field(type = FieldType.Keyword)
   private String country;
 
+  @Field(type = FieldType.GeoPoint)
   private GeoPoint coordinates;
+
 }
