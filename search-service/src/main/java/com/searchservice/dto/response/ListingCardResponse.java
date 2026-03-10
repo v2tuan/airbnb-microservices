@@ -1,5 +1,8 @@
 package com.searchservice.dto.response;
 
+import lombok.Data;
+
+@Data
 public class ListingCardResponse {
   private String listingId;
 

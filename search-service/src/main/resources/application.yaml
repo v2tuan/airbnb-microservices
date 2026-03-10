@@ -1,3 +1,15 @@
 spring:
   application:
     name: search-service
+  elasticsearch:
+    uris: http://localhost:9200
+    # Thêm cấu hình socket timeout nếu cần
+    socket-timeout: 30s
+    connection-timeout: 10s
+  data:
+    elasticsearch:
+      repositories:
+        enabled: true
+
+server:
+  port: 8084

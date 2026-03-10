@@ -8,7 +8,7 @@ import java.util.List;
 
 @Repository
 public interface ListingSearchRepository extends ElasticsearchRepository<ListingDocument, String> {
-  List<ListingDocument> findByCity(String city);
+  List<ListingDocument> findByLocationCity(String city);
 
   List<ListingDocument> findByRoomType(String roomType);
 }

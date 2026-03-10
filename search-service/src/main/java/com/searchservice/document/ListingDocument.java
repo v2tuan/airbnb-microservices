@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-@Document(indexName = "listings_search")
+@Document(indexName = "listings_search", createIndex = false)
 public class ListingDocument {
 
   @Id
