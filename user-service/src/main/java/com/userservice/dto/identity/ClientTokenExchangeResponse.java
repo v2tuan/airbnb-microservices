@@ -11,11 +11,10 @@ import tools.jackson.databind.annotation.JsonNaming;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public class TokenExchangeResponse {
+public class ClientTokenExchangeResponse {
     String accessToken;
     String expiresIn;
     String refreshExpiresIn;
-    String refreshToken;
     String tokenType;
     String idToken;
     String scope;

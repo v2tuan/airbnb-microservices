@@ -1,18 +1,10 @@
 package com.userservice.service;
 
-import com.userservice.dto.identity.Credential;
-import com.userservice.dto.identity.TokenExchangeParam;
-import com.userservice.dto.identity.TokenExchangeResponse;
-import com.userservice.dto.identity.UserCreationParam;
-import com.userservice.dto.request.PreferenceUpdateRequestDTO;
+import com.userservice.dto.identity.*;
 import com.userservice.dto.request.RegistrationRequest;
-import com.userservice.dto.request.UserRequestDTO;
-import com.userservice.dto.response.AddressResponseDTO;
 import com.userservice.dto.response.UserProfileResponseDTO;
-import com.userservice.entity.*;
 import com.userservice.mapper.UserMapper;
 import com.userservice.repository.*;
-import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -20,9 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 //business logic
 @Slf4j
@@ -44,10 +34,22 @@ public class UserService {
   @Value("${idp.client-secret}")
   String clientSecret;
 
+  public TokenExchangeResponse login(LoginRequest request) {
+    var loginResponse = identityClient.exchangeToken(TokenExchangeParam.builder()
+            .grant_type("password")
+            .client_id(clientId)
+            .client_secret(clientSecret)
+            .username(request.getUsername())
+            .password(request.getPassword())
+            .build());
+
+    return loginResponse;
+  }
+
   @Transactional
   public UserProfileResponseDTO register(RegistrationRequest request) {
     // Exchange client Token
-    TokenExchangeResponse token = identityClient.exchangeToken(TokenExchangeParam.builder()
+    ClientTokenExchangeResponse token = identityClient.exchangeClientToken(ClientTokenExchangeParam.builder()
             .grant_type("client_credentials")
             .client_id(clientId)
             .client_secret(clientSecret)

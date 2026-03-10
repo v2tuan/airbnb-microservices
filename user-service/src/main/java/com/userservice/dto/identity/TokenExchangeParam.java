@@ -1,16 +1,14 @@
 package com.userservice.dto.identity;
 
-import lombok.*;
-import lombok.experimental.FieldDefaults;
+import lombok.Builder;
+import lombok.Data;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
-@FieldDefaults(level = AccessLevel.PRIVATE)
 public class TokenExchangeParam {
-    String grant_type;
-    String client_id;
-    String client_secret;
-    String scope;
+    private String grant_type;
+    private String client_id;
+    private String client_secret;
+    private String username;
+    private String password;
 }
