@@ -7,14 +7,19 @@ app:
 spring:
   application:
     name: api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/airbnb
   cloud:
     gateway:
       server:
         webflux:
           routes:
-          - id: identity_service
-            uri: http://localhost:8080
+          - id: user_service
+            uri: http://localhost:8082
             predicates:
-              - Path=${app.api-prefix}/identity/**
+              - Path=${app.api-prefix}/users/**
             filters:
               - StripPrefix=2
