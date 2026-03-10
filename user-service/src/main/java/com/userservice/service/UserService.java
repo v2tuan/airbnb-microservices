@@ -41,6 +41,7 @@ public class UserService {
             .client_secret(clientSecret)
             .username(request.getUsername())
             .password(request.getPassword())
+            .scope("openid")
             .build());
 
     return loginResponse;

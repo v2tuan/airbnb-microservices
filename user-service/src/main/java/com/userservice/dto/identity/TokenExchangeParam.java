@@ -11,4 +11,5 @@ public class TokenExchangeParam {
     private String client_secret;
     private String username;
     private String password;
+    private String scope;
 }
