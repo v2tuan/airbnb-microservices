@@ -7,19 +7,37 @@ app:
 spring:
   application:
     name: api-gateway
+
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/airbnb
+
   cloud:
     gateway:
       server:
         webflux:
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowed-origin-patterns:
+                  - "http://localhost:5173"
+                allowed-methods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+                  - OPTIONS
+                allowed-headers:
+                  - "*"
+                allow-credentials: true
+                max-age: 3600
+
           routes:
-          - id: user_service
-            uri: http://localhost:8082
-            predicates:
-              - Path=${app.api-prefix}/users/**
-            filters:
-              - StripPrefix=2
+            - id: user_service
+              uri: http://localhost:8082
+              predicates:
+                - Path=${app.api-prefix}/users/**
+              filters:
+                - StripPrefix=2
