@@ -1,34 +1,19 @@
 services:
-  keycloak-db:
-    image: postgres:16
-    container_name: keycloak-db
-    environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak
-    ports:
-      - "5433:5432"
-    volumes:
-      - keycloak_db_data:/var/lib/postgresql/data
-
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.5
     container_name: keycloak
-    depends_on:
-      - keycloak-db
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
+      KC_DB_URL: ${KC_DB_URL}
+      KC_DB_USERNAME: ${KC_DB_USERNAME}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_DB_SCHEMA: ${KC_DB_SCHEMA}
     command:
       - start-dev
-    volumes:
-      - ./realms:/opt/keycloak/data/import
-
-volumes:
-  keycloak_db_data:
