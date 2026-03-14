@@ -8,10 +8,19 @@ spring:
     name: listing-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/listing_service
-    username: postgres
-    password: 1234567890
+    url: jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/listing_db?sslmode=require
+    username: neondb_owner
+    password: npg_GnXE70sJUjmu
     driver-class-name: org.postgresql.Driver
+
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      idle-timeout: 300000
+      max-lifetime: 900000
+      connection-timeout: 20000
+      keepalive-time: 300000
+
 
   jpa:
     hibernate:
