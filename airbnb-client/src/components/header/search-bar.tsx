@@ -106,7 +106,7 @@ export default function SearchBar() {
         </div>
 
         {/* PANELS (Dropdowns) */}
-        <div className="absolute top-[80px] left-0 right-0 z-50">
+        <div className="absolute top-[80px] left-0 right-0 z-30">
           {activeTab === "where" && (
             <div className="absolute left-0 w-[400px] bg-white rounded-3xl shadow-2xl border p-8 animate-in fade-in slide-in-from-top-2 duration-300">
               <p className="font-bold mb-4">Search by region</p>
