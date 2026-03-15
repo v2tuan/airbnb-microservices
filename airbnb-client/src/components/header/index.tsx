@@ -3,13 +3,14 @@ import { Search, Globe, Menu, User, Home, GlobeIcon, MenuIcon } from "lucide-rea
 import Link from "next/link"
 import SearchBar from "./search-bar"
 import UserMenu from "./user-menu"
+import Logo from "../logo"
 
 function Header() {
   return (
-    <header className="fixed w-full bg-white z-40 border-b py-4">
+    <header className="fixed w-full bg-white z-40 border-b py-4 md:px-10 lg:px-20 lg:pt-5">
       <div className="mx-auto px-4 flex items-center justify-between">
         {/* logo */}
-        <Link href="/" className="text-rose-400 font-bold text-2xl">airstay</Link>
+        <Logo/>
 
         {/* Navigation */}
         <nav className="hidden md:flex items-center space-x-20 text-gray-600 font-medium">
