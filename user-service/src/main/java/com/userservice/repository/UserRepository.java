@@ -12,4 +12,6 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
   @Query("Select u from User u LEFT JOIN FETCH u.addresses WHERE u.userId = :id ")
   Optional<User> findByIdWithAddresses(UUID id);
+
+  Optional<User> findByKeycloakUserId(String keycloakUserId);
 }
