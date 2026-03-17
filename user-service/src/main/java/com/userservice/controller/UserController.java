@@ -9,7 +9,14 @@ import com.userservice.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+<<<<<<< HEAD
 import org.springframework.web.bind.annotation.*;
+=======
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 
 @RestController
 @RequiredArgsConstructor
@@ -38,6 +45,7 @@ public class UserController {
                         .data(response)
                         .build());
     }
+<<<<<<< HEAD
 
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserProfileResponseDTO>> getMe(
@@ -49,4 +57,6 @@ public class UserController {
                 .data(response)
                 .build());
     }
+=======
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 }
