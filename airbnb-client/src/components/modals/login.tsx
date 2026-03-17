@@ -1,6 +1,7 @@
 "use client"
 
 import { selectAuthError, selectAuthLoading } from '@/features/auth/authSelectors'
+import { loginThunk } from '@/features/auth/authSlice'
 import useLoginModal from '@/hooks/userLoginModal'
 import { AppDispatch } from '@/store'
 import { useState } from 'react'
@@ -27,7 +28,9 @@ function LoginModal() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      loginModal.onClose()    
+      const result = await dispatch(loginThunk(data))
+      if (loginThunk.fulfilled.match(result))
+        loginModal.onClose()    
     } catch (error) {
       console.error(error)
     }
@@ -91,6 +94,12 @@ function LoginModal() {
               <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
             )}
           </div>
+          {/* api error */}
+          {error && (
+            <p className="text-red-500 text-sm">
+              {error}
+            </p>
+          )}
 
           {/* login button */}
           <button

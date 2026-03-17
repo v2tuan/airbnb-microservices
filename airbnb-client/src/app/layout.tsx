@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Figtree } from "next/font/google";
-import "./globals.css";
-import { cn } from "@/lib/utils";
 import Header from "@/components/header";
+import { cn } from "@/lib/utils";
 import ModalProvider from "@/providers/ModalProvider";
+import Providers from "@/providers/provider";
+import type { Metadata } from "next";
+import { Figtree, Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
 
 const figtree = Figtree({subsets:['latin'],variable:'--font-sans'});
 
@@ -32,9 +33,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Header/>
-        <ModalProvider/>
-        {children}
+        <Providers>
+          <Header/>
+          <ModalProvider/>
+          {children}
+        </Providers>
       {/* <Footer/> */}
       </body>
     </html>

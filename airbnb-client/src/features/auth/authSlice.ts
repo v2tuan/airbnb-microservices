@@ -5,6 +5,8 @@ import { RootState } from "@/store";
 const TOKEN_KEY = "access_token";
 const USER_KEY = "auth_user";
 
+const isBrowser = typeof window !== "undefined";
+
 interface User {
   id?: string;
   email?: string;
@@ -33,6 +35,7 @@ interface RegisterData {
 }
 
 const loadUserFromStorage = (): User | null => {
+  if (!isBrowser) return null;
   try {
     const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -48,6 +51,8 @@ const saveAuthToStorage = ({
   token?: string | null;
   user?: User | null;
 }) => {
+  if (!isBrowser) return
+
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
   }
@@ -58,6 +63,7 @@ const saveAuthToStorage = ({
 };
 
 const clearAuthStorage = () => {
+  if (!isBrowser) return;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 };
@@ -65,6 +71,7 @@ const clearAuthStorage = () => {
 const getErrorMessage = (error: any, fallbackMessage: string): string => {
   return (
     error?.response?.data?.message ||
+    error?.response?.data?.error_description ||
     error?.response?.data?.error ||
     error?.message ||
     fallbackMessage
@@ -117,8 +124,8 @@ export const registerThunk = createAsyncThunk<
 
 const initialState: AuthState = {
   user: loadUserFromStorage(),
-  token: localStorage.getItem(TOKEN_KEY),
-  isAuthenticated: !!localStorage.getItem(TOKEN_KEY),
+  token: isBrowser ? localStorage.getItem(TOKEN_KEY) : null,
+  isAuthenticated: isBrowser ? !!localStorage.getItem(TOKEN_KEY) : false ,
   loading: false,
   error: null,
   registerSuccessMessage: null,
