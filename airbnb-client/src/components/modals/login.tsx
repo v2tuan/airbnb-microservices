@@ -1,5 +1,6 @@
 "use client"
 
+<<<<<<< HEAD
 import { selectAuthError, selectAuthLoading } from '@/features/auth/authSelectors'
 import { loginThunk } from '@/features/auth/authSlice'
 import useLoginModal from '@/hooks/userLoginModal'
@@ -11,10 +12,15 @@ type FormData ={
   username: string,
   password: string
 }
+=======
+import useLoginModal from '@/hooks/userLoginModal'
+import { useState } from 'react'
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 
 function LoginModal() {
   const loginModal = useLoginModal()
 
+<<<<<<< HEAD
   const dispatch = useDispatch<AppDispatch>()
   
   const loading = useSelector(selectAuthLoading)
@@ -39,6 +45,16 @@ function LoginModal() {
   if (!loginModal.isOpen) return null
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
+=======
+  const [formData, setFormData] = useState({
+    username:"",
+    password:""
+  })
+
+  if (!loginModal.isOpen) return null
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50" onClick={loginModal.onClose}>
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
       <div className="relative bg-white p-6 rounded-2xl shadow-lg w-[400px] z-10">
       
       <div className="flex items-center justify-between mb-4 border-b pb-4">
@@ -54,6 +70,7 @@ function LoginModal() {
         </h2>
       </div>
 
+<<<<<<< HEAD
       <div className="p-6">
         <h3 className="text-2xl font-semibold mb-6">Welcome to AIRSTAY</h3> 
         <form
@@ -122,6 +139,9 @@ function LoginModal() {
           Don't have an account?{" "}
           <span className="text-black font-semibold cursor-pointer hover:underline">Sign up</span>
         </p>
+=======
+      <div className="mt-4">
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
       </div>
     </div>
     </div>

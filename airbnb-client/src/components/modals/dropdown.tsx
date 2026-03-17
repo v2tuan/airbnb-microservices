@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { selectCurrentUser, selectIsAuthenticated } from '@/features/auth/authSelectors'
 import useLoginModal from '@/hooks/userLoginModal'
 import { CircleQuestionMark, Earth, Globe, Heart, Home, MessageCircle, MessageSquare, Settings, User } from 'lucide-react'
@@ -55,6 +56,20 @@ function Dropdown() {
           <CircleQuestionMark size={18}/>
           <p>Help center</p>
         </div>
+=======
+import { CircleQuestionMark } from 'lucide-react'
+import React from 'react'
+import { Separator } from '../ui/separator'
+import useLoginModal from '@/hooks/userLoginModal'
+
+function Dropdown() {
+  const loginModal = useLoginModal()
+  return (
+    <div className="absolute right-0 mt-3 w-[280px] bg-white rounded-2xl shadow-xl overflow-hidden border z-30">
+      <div className="flex space-x-2 my-2 py-1 hover:bg-gray-100 px-4 cursor-pointer ">
+        <CircleQuestionMark/>
+        <p>Help center</p>
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
       </div>
 
       <Separator/>
@@ -77,6 +92,7 @@ function Dropdown() {
 
       <Separator />
 
+<<<<<<< HEAD
       {isAuthenticated ? (
         <div onClick={() => dispatch(logout())} className="my-2 py-1 cursor-pointer hover:bg-gray-100 px-4">Log out</div>
       ) :
@@ -84,6 +100,9 @@ function Dropdown() {
         <div onClick={loginModal.onOpen} className="my-2 py-1 cursor-pointer hover:bg-gray-100 px-4">Login and sign up</div>
       )}
 
+=======
+      <div onClick={loginModal.onOpen} className="my-2 py-1 cursor-pointer hover:bg-gray-100 px-4">Login and sign up</div>
+>>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 
     </div>
   )
