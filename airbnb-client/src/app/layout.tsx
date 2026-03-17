@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import Header from "@/components/header";
 import { cn } from "@/lib/utils";
 import ModalProvider from "@/providers/ModalProvider";
@@ -6,14 +5,6 @@ import Providers from "@/providers/provider";
 import type { Metadata } from "next";
 import { Figtree, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-=======
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Figtree } from "next/font/google";
-import "./globals.css";
-import { cn } from "@/lib/utils";
-import Header from "@/components/header";
-import ModalProvider from "@/providers/ModalProvider";
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 
 const figtree = Figtree({subsets:['latin'],variable:'--font-sans'});
 
@@ -42,17 +33,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-<<<<<<< HEAD
         <Providers>
           <Header/>
           <ModalProvider/>
           {children}
         </Providers>
-=======
-        <Header/>
-        <ModalProvider/>
-        {children}
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
       {/* <Footer/> */}
       </body>
     </html>

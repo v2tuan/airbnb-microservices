@@ -4,12 +4,8 @@ import { RootState } from "@/store";
 
 const TOKEN_KEY = "access_token";
 const USER_KEY = "auth_user";
-
-<<<<<<< HEAD
 const isBrowser = typeof window !== "undefined";
 
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 interface User {
   id?: string;
   email?: string;
@@ -38,10 +34,7 @@ interface RegisterData {
 }
 
 const loadUserFromStorage = (): User | null => {
-<<<<<<< HEAD
   if (!isBrowser) return null;
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
   try {
     const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -57,11 +50,8 @@ const saveAuthToStorage = ({
   token?: string | null;
   user?: User | null;
 }) => {
-<<<<<<< HEAD
   if (!isBrowser) return
 
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
   }
@@ -72,10 +62,8 @@ const saveAuthToStorage = ({
 };
 
 const clearAuthStorage = () => {
-<<<<<<< HEAD
   if (!isBrowser) return;
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
+
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 };
@@ -83,10 +71,7 @@ const clearAuthStorage = () => {
 const getErrorMessage = (error: any, fallbackMessage: string): string => {
   return (
     error?.response?.data?.message ||
-<<<<<<< HEAD
     error?.response?.data?.error_description ||
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
     error?.response?.data?.error ||
     error?.message ||
     fallbackMessage
@@ -103,7 +88,6 @@ const normalizeAuthResponse = (payload: any) => {
   };
 };
 
-<<<<<<< HEAD
 // fetchMeThunk declared first so loginThunk can reference it
 export const fetchMeThunk = createAsyncThunk<
   any,
@@ -117,18 +101,12 @@ export const fetchMeThunk = createAsyncThunk<
     return rejectWithValue(getErrorMessage(error, "Không thể lấy thông tin người dùng"));
   }
 });
-
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 export const loginThunk = createAsyncThunk<
   any,
   LoginCredentials,
   { rejectValue: string }
-<<<<<<< HEAD
 >("auth/login", async (credentials, { rejectWithValue, dispatch }) => {
-=======
->("auth/login", async (credentials, { rejectWithValue }) => {
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
+
   try {
     const response = await authAPI.login(credentials);
     const normalized = normalizeAuthResponse(response.data);
@@ -137,13 +115,10 @@ export const loginThunk = createAsyncThunk<
       saveAuthToStorage(normalized);
     }
 
-<<<<<<< HEAD
     if (normalized.token) {
       dispatch(fetchMeThunk(normalized.token));
     }
 
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
     return response.data;
   } catch (error: any) {
     return rejectWithValue(getErrorMessage(error, "Đăng nhập thất bại"));
@@ -157,11 +132,6 @@ export const registerThunk = createAsyncThunk<
 >("auth/register", async (userData, { rejectWithValue }) => {
   try {
     const response = await authAPI.register(userData);
-<<<<<<< HEAD
-=======
-    const normalized = normalizeAuthResponse(response.data);
-
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
     return response.data;
   } catch (error: any) {
     return rejectWithValue(getErrorMessage(error, "Đăng ký thất bại"));
@@ -170,13 +140,8 @@ export const registerThunk = createAsyncThunk<
 
 const initialState: AuthState = {
   user: loadUserFromStorage(),
-<<<<<<< HEAD
   token: isBrowser ? localStorage.getItem(TOKEN_KEY) : null,
   isAuthenticated: isBrowser ? !!localStorage.getItem(TOKEN_KEY) : false ,
-=======
-  token: localStorage.getItem(TOKEN_KEY),
-  isAuthenticated: !!localStorage.getItem(TOKEN_KEY),
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
   loading: false,
   error: null,
   registerSuccessMessage: null,
@@ -247,7 +212,6 @@ const authSlice = createSlice({
       .addCase(registerThunk.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || "Đăng ký thất bại";
-<<<<<<< HEAD
       })
 
       // FETCH ME
@@ -267,8 +231,6 @@ const authSlice = createSlice({
           };
           saveAuthToStorage({ user: state.user });
         }
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
       });
   },
 });
