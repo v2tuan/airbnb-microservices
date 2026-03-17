@@ -23,10 +23,7 @@ spring:
               '[/**]':
                 allowed-origin-patterns:
                   - "http://localhost:5173"
-<<<<<<< HEAD
                   - "http://localhost:3000"
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
                 allowed-methods:
                   - GET
                   - POST

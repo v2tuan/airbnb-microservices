@@ -5,13 +5,6 @@ import com.userservice.dto.request.RegistrationRequest;
 import com.userservice.dto.response.UserProfileResponseDTO;
 import com.userservice.mapper.UserMapper;
 import com.userservice.repository.*;
-<<<<<<< HEAD
-=======
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,11 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
-<<<<<<< HEAD
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-=======
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
 import java.util.List;
 
 //business logic
@@ -40,26 +30,12 @@ public class UserService {
   private final EmergencyContactRepository emergencyContactRepository;
   private final IdentityClient identityClient;
   private final UserMapper userMapper;
-<<<<<<< HEAD
 
   @Value("${idp.client-id}")
   String clientId;
 
   @Value("${idp.client-secret}")
   String clientSecret;
-
-  public TokenExchangeResponse login(LoginRequest request) {
-    var loginResponse = identityClient.exchangeToken(TokenExchangeParam.builder()
-            .grant_type("password")
-            .client_id(clientId)
-            .client_secret(clientSecret)
-            .username(request.getUsername())
-            .password(request.getPassword())
-            .scope("openid")
-            .build());
-
-    return loginResponse;
-  }
 
   @Transactional(readOnly = true)
   public UserProfileResponseDTO getMe(String authorizationHeader) {
@@ -87,13 +63,7 @@ public class UserService {
     } catch (Exception e) {
       throw new RuntimeException("Failed to parse JWT: " + e.getMessage());
     }
-=======
-
-  @Value("${idp.client-id}")
-  String clientId;
-
-  @Value("${idp.client-secret}")
-  String clientSecret;
+  }
 
   public TokenExchangeResponse login(LoginRequest request) {
     var loginResponse = identityClient.exchangeToken(TokenExchangeParam.builder()
@@ -106,7 +76,6 @@ public class UserService {
             .build());
 
     return loginResponse;
->>>>>>> 3e6c73e5eca1eeec4c4fc3f4770924716d82caac
   }
 
   @Transactional
