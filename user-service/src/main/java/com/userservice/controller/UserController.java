@@ -9,10 +9,7 @@ import com.userservice.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -40,5 +37,16 @@ public class UserController {
                         .message("Login successful")
                         .data(response)
                         .build());
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserProfileResponseDTO>> getMe(
+            @RequestHeader("Authorization") String authorizationHeader) {
+        var response = userService.getMe(authorizationHeader);
+        return ResponseEntity.ok(ApiResponse.<UserProfileResponseDTO>builder()
+                .success(true)
+                .message("User profile fetched")
+                .data(response)
+                .build());
     }
 }

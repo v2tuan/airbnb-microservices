@@ -1,11 +1,16 @@
-import { Search, Globe, Menu, User, Home, GlobeIcon, MenuIcon } from "lucide-react"
+"use client"
 
+import { GlobeIcon } from "lucide-react"
 import Link from "next/link"
+import { useSelector } from "react-redux"
+import Logo from "../logo"
 import SearchBar from "./search-bar"
 import UserMenu from "./user-menu"
-import Logo from "../logo"
+import { selectCurrentUser, selectIsAuthenticated } from "@/features/auth/authSelectors"
 
 function Header() {
+  const user = useSelector(selectCurrentUser)
+  const isAuthenticated =  useSelector(selectIsAuthenticated)
   return (
     <header className="fixed w-full bg-white z-40 border-b py-4 md:px-10 lg:px-20 lg:pt-5">
       <div className="mx-auto px-4 flex items-center justify-between">
@@ -20,8 +25,16 @@ function Header() {
         </nav>
 
         <div className="flex justify-between space-x-6">
-          <button className="text-sm hidden lg:flex">Become a host</button>
-          <GlobeIcon/>
+          <button type="button" className="text-sm hidden lg:flex">Become a host</button>
+          {isAuthenticated && user?.avatarUrl  ? (
+            <img
+              src={user.avatarUrl}
+              alt="avatar"
+              className="w-8 h-8 rounded-full object-cover cursor-pointer"
+            />
+          ) : (
+            <GlobeIcon/>
+          )}
           <UserMenu/>
         </div>
       </div>

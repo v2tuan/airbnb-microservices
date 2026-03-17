@@ -1,5 +1,5 @@
 import apiClient from "../client";
-import { AxiosResponse } from "axios";
+import type { AxiosResponse } from "axios";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
 
@@ -21,17 +21,33 @@ export interface AuthResponse {
   message?: string;
 }
 
+export interface MeResponse {
+  userId?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  avatarUrl?: string;
+  email?: string;
+  isHost?: boolean;
+}
+
 export const authAPI = {
   login: (
     credentials: LoginCredentials
   ): Promise<AxiosResponse<AuthResponse>> => {
-    return apiClient.post(prefix + "/users/auth/login", credentials);
+    return apiClient.post(`${prefix}/users/auth/login`, credentials);
   },
 
   register: (
     userData: RegisterData
   ): Promise<AxiosResponse<AuthResponse>> => {
-    return apiClient.post(prefix + "/users/auth/register", userData);
+    return apiClient.post(`${prefix}/users/auth/register`, userData);
+  },
+
+  getMe: (token: string): Promise<AxiosResponse<{ data: MeResponse }>> => {
+    return apiClient.get(`${prefix}/users/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
   },
 };
 

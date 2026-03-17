@@ -1,15 +1,60 @@
-import { CircleQuestionMark } from 'lucide-react'
-import React from 'react'
-import { Separator } from '../ui/separator'
+import { selectCurrentUser, selectIsAuthenticated } from '@/features/auth/authSelectors'
 import useLoginModal from '@/hooks/userLoginModal'
+import { CircleQuestionMark, Earth, Globe, Heart, Home, MessageCircle, MessageSquare, Settings, User } from 'lucide-react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Separator } from '../ui/separator'
+import { logout } from '@/features/auth/authSlice'
 
 function Dropdown() {
   const loginModal = useLoginModal()
+  const dispatch = useDispatch()
+
+  const user = useSelector(selectCurrentUser)
+  const isAuthenticated = useSelector(selectIsAuthenticated)
   return (
     <div className="absolute right-0 mt-3 w-[280px] bg-white rounded-2xl shadow-xl overflow-hidden border z-30">
-      <div className="flex space-x-2 my-2 py-1 hover:bg-gray-100 px-4 cursor-pointer ">
-        <CircleQuestionMark/>
-        <p>Help center</p>
+
+      {/* auth section */}
+      {isAuthenticated && (
+        <>
+          <div className="py-2">
+            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+              <Heart size={18}/>
+              <p>Wishlist</p>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+              <Home size={18}/>
+              <p>Trips</p>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+              <MessageSquare size={18}/>
+              <p>Message</p>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+              <User size={18}/>
+              <p>Profile</p>
+            </div>
+          </div>
+          <Separator/>
+        </>
+      )}
+
+      <div className="py-2">
+        {isAuthenticated && (
+          <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+            <Settings size={18}/>
+            <p>Account settings</p>
+          </div>
+        )}
+       
+        <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+          <Globe size={18}/>
+          <p>Languages & currency</p>
+        </div>
+        <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+          <CircleQuestionMark size={18}/>
+          <p>Help center</p>
+        </div>
       </div>
 
       <Separator/>
@@ -32,7 +77,13 @@ function Dropdown() {
 
       <Separator />
 
-      <div onClick={loginModal.onOpen} className="my-2 py-1 cursor-pointer hover:bg-gray-100 px-4">Login and sign up</div>
+      {isAuthenticated ? (
+        <div onClick={() => dispatch(logout())} className="my-2 py-1 cursor-pointer hover:bg-gray-100 px-4">Log out</div>
+      ) :
+      (
+        <div onClick={loginModal.onOpen} className="my-2 py-1 cursor-pointer hover:bg-gray-100 px-4">Login and sign up</div>
+      )}
+
 
     </div>
   )

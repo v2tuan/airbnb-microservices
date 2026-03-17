@@ -5,13 +5,16 @@ import com.userservice.dto.request.RegistrationRequest;
 import com.userservice.dto.response.UserProfileResponseDTO;
 import com.userservice.mapper.UserMapper;
 import com.userservice.repository.*;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 
 //business logic
@@ -45,6 +48,34 @@ public class UserService {
             .build());
 
     return loginResponse;
+  }
+
+  @Transactional(readOnly = true)
+  public UserProfileResponseDTO getMe(String authorizationHeader) {
+    if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+      throw new RuntimeException("Missing or invalid Authorization header");
+    }
+    String token = authorizationHeader.substring(7);
+    String keycloakUserId = extractSubFromJwt(token);
+
+    var user = userRepository.findByKeycloakUserId(keycloakUserId)
+        .orElseThrow(() -> new RuntimeException("User not found for keycloakUserId: " + keycloakUserId));
+
+    return userMapper.toUserProfileResponseDTO(user);
+  }
+
+  private String extractSubFromJwt(String token) {
+    try {
+      String[] parts = token.split("\\.");
+      if (parts.length < 2) throw new RuntimeException("Invalid JWT");
+      byte[] decoded = Base64.getUrlDecoder().decode(parts[1]);
+      String payload = new String(decoded, StandardCharsets.UTF_8);
+      ObjectMapper mapper = new ObjectMapper();
+      var claims = mapper.readValue(payload, java.util.Map.class);
+      return (String) claims.get("sub");
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to parse JWT: " + e.getMessage());
+    }
   }
 
   @Transactional

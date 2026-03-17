@@ -88,17 +88,35 @@ const normalizeAuthResponse = (payload: any) => {
   };
 };
 
+// fetchMeThunk declared first so loginThunk can reference it
+export const fetchMeThunk = createAsyncThunk<
+  any,
+  string,
+  { rejectValue: string }
+>("auth/fetchMe", async (token, { rejectWithValue }) => {
+  try {
+    const response = await authAPI.getMe(token);
+    return response.data;
+  } catch (error: any) {
+    return rejectWithValue(getErrorMessage(error, "Không thể lấy thông tin người dùng"));
+  }
+});
+
 export const loginThunk = createAsyncThunk<
   any,
   LoginCredentials,
   { rejectValue: string }
->("auth/login", async (credentials, { rejectWithValue }) => {
+>("auth/login", async (credentials, { rejectWithValue, dispatch }) => {
   try {
     const response = await authAPI.login(credentials);
     const normalized = normalizeAuthResponse(response.data);
 
     if (normalized.token || normalized.user) {
       saveAuthToStorage(normalized);
+    }
+
+    if (normalized.token) {
+      dispatch(fetchMeThunk(normalized.token));
     }
 
     return response.data;
@@ -114,8 +132,6 @@ export const registerThunk = createAsyncThunk<
 >("auth/register", async (userData, { rejectWithValue }) => {
   try {
     const response = await authAPI.register(userData);
-    const normalized = normalizeAuthResponse(response.data);
-
     return response.data;
   } catch (error: any) {
     return rejectWithValue(getErrorMessage(error, "Đăng ký thất bại"));
@@ -196,6 +212,25 @@ const authSlice = createSlice({
       .addCase(registerThunk.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || "Đăng ký thất bại";
+      })
+
+      // FETCH ME
+      .addCase(fetchMeThunk.fulfilled, (state, action: PayloadAction<any>) => {
+        const profile = action.payload?.data ?? action.payload ?? null;
+        if (profile) {
+          const avatar = profile.avatarUrl ?? null;
+          state.user = {
+            ...state.user,
+            id: profile.userId ?? state.user?.id,
+            email: profile.email ?? state.user?.email,
+            name: (profile.fullName ?? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim()) || state.user?.name,
+            avatarUrl: avatar,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            isHost: profile.isHost,
+          };
+          saveAuthToStorage({ user: state.user });
+        }
       });
   },
 });
