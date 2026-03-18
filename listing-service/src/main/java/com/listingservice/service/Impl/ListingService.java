@@ -195,10 +195,12 @@ public class ListingService implements IListingService {
 
     private HomeSectionResponse buildSection(String sectionKey, String title, String city, int limit) {
         List<HomeListingCardResponse> listings = listingRepository
-                .findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(city, ListingStatus.ACTIVE)
+                .findByCityIgnoreCaseAndStatus(city, ListingStatus.ACTIVE)
                 .stream()
+                .sorted(Comparator.comparing(Listing::getInstantBook, Comparator.nullsLast(Boolean::compareTo)).reversed())
                 .limit(limit)
-                .map(this::toHomeCard)
+                .map(this::safeToHomeCard)
+                .filter(java.util.Objects::nonNull)
                 .toList();
 
         return HomeSectionResponse.builder()
@@ -207,6 +209,15 @@ public class ListingService implements IListingService {
                 .city(city)
                 .listings(listings)
                 .build();
+    }
+
+    private HomeListingCardResponse safeToHomeCard(Listing listing) {
+        try {
+            return toHomeCard(listing);
+        } catch (Exception ex) {
+            log.warn("Skip invalid listing in home section. listingId={}", listing.getListingId(), ex);
+            return null;
+        }
     }
 
     private HomeListingCardResponse toHomeCard(Listing listing) {
