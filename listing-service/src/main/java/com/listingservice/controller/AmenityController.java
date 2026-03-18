@@ -11,6 +11,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public class AmenityController {
 
     IAmenityService amenityService;
 
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping
     public ResponseEntity<ApiResponse<AmenityResponse>> createAmenity(
             @Valid @RequestBody AmenityRequest request) {
@@ -38,6 +40,7 @@ public class AmenityController {
                         .build());
     }
 
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PutMapping("/{amenityId}")
     public ResponseEntity<ApiResponse<AmenityResponse>> updateAmenity(
             @PathVariable UUID amenityId,
@@ -52,6 +55,7 @@ public class AmenityController {
                         .build());
     }
 
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/{amenityId}")
     public ResponseEntity<ApiResponse<Void>> deleteAmenity(@PathVariable UUID amenityId) {
         log.info("REST request to delete amenity ID: {}", amenityId);

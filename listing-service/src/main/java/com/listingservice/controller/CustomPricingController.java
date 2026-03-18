@@ -11,6 +11,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -26,6 +27,7 @@ public class CustomPricingController {
 
     ICustomPricingService customPricingService;
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping
     public ResponseEntity<ApiResponse<CustomPricingResponse>> setCustomPricing(
             @PathVariable UUID listingId,
@@ -57,6 +59,7 @@ public class CustomPricingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping
     public ResponseEntity<ApiResponse<Void>> deleteCustomPricing(
             @PathVariable UUID listingId,
@@ -70,6 +73,7 @@ public class CustomPricingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping("/all")
     public ResponseEntity<ApiResponse<Void>> deleteAllCustomPricing(@PathVariable UUID listingId) {
         log.info("REST request to delete all custom pricing for listing ID: {}", listingId);

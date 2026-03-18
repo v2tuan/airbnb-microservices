@@ -11,6 +11,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public class ListingPhotoController {
 
     IListingPhotoService listingPhotoService;
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping
     public ResponseEntity<ApiResponse<ListingPhotoResponse>> addPhoto(
             @PathVariable UUID listingId,
@@ -39,6 +41,7 @@ public class ListingPhotoController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PutMapping("/{photoId}")
     public ResponseEntity<ApiResponse<ListingPhotoResponse>> updatePhoto(
             @PathVariable UUID listingId,
@@ -54,6 +57,7 @@ public class ListingPhotoController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping("/{photoId}")
     public ResponseEntity<ApiResponse<Void>> deletePhoto(
             @PathVariable UUID listingId,
@@ -94,6 +98,7 @@ public class ListingPhotoController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PatchMapping("/{photoId}/set-cover")
     public ResponseEntity<ApiResponse<Void>> setCoverPhoto(
             @PathVariable UUID listingId,
@@ -107,6 +112,7 @@ public class ListingPhotoController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PutMapping("/reorder")
     public ResponseEntity<ApiResponse<Void>> reorderPhotos(
             @PathVariable UUID listingId,

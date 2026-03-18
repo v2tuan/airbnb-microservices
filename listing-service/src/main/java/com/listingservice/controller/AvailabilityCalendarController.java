@@ -11,6 +11,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -26,6 +27,7 @@ public class AvailabilityCalendarController {
 
     IAvailabilityCalendarService availabilityCalendarService;
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping
     public ResponseEntity<ApiResponse<AvailabilityResponse>> setAvailability(
             @PathVariable UUID listingId,
@@ -73,6 +75,7 @@ public class AvailabilityCalendarController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping("/block")
     public ResponseEntity<ApiResponse<Void>> blockDates(
             @PathVariable UUID listingId,
@@ -88,6 +91,7 @@ public class AvailabilityCalendarController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping("/unblock")
     public ResponseEntity<ApiResponse<Void>> unblockDates(
             @PathVariable UUID listingId,
