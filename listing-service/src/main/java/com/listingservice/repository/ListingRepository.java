@@ -29,6 +29,9 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     // Tìm theo city và status cho section trang chủ
     List<Listing> findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(String city, ListingStatus status);
 
+    // Fallback query cho section trang chủ, tránh phụ thuộc cột created_at khi dữ liệu legacy chưa đồng bộ
+    List<Listing> findByCityIgnoreCaseAndStatus(String city, ListingStatus status);
+
     // Tìm theo city và country
     List<Listing> findByCityAndCountry(String city, String country);
     

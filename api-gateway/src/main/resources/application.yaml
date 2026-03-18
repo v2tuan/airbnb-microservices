@@ -47,5 +47,5 @@ spring:
               predicates:
                 - Path=${app.api-prefix}/listings/**
               filters:
-                - StripPrefix=2
+                - StripPrefix=3
                 - PrefixPath=/listing
