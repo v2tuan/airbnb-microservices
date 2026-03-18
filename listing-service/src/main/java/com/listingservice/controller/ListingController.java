@@ -12,6 +12,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -27,6 +28,7 @@ public class ListingController {
 
     IListingService listingService;
 
+    @PreAuthorize("hasAuthority('ROLE_HOST')")
     @PostMapping
     public ResponseEntity<ApiResponse<ListingResponse>> createListing(
             @Valid @RequestBody ListingCreationRequest request) {
@@ -40,6 +42,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PutMapping("/{listingId}")
     public ResponseEntity<ApiResponse<ListingResponse>> updateListing(
             @PathVariable UUID listingId,
@@ -54,6 +57,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping("/{listingId}")
     public ResponseEntity<ApiResponse<Void>> deleteListing(@PathVariable UUID listingId) {
         log.info("REST request to delete listing ID: {}", listingId);
@@ -148,6 +152,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PatchMapping("/{listingId}/activate")
     public ResponseEntity<ApiResponse<Void>> activateListing(@PathVariable UUID listingId) {
         log.info("REST request to activate listing ID: {}", listingId);
@@ -159,6 +164,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PatchMapping("/{listingId}/deactivate")
     public ResponseEntity<ApiResponse<Void>> deactivateListing(@PathVariable UUID listingId) {
         log.info("REST request to deactivate listing ID: {}", listingId);
