@@ -2,6 +2,7 @@ package com.listingservice.service;
 
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
+import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.dto.response.ListingResponse;
 
 import java.math.BigDecimal;
@@ -20,4 +21,5 @@ public interface IListingService {
     List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
+    List<HomeSectionResponse> getHomeSections(Integer limitPerSection);
 }

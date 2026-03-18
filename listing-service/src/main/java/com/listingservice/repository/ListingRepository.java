@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -26,7 +25,10 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     
     // Tìm theo city
     List<Listing> findByCity(String city);
-    
+
+    // Tìm theo city và status cho section trang chủ
+    List<Listing> findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(String city, ListingStatus status);
+
     // Tìm theo city và country
     List<Listing> findByCityAndCountry(String city, String country);
     
