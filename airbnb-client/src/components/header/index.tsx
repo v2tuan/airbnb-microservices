@@ -30,7 +30,7 @@ function Header() {
             />
             Homes
           </Link>            
-          <Link href="/" className="text-black transition flex flex-row items-center">
+          <Link href="/experiences" className="text-black transition flex flex-row items-center">
             <Image 
               src="/header/experience.png" 
               alt="home indicator"
@@ -40,7 +40,7 @@ function Header() {
             />
             Experiences
           </Link>   
-          <Link href="/" className="text-black transition flex flex-row items-center">
+          <Link href="/services" className="text-black transition flex flex-row items-center">
             <Image 
               src="/header/services.png" 
               alt="home indicator"
