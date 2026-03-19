@@ -13,7 +13,8 @@ export interface HomeListingCardResponse {
   rating: number;
   currency: string;
   maxGuests: number;
-  instantBooks: boolean;
+  instantBook?: boolean;
+  instantBooks?: boolean;
 }
 
 export interface HomeSectionResponse {
