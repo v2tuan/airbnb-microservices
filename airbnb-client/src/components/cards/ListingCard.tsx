@@ -13,74 +13,67 @@ export interface HomeListingCardProps {
   coverImageUrl: string;
   basePrice: number;
   currency: string;
-  rating?: number;          
-  reviewCount?: number;    
+  rating?: number;
   isGuestFavorite?: boolean;
   instantBook?: boolean;
 }
 
 const ListingCard: React.FC<{ listing: HomeListingCardProps }> = ({ listing }) => {
-
   return (
-    <Link href={`/rooms/${listing.listingId}`} className="group flex w-full cursor-pointer flex-col gap-3">
-      
-      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-neutral-200">
+    <Link href={`/rooms/${listing.listingId}`} className="group flex w-full flex-col gap-2">
+      {/* Image Container */}
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-200">
         <Image
           src={listing.coverImageUrl}
           alt={listing.title}
           fill
-          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-          sizes="(max-width: 767px) 50vw, (max-width: 1023px) 20vw, 14.3vw"
-          priority={false}
+          className="object-cover transition duration-300 group-hover:scale-105"
+          sizes="(max-width: 767px) 75vw, (max-width: 1023px) 20vw, 15vw"
         />
 
         {(listing.isGuestFavorite || listing.instantBook) && (
-          <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1.5 shadow-sm">
-            <span className="text-xs font-semibold leading-none text-neutral-900 md:text-sm">
+          <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 shadow-sm">
+            <span className="text-[12px] font-bold text-neutral-900">
               Guest favorite
             </span>
           </div>
         )}
 
-        <button 
-          type="button" 
+        <button
+          type="button"
           onClick={(e) => {
             e.preventDefault();
-            console.log("Add to Wishlist", listing.listingId);
+            console.log("Wishlist toggle:", listing.listingId);
           }}
-          className="absolute right-3 top-3 rounded-full p-1 text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] transition hover:scale-110 hover:text-rose-500"
+          className="absolute right-3 top-3 text-white/90 transition hover:scale-110 hover:text-rose-500"
         >
-          <Heart size={26} strokeWidth={1.8} className="group-hover:text-rose-500" />
+          <Heart size={24} strokeWidth={2} className="drop-shadow-md" />
         </button>
       </div>
 
-      <div className="flex flex-col gap-1">
-        
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="line-clamp-2 flex-1 text-base font-semibold leading-[1.25] tracking-tight text-neutral-900 md:text-[17px]">
+      {/* Content */}
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-start justify-between gap-1">
+          <h3 className="line-clamp-1 flex-1 text-[15px] font-bold text-neutral-900">
             {listing.title}
           </h3>
           
-          {listing.rating && (
-            <div className="flex min-w-[74px] items-center justify-end gap-1">
-              <Star size={12} className="fill-neutral-900 text-neutral-900" />
-              <span className="text-sm font-medium tracking-tight text-neutral-800">
-                {listing.rating.toFixed(1)}
-              </span>
-            </div>
-          )}
         </div>
-
-        <p className="text-sm text-neutral-600">
+        
+        <p className="text-[14px] text-neutral-500 line-clamp-1">
           {listing.city}, {listing.country}
         </p>
         
-        <p className="text-sm tracking-tight text-neutral-600 md:text-[15px]">
-          <span className="font-semibold text-neutral-900 underline decoration-neutral-500 underline-offset-[3px]">
-            {formatPrice(listing.basePrice, listing.currency)}
-          </span>
-          <span> for 2 nights</span>
-        </p>
+        <div className="mt-1 text-[12px] flex gap-1">
+          <span className="font-bold">{formatPrice(listing.basePrice, listing.currency)}</span>
+          <span className="text-neutral-600"> for 2 nights</span>
+          {listing.rating && (
+            <div className="flex items-center gap-1">
+              <Star size={10} className="fill-neutral-900" />
+              <span className="text-[12px] font-medium">{listing.rating.toFixed(1)}</span>
+            </div>
+          )}
+        </div>
       </div>
     </Link>
   );
