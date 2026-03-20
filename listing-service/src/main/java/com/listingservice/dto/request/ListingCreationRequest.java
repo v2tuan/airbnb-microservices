@@ -7,7 +7,6 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 @Data
 @Builder
@@ -15,10 +14,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ListingCreationRequest {
-    
-    @NotNull(message = "HOST_ID_REQUIRED")
-    UUID hostId;
-    
+
     @NotBlank(message = "TITLE_REQUIRED")
     @Size(max = 255, message = "TITLE_TOO_LONG")
     String title;

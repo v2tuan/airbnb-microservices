@@ -15,10 +15,10 @@ import java.util.UUID;
 public interface ListingRepository extends JpaRepository<Listing, UUID> {
     
     // Tìm theo host
-    List<Listing> findByHostId(UUID hostId);
-    
+    List<Listing> findByHostId(String hostId);
+
     // Tìm theo host và status
-    List<Listing> findByHostIdAndStatus(UUID hostId, ListingStatus status);
+    List<Listing> findByHostIdAndStatus(String hostId, ListingStatus status);
     
     // Tìm theo status
     List<Listing> findByStatus(ListingStatus status);
@@ -68,11 +68,11 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     );
     
     // Kiểm tra listing tồn tại theo ID và host
-    boolean existsByListingIdAndHostId(UUID listingId, UUID hostId);
-    
+    boolean existsByListingIdAndHostId(UUID listingId, String hostId);
+
     // Đếm số listing của host
-    long countByHostId(UUID hostId);
-    
+    long countByHostId(String hostId);
+
     // Đếm số listing active của host
-    long countByHostIdAndStatus(UUID hostId, ListingStatus status);
+    long countByHostIdAndStatus(String hostId, ListingStatus status);
 }

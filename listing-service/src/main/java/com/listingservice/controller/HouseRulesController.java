@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -23,6 +24,7 @@ public class HouseRulesController {
 
     IHouseRulesService houseRulesService;
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping
     public ResponseEntity<ApiResponse<HouseRulesResponse>> createOrUpdateHouseRules(
             @PathVariable UUID listingId,
@@ -50,6 +52,7 @@ public class HouseRulesController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping
     public ResponseEntity<ApiResponse<Void>> deleteHouseRules(@PathVariable UUID listingId) {
         log.info("REST request to delete house rules for listing ID: {}", listingId);

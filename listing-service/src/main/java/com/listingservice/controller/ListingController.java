@@ -6,6 +6,7 @@ import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.service.IListingService;
+import com.listingservice.util.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -20,19 +22,27 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/listings")
 @RequiredArgsConstructor
+@RequestMapping("/api/listings")
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
 public class ListingController {
 
     IListingService listingService;
+    JwtUtils jwtUtils;
 
+    @PreAuthorize("hasAuthority('ROLE_HOST')")
     @PostMapping
     public ResponseEntity<ApiResponse<ListingResponse>> createListing(
+            @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody ListingCreationRequest request) {
         log.info("REST request to create listing: {}", request.getTitle());
-        ListingResponse response = listingService.createListing(request);
+
+        // Extract Keycloak user ID from JWT
+        String keycloakUserId = jwtUtils.extractKeycloakUserId(authorizationHeader);
+        log.debug("Creating listing for host: {}", keycloakUserId);
+
+        ListingResponse response = listingService.createListing(request, keycloakUserId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.<ListingResponse>builder()
                         .code(1000)
@@ -41,6 +51,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PutMapping("/{listingId}")
     public ResponseEntity<ApiResponse<ListingResponse>> updateListing(
             @PathVariable UUID listingId,
@@ -55,6 +66,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping("/{listingId}")
     public ResponseEntity<ApiResponse<Void>> deleteListing(@PathVariable UUID listingId) {
         log.info("REST request to delete listing ID: {}", listingId);
@@ -92,7 +104,7 @@ public class ListingController {
 
     @GetMapping("/host/{hostId}")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByHost(
-            @PathVariable UUID hostId) {
+            @PathVariable String hostId) {
         log.info("REST request to get listings by host ID: {}", hostId);
         List<ListingResponse> response = listingService.getListingsByHost(hostId);
         return ResponseEntity.ok(
@@ -158,6 +170,7 @@ public class ListingController {
                 .build();
         }       
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PatchMapping("/{listingId}/activate")
     public ResponseEntity<ApiResponse<Void>> activateListing(@PathVariable UUID listingId) {
         log.info("REST request to activate listing ID: {}", listingId);
@@ -169,6 +182,7 @@ public class ListingController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PatchMapping("/{listingId}/deactivate")
     public ResponseEntity<ApiResponse<Void>> deactivateListing(@PathVariable UUID listingId) {
         log.info("REST request to deactivate listing ID: {}", listingId);

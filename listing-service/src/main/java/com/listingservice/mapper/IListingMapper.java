@@ -15,6 +15,7 @@ import org.mapstruct.*;
 public interface IListingMapper {
     
     @Mapping(target = "listingId", ignore = true)
+    @Mapping(target = "hostId", ignore = true)
     @Mapping(target = "status", ignore = true)
     @Mapping(target = "photos", ignore = true)
     @Mapping(target = "listingAmenities", ignore = true)
