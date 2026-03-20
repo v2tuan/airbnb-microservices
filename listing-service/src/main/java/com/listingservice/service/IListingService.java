@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.UUID;
 
 public interface IListingService {
-    ListingResponse createListing(ListingCreationRequest request);
+    ListingResponse createListing(ListingCreationRequest request, String keycloakUserId);
     ListingResponse updateListing(UUID listingId, ListingUpdateRequest request);
     void deleteListing(UUID listingId);
     ListingResponse getListingById(UUID listingId);
     List<ListingResponse> getAllListings();
-    List<ListingResponse> getListingsByHost(UUID hostId);
+    List<ListingResponse> getListingsByHost(String hostId);
     List<ListingResponse> searchListings(String city, String country, Integer maxGuests);
     List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice);
     List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius);
