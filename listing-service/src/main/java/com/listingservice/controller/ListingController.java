@@ -4,6 +4,7 @@ import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.ListingResponse;
+import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.service.IListingService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -147,6 +148,15 @@ public class ListingController {
                         .result(response)
                         .build());
     }
+
+    @GetMapping("/sections")
+        public ApiResponse<List<HomeSectionResponse>> getHomeSections(
+                @RequestParam(required = false) Integer limit
+        ) {
+        return ApiResponse.<List<HomeSectionResponse>>builder()
+                .result(listingService.getHomeSections(limit))
+                .build();
+        }       
 
     @PatchMapping("/{listingId}/activate")
     public ResponseEntity<ApiResponse<Void>> activateListing(@PathVariable UUID listingId) {
