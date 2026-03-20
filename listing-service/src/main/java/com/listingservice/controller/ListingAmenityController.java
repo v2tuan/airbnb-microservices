@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public class ListingAmenityController {
 
     IListingAmenityService listingAmenityService;
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PostMapping("/{amenityId}")
     public ResponseEntity<ApiResponse<Void>> addAmenityToListing(
             @PathVariable UUID listingId,
@@ -35,6 +37,7 @@ public class ListingAmenityController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @DeleteMapping("/{amenityId}")
     public ResponseEntity<ApiResponse<Void>> removeAmenityFromListing(
             @PathVariable UUID listingId,
@@ -61,6 +64,7 @@ public class ListingAmenityController {
                         .build());
     }
 
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PutMapping
     public ResponseEntity<ApiResponse<Void>> updateListingAmenities(
             @PathVariable UUID listingId,

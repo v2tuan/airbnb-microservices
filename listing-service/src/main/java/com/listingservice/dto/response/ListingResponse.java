@@ -19,7 +19,7 @@ import java.util.UUID;
 public class ListingResponse {
     
     UUID listingId;
-    UUID hostId;
+    String hostId;  // Keycloak user ID
     String title;
     String description;
     PropertyType propertyType;
