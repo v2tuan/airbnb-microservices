@@ -5,6 +5,7 @@ import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.service.IListingService;
+import com.listingservice.util.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -27,13 +28,20 @@ import java.util.UUID;
 public class ListingController {
 
     IListingService listingService;
+    JwtUtils jwtUtils;
 
     @PreAuthorize("hasAuthority('ROLE_HOST')")
     @PostMapping
     public ResponseEntity<ApiResponse<ListingResponse>> createListing(
+            @RequestHeader("Authorization") String authorizationHeader,
             @Valid @RequestBody ListingCreationRequest request) {
         log.info("REST request to create listing: {}", request.getTitle());
-        ListingResponse response = listingService.createListing(request);
+
+        // Extract Keycloak user ID from JWT
+        String keycloakUserId = jwtUtils.extractKeycloakUserId(authorizationHeader);
+        log.debug("Creating listing for host: {}", keycloakUserId);
+
+        ListingResponse response = listingService.createListing(request, keycloakUserId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.<ListingResponse>builder()
                         .code(1000)
@@ -95,7 +103,7 @@ public class ListingController {
 
     @GetMapping("/host/{hostId}")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByHost(
-            @PathVariable UUID hostId) {
+            @PathVariable String hostId) {
         log.info("REST request to get listings by host ID: {}", hostId);
         List<ListingResponse> response = listingService.getListingsByHost(hostId);
         return ResponseEntity.ok(

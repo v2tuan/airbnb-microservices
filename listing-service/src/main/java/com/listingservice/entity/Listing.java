@@ -31,7 +31,7 @@ public class Listing extends BaseEntity {
     UUID listingId;
     
     @Column(name = "host_id", nullable = false)
-    UUID hostId;
+    String hostId;  // Keycloak user ID
     
     @Column(nullable = false, length = 255)
     String title;

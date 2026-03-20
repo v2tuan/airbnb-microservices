@@ -32,15 +32,16 @@ public class ListingService implements IListingService {
     
     @Override
     @Transactional
-    public ListingResponse createListing(ListingCreationRequest request) {
-        log.info("Creating listing with title: {}", request.getTitle());
-        
+    public ListingResponse createListing(ListingCreationRequest request, String keycloakUserId) {
+        log.info("Creating listing with title: {} for host: {}", request.getTitle(), keycloakUserId);
+
         Listing listing = listingMapper.toEntity(request);
+        listing.setHostId(keycloakUserId);  // Set Keycloak user ID as hostId
         listing.setStatus(ListingStatus.DRAFT);
-        
+
         Listing savedListing = listingRepository.save(listing);
         log.info("Listing created with ID: {}", savedListing.getListingId());
-        
+
         return listingMapper.toResponse(savedListing);
     }
     
@@ -93,9 +94,9 @@ public class ListingService implements IListingService {
     }
     
     @Override
-    public List<ListingResponse> getListingsByHost(UUID hostId) {
+    public List<ListingResponse> getListingsByHost(String hostId) {
         log.info("Getting listings by host ID: {}", hostId);
-        
+
         return listingRepository.findByHostId(hostId).stream()
                 .map(listingMapper::toResponse)
                 .toList();
