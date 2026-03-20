@@ -3,7 +3,9 @@
 import { selectAuthError, selectAuthLoading } from '@/features/auth/authSelectors'
 import { loginThunk } from '@/features/auth/authSlice'
 import useLoginModal from '@/hooks/userLoginModal'
+import useRegisterModal from '@/hooks/userRegisterModal'
 import { AppDispatch } from '@/store'
+import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import {useDispatch, useSelector} from "react-redux"
@@ -14,11 +16,14 @@ type FormData ={
 
 function LoginModal() {
   const loginModal = useLoginModal()
+  const registerModal = useRegisterModal()
 
   const dispatch = useDispatch<AppDispatch>()
   
   const loading = useSelector(selectAuthLoading)
   const error = useSelector(selectAuthError)
+
+  const [showPassword, setShowPassword] = useState(false)
 
   const {
     register,
@@ -35,6 +40,11 @@ function LoginModal() {
       console.error(error)
     }
   }
+  
+  const handleSwitchToRegister = () => {
+    loginModal.onClose()
+    registerModal.onOpen()
+  }
 
   if (!loginModal.isOpen) return null
   return (
@@ -50,7 +60,7 @@ function LoginModal() {
         </button>
 
         <h2 className="text-lg font-bold flex-1 text-center pr-8">
-          Log in or sign up
+          Log in
         </h2>
       </div>
 
@@ -77,23 +87,32 @@ function LoginModal() {
             )}
           </div>
 
-          <div>
+          <div className="relative">
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="Password"
-              {...register("password", {
-                required:"Password is required",
-                minLength: {
-                  value: 6,
-                  message: "Password must be at least 6 characters"
-                }
+              {...register("password", { 
+                required: "Password is required",
+                minLength: { value: 6, message: "Minimum 6 characters" }
               })}
-              className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition"
             />
+            
+            <button 
+              type="button" 
+              onClick={() => setShowPassword(!showPassword)} 
+              className="absolute right-3 top-3.5 text-gray-500 hover:text-black transition-colors cursor-pointer"
+            >
+              {showPassword ? <Eye size={20} /> : <EyeClosed size={20} />}
+            </button>
+
             {errors.password && (
               <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
             )}
           </div>
+            {errors.password && (
+              <p className="text-red-500 text-sm mt-1">{errors.password.message}</p>
+            )}
           {/* api error */}
           {error && (
             <p className="text-red-500 text-sm">
@@ -120,7 +139,7 @@ function LoginModal() {
 
         <p className="text-sm text-center text-gray-600">
           Don't have an account?{" "}
-          <span className="text-black font-semibold cursor-pointer hover:underline">Sign up</span>
+          <span className="text-black font-semibold cursor-pointer hover:underline" onClick={handleSwitchToRegister}>Sign up</span>
         </p>
       </div>
     </div>
