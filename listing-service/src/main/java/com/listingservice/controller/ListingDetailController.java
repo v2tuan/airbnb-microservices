@@ -3,21 +3,25 @@ package com.listingservice.controller;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
-import com.listingservice.dto.response.ListingResponse;
+import com.listingservice.dto.response.CompositeListingResponse;
 import com.listingservice.dto.response.HomeSectionResponse;
+import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.service.IListingService;
+import com.listingservice.service.Impl.ListingDetailService;
 import com.listingservice.util.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,9 +30,10 @@ import java.util.UUID;
 @RequestMapping("/api/listings")
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
-public class ListingController {
+public class ListingDetailController {
 
     IListingService listingService;
+    private final ListingDetailService listingDetailService;
     JwtUtils jwtUtils;
 
     @PreAuthorize("hasAuthority('ROLE_HOST')")
@@ -192,5 +197,17 @@ public class ListingController {
                         .code(1000)
                         .message("Listing deactivated successfully")
                         .build());
+    }
+
+    @GetMapping("/{listingId}/detail")
+    public CompositeListingResponse getListingDetail(
+        @PathVariable UUID listingId,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut,
+        @RequestParam(defaultValue = "1") Integer adults,
+        @RequestParam(defaultValue = "0") Integer children,
+        @RequestParam(defaultValue = "0") Integer infants,
+        @RequestParam(defaultValue = "0") Integer pets ) {
+        return listingDetailService.getDetail(listingId, checkIn, checkOut, adults, children, infants, pets);
     }
 }

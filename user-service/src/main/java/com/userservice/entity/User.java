@@ -3,7 +3,6 @@ package com.userservice.entity;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.Type;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
@@ -36,6 +35,10 @@ public class User {
 //    @Type(ListArrayType.class)
 //    @Column(columnDefinition = "text[]")
 //    private List<String> languages;
+
+    public String getFullName() {
+        return (firstName != null ? firstName : "") + " " + (lastName != null ? lastName : "");
+    }
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private List<UserAddress> addresses;
