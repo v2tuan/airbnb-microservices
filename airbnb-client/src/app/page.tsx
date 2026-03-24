@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { HomeSectionResponse, listingAPI } from "@/api/endpoints/listing";
 import ListingCard from "@/components/cards/ListingCard";
+import Link from "next/link";
 
 export default function Home() {
   const [sections, setSections] = useState<HomeSectionResponse[]>([]);
@@ -90,12 +91,14 @@ export default function Home() {
                   "
                   style={{ scrollSnapAlign: "start" }}
                 >
-                  <ListingCard
-                    listing={{
-                      ...listing,
-                      isGuestFavorite: listing.rating >= 4.8,
-                    }}
-                  />
+                  <Link href={`/rooms/${listing.listingId}`}>
+                    <ListingCard
+                      listing={{
+                        ...listing,
+                        isGuestFavorite: listing.rating >= 4.8,
+                      }}
+                    />
+                  </Link>
                 </div>
               ))}
             </div>
