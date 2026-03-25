@@ -31,8 +31,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/identity
-          jwk-set-uri: http://localhost:8080/identity/.well-known/jwks.json
+          issuer-uri: http://localhost:8080/realms/airbnb
 
 jwt:
   signerKey: "1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij"

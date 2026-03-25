@@ -2,7 +2,8 @@ import { listingAPI } from "@/api/endpoints/listing";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
-import { Heart, Share } from "lucide-react";
+import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
+import { Share } from "lucide-react";
 import { notFound } from "next/navigation";
 
 interface PageProps {
@@ -27,22 +28,16 @@ export default async function RoomDetail ({params}: PageProps) {
               {listing.address}, {listing.city}, {listing.country}
             </span>
 
-            <div className="hidden md:flex items-center gap-4 text-sm font-medium">
+            <div className="flex items-center gap-4 text-sm font-medium">
               <button
                 type="button"
-                className="inline-flex items-center gap-2 underline hover:bg-zinc-100 px-2 py-1 rounded-md transition"
+                className="hidden md:inline-flex items-center gap-2 underline hover:bg-zinc-100 px-2 py-1 rounded-md transition"
               >
                 <Share className="h-4 w-4" />
                 Share
               </button>
 
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 underline hover:bg-zinc-100 px-2 py-1 rounded-md transition"
-              >
-                <Heart className="h-4 w-4" />
-                Save
-              </button>
+              <RoomWishlistButton listingId={listing.listingId} />
             </div>
           </div>
         </div>
