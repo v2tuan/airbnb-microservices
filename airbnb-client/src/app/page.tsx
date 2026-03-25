@@ -4,12 +4,23 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { HomeSectionResponse, listingAPI } from "@/api/endpoints/listing";
 import ListingCard from "@/components/cards/ListingCard";
+import { useWishlistStore } from "@/hooks/useWishlistStore";
+import useLoginModal from "@/hooks/userLoginModal";
+import { useSelector } from "react-redux";
+import { selectIsAuthenticated } from "@/features/auth/authSelectors";
+import type { RootState } from "@/store";
 
 export default function Home() {
   const [sections, setSections] = useState<HomeSectionResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const scrollRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const loginModal = useLoginModal();
+  const isAuthenticated = useSelector(selectIsAuthenticated);
+  const token = useSelector((state: RootState) => state.auth.token);
+
+  const { hydrateWishlist, toggleListing, listingMap, pendingByListingId } =
+    useWishlistStore();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,6 +40,26 @@ export default function Home() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+    void hydrateWishlist(token);
+  }, [hydrateWishlist, isAuthenticated, token]);
+
+  const handleToggleWishlist = async (listingId: string) => {
+    const authToken =
+      token ??
+      (typeof window !== "undefined"
+        ? localStorage.getItem("access_token")
+        : null);
+
+    if (!authToken) {
+      loginModal.onOpen();
+      return;
+    }
+
+    await toggleListing(authToken, listingId);
+  };
+
   const scroll = (key: string, direction: "left" | "right") => {
     const container = scrollRefs.current[key];
     if (container) {
@@ -44,7 +75,7 @@ export default function Home() {
   if (errorMessage) return <div className="pt-32 text-center text-red-500">{errorMessage}</div>;
 
   return (
-    <main className="mx-auto w-full max-w-[2520px] px-4 pb-10 pt-65 sm:px-8 lg:px-10 xl:px-24">
+    <main className="mx-auto w-full max-w-630 px-4 pb-10 pt-65 sm:px-8 lg:px-10 xl:px-24">
       <div className="flex flex-col gap-12">
         {sections.map((section) => (
           <section key={section.sectionKey} className="group relative space-y-4">
@@ -75,7 +106,9 @@ export default function Home() {
 
             {/* Carousel Container */}
             <div
-              ref={(el) => (scrollRefs.current[section.sectionKey] = el)}
+              ref={(el) => {
+                scrollRefs.current[section.sectionKey] = el;
+              }}
               className="no-scrollbar flex w-full gap-4 overflow-x-auto scroll-smooth"
               style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
             >
@@ -95,6 +128,9 @@ export default function Home() {
                       ...listing,
                       isGuestFavorite: listing.rating >= 4.8,
                     }}
+                    wished={!!listingMap[listing.listingId]}
+                    wishlistLoading={!!pendingByListingId[listing.listingId]}
+                    onToggleWishlist={() => handleToggleWishlist(listing.listingId)}
                   />
                 </div>
               ))}

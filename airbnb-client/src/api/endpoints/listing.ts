@@ -36,7 +36,7 @@ export const listingAPI = {
       params: { limit },
     });
   },
-  getListingById: (id: string): Promise<AxiosResponse<ApiResponse<any>>> => {
+  getRoomById: (id: string): Promise<AxiosResponse<ApiResponse<any>>> => {
     return apiClient.get(`${prefix}/listings/${id}`);
   },
 }
