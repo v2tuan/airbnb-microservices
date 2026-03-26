@@ -4,6 +4,7 @@ import { CircleQuestionMark, Earth, Globe, Heart, Home, MessageCircle, MessageSq
 import { useDispatch, useSelector } from 'react-redux'
 import { Separator } from '../ui/separator'
 import { logout } from '@/features/auth/authSlice'
+import Link from 'next/link'
 
 function Dropdown() {
   const loginModal = useLoginModal()
@@ -18,10 +19,10 @@ function Dropdown() {
       {isAuthenticated && (
         <>
           <div className="py-2">
-            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+            <Link href="/wishlists" className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
               <Heart size={18}/>
               <p>Wishlist</p>
-            </div>
+            </Link>
             <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
               <Home size={18}/>
               <p>Trips</p>
