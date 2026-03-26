@@ -54,15 +54,17 @@ function Header() {
 
         <div className="flex justify-between space-x-6">
           <button type="button" className="text-sm hidden lg:flex">Become a host</button>
-          {isAuthenticated && user?.avatarUrl  ? (
-            <img
-              src={user.avatarUrl}
-              alt="avatar"
-              className="w-8 h-8 rounded-full object-cover cursor-pointer"
-            />
-          ) : (
-            <GlobeIcon/>
-          )}
+          {isAuthenticated && user?.avatarUrl ? (
+          <Image
+            src={user.avatarUrl}
+            alt="avatar"
+            width={32}
+            height={32}
+            className="w-8 h-8 rounded-full object-cover cursor-pointer"
+          />
+        ) : (
+          <GlobeIcon />
+        )}
           <UserMenu/>
         </div>
       </div>

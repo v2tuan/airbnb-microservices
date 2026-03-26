@@ -71,11 +71,11 @@ export default function Home() {
     }
   };
 
-  if (loading) return <div className="pt-32 text-center">Loading...</div>;
-  if (errorMessage) return <div className="pt-32 text-center text-red-500">{errorMessage}</div>;
+  if (loading) return <div className="py-8 text-center">Loading...</div>;
+  if (errorMessage) return <div className="py-8 text-center text-red-500">{errorMessage}</div>;
 
   return (
-    <main className="mx-auto w-full max-w-630 px-4 pb-10 pt-65 sm:px-8 lg:px-10 xl:px-24">
+    <main className="mx-auto w-full max-w-630 px-4 pb-10 sm:px-8 lg:px-10 xl:px-24">
       <div className="flex flex-col gap-12">
         {sections.map((section) => (
           <section key={section.sectionKey} className="group relative space-y-4">
