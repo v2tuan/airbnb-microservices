@@ -139,9 +139,9 @@ export const registerThunk = createAsyncThunk<
 });
 
 const initialState: AuthState = {
-  user: loadUserFromStorage(),
-  token: isBrowser ? localStorage.getItem(TOKEN_KEY) : null,
-  isAuthenticated: isBrowser ? !!localStorage.getItem(TOKEN_KEY) : false ,
+  user: null,
+  token: null,
+  isAuthenticated: false,
   loading: false,
   error: null,
   registerSuccessMessage: null,
@@ -151,6 +151,17 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
+    hydrateAuthFromStorage: (state) => {
+      if (!isBrowser) return;
+
+      const token = localStorage.getItem(TOKEN_KEY);
+      const user = loadUserFromStorage();
+
+      state.token = token;
+      state.user = user;
+      state.isAuthenticated = !!token;
+    },
+
     clearAuthMessages: (state) => {
       state.error = null;
       state.registerSuccessMessage = null;
@@ -235,7 +246,7 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearAuthMessages, logout } = authSlice.actions;
+export const { hydrateAuthFromStorage, clearAuthMessages, logout } = authSlice.actions;
 
 export const selectAuthState = (state: RootState) => state.auth;
 

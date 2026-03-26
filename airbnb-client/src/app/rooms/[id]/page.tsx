@@ -18,7 +18,7 @@ export default async function RoomDetail ({params}: PageProps) {
     if (!listing) return notFound()
 
     return (
-      <main className="max-w-7xl mx-auto px-6 md:px-10 lg:px-20 py-8 pt-65">
+      <main className="max-w-7xl mx-auto px-6 md:px-10 lg:px-20 py-8">
         {/* Header Section */}
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">{listing.title}</h1>
