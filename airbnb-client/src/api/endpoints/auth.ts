@@ -26,9 +26,20 @@ export interface MeResponse {
   fullName?: string;
   firstName?: string;
   lastName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  bio?: string;
   avatarUrl?: string;
   email?: string;
   isHost?: boolean;
+}
+
+export interface UpdateProfilePayload {
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  bio?: string;
 }
 
 export const authAPI = {
@@ -47,6 +58,30 @@ export const authAPI = {
   getMe: (token: string): Promise<AxiosResponse<{ data: MeResponse }>> => {
     return apiClient.get(`${prefix}/users/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  updateMe: (
+    token: string,
+    payload: UpdateProfilePayload
+  ): Promise<AxiosResponse<{ data: MeResponse }>> => {
+    return apiClient.put(`${prefix}/users/auth/me`, payload, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  uploadAvatar: (
+    token: string,
+    file: File
+  ): Promise<AxiosResponse<{ data: MeResponse }>> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return apiClient.post(`${prefix}/users/auth/me/avatar`, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      },
     });
   },
 };

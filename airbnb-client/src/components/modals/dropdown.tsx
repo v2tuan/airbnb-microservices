@@ -1,6 +1,6 @@
-import { selectCurrentUser, selectIsAuthenticated } from '@/features/auth/authSelectors'
+import { selectIsAuthenticated } from '@/features/auth/authSelectors'
 import useLoginModal from '@/hooks/userLoginModal'
-import { CircleQuestionMark, Earth, Globe, Heart, Home, MessageCircle, MessageSquare, Settings, User } from 'lucide-react'
+import { CircleQuestionMark, Globe, Heart, Home, MessageSquare, Settings, User } from 'lucide-react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Separator } from '../ui/separator'
 import { logout } from '@/features/auth/authSlice'
@@ -10,7 +10,6 @@ function Dropdown() {
   const loginModal = useLoginModal()
   const dispatch = useDispatch()
 
-  const user = useSelector(selectCurrentUser)
   const isAuthenticated = useSelector(selectIsAuthenticated)
   return (
     <div className="absolute right-0 mt-3 w-[280px] bg-white rounded-2xl shadow-xl overflow-hidden border z-30">
@@ -31,10 +30,10 @@ function Dropdown() {
               <MessageSquare size={18}/>
               <p>Message</p>
             </div>
-            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+            <Link href="/users/profile/about" className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
               <User size={18}/>
               <p>Profile</p>
-            </div>
+            </Link>
           </div>
           <Separator/>
         </>
@@ -59,16 +58,17 @@ function Dropdown() {
       </div>
 
       <Separator/>
-      <div className="flex my-2 py-1 px-4 hover:bg-gray-100 cursor-pointer ">
+      <Link href="/users/profile/about?editMode=true" className="flex my-2 py-1 px-4 hover:bg-gray-100 cursor-pointer ">
         <div>
           <p className="font-semibold">Become a host</p>
           <p className="text-sm text-gray-500">It's easy to start hosting and earn extra income.</p>
         </div>
         <img
           src="/header/host.png"
+          alt="Become a host"
           className="w-15"
         />
-      </div>
+      </Link>
 
       <div className="flex flex-col space-y-2 my-2 py-1 px-4 ">
         <p className="cursor-pointer hover:bg-gray-100">Refer a host</p>

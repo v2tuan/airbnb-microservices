@@ -2,6 +2,7 @@
 
 import LoginModal from '@/components/modals/login'
 import RegisterModal from '@/components/modals/register'
+import { Toaster } from 'sonner'
 import { useEffect, useState } from 'react'
 
 function ModalProvider() {
@@ -18,6 +19,7 @@ function ModalProvider() {
     <>
       <LoginModal/>
       <RegisterModal/>
+      <Toaster richColors position="top-right" />
     </>
   )
 }
