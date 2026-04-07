@@ -53,7 +53,7 @@ function Header() {
         </nav>
 
         <div className="flex justify-between space-x-6">
-          <button type="button" className="text-sm hidden lg:flex">Become a host</button>
+          <Link href="/users/profile/about?editMode=true" className="text-sm hidden lg:flex">Become a host</Link>
           {isAuthenticated && user?.avatarUrl ? (
           <Image
             src={user.avatarUrl}
