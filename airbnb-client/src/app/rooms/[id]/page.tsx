@@ -1,7 +1,10 @@
+import { ratingAPI } from "@/api/endpoints/rating";
 import { listingAPI } from "@/api/endpoints/listing";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
+import { ListingRatingForm } from "@/components/listing/ListingRatingForm";
+import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
 import { Share } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -12,7 +15,20 @@ interface PageProps {
 export default async function RoomDetail ({params}: PageProps) {
   const { id } = await params;
   try {
-    const response = await listingAPI.getRoomById(id)
+    const [listingResponse, ratingsResponse, averageResponse] = await Promise.allSettled([
+      listingAPI.getRoomById(id),
+      ratingAPI.getRatingsByListing(id),
+      ratingAPI.getAverageRating(id),
+    ])
+
+    if (listingResponse.status !== "fulfilled") {
+      throw listingResponse.reason
+    }
+
+    const ratings = ratingsResponse.status === "fulfilled" ? ratingsResponse.value.data : []
+    const averageRating = averageResponse.status === "fulfilled" ? averageResponse.value.data : 0
+
+    const response = listingResponse.value
     const listing = response.data.result
 
     if (!listing) return notFound()
@@ -45,6 +61,11 @@ export default async function RoomDetail ({params}: PageProps) {
         {/* Photos Grid */}
         <ListingGallery photos={listing.photos} />
 
+        <div className="mt-12">
+          <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
+          <ListingRatingForm listingId={listing.listingId} hostId={listing.hostId} />
+        </div>
+
         {/* Content Layout */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mt-12">
           {/* Left Column: Info & Description */}
@@ -54,7 +75,11 @@ export default async function RoomDetail ({params}: PageProps) {
 
           {/* Right Column: Sticky Booking Card */}
           <div className="relative">
-            <BookingCard pricing={listing.pricing} />
+            <BookingCard
+              pricing={listing.pricing}
+              rating={averageRating}
+              reviewCount={ratings.length}
+            />
           </div>
         </div>
       </main>

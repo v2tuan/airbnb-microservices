@@ -4,6 +4,7 @@ import com.listingservice.dto.response.CompositeListingResponse;
 import com.listingservice.dto.response.CompositeListingResponse.AvailabilityData;
 import com.listingservice.dto.response.CompositeListingResponse.BookingRequestData;
 import com.listingservice.dto.response.CompositeListingResponse.PriceQuoteData;
+import com.listingservice.dto.response.CompositeListingResponse.RatingData;
 import com.listingservice.entity.Listing;
 import com.listingservice.entity.ListingPhoto;
 import com.listingservice.entity.ListingPricing;
@@ -11,6 +12,7 @@ import com.listingservice.repository.ListingRepository;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.HostProfileClient;
 import com.listingservice.service.IListingDetailService;
+import com.listingservice.service.RatingClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +31,7 @@ public class ListingDetailService implements IListingDetailService {
   private final ListingRepository listingRepository;
   private final HostProfileClient hostProfileClient;
   private final AvailabilityClient availabilityClient;
+  private final RatingClient ratingClient;
 
   @Override
   public CompositeListingResponse getDetail(
@@ -81,6 +84,10 @@ public class ListingDetailService implements IListingDetailService {
     priceQuoteData.setServiceFee(serviceFee);
     priceQuoteData.setTotalPrice(totalPrice);
     res.setPricing(priceQuoteData);
+
+    RatingData ratingData = new RatingData();
+    ratingData.setAverage(ratingClient.getAverageRating(listingId));
+    res.setRating(ratingData);
 
     BookingRequestData requestData = new BookingRequestData();
     requestData.setCheckIn(checkIn);

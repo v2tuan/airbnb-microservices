@@ -21,6 +21,7 @@ public class CompositeListingResponse {
   private HostProfileData host;
   private AvailabilityData availability;
   private PriceQuoteData pricing;
+  private RatingData rating;
   private BookingRequestData request;
 
   @Data public static class HostProfileData {
@@ -41,6 +42,10 @@ public class CompositeListingResponse {
     private BigDecimal cleaningFee;
     private BigDecimal serviceFee;
     private BigDecimal totalPrice;
+  }
+
+  @Data public static class RatingData {
+    private BigDecimal average;
   }
 
   @Data public static class BookingRequestData {
