@@ -9,7 +9,11 @@ interface ListingData {
   description: string;
 }
 
-export function ListingInfo({data} : {data: ListingData}) {
+export function ListingInfo({
+  data,
+}: {
+  data: ListingData;
+}) {
   const displayPropertyType = data.propertyType.charAt(0) + data.propertyType.slice(1).toLowerCase()
   return (
     <div className="space-y-8">

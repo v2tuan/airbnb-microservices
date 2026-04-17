@@ -26,6 +26,7 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers(prefix + "/users/auth/**").permitAll()
                         .pathMatchers(prefix + "/listings/**").permitAll()
+                        .pathMatchers(prefix + "/ratings/**").permitAll()
                         .anyExchange().authenticated()
                 )
                 .oauth2ResourceServer(oauth ->

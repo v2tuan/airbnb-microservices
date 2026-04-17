@@ -39,6 +39,10 @@ spring:
 jwt:
   signerKey: "1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij"
 
+clients:
+  rating-service:
+    base-url: http://localhost:8888
+
 logging:
   level:
     root: INFO

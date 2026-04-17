@@ -48,6 +48,12 @@ spring:
                 - Path=${app.api-prefix}/listings/**
               filters:
                 - StripPrefix=2
+            - id: rating_service
+              uri: http://localhost:8085
+              predicates:
+                - Path=${app.api-prefix}/ratings/**
+              filters:
+                - StripPrefix=2
             - id: wishlist_service
               uri: http://localhost:8083
               predicates:
