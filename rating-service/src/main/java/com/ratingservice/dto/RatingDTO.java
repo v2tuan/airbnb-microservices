@@ -20,4 +20,6 @@ public class RatingDTO {
   private Double location;
   private Double value;
   private String review;
+  private String reviewerFullName;
+  private String reviewerAvatarUrl;
 }

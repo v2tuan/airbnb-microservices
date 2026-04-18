@@ -61,11 +61,6 @@ export default async function RoomDetail ({params}: PageProps) {
         {/* Photos Grid */}
         <ListingGallery photos={listing.photos} />
 
-        <div className="mt-12">
-          <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
-          <ListingRatingForm listingId={listing.listingId} hostId={listing.hostId} />
-        </div>
-
         {/* Content Layout */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mt-12">
           {/* Left Column: Info & Description */}
@@ -81,7 +76,12 @@ export default async function RoomDetail ({params}: PageProps) {
               reviewCount={ratings.length}
             />
           </div>
+
         </div>
+          <div className="mt-12">
+            <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
+            <ListingRatingForm listingId={listing.listingId} hostId={listing.hostId} />
+          </div>
       </main>
     )
   } catch (error) {
