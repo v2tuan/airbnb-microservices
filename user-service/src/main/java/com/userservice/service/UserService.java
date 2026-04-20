@@ -2,7 +2,9 @@ package com.userservice.service;
 
 import com.userservice.dto.identity.*;
 import com.userservice.dto.request.RegistrationRequest;
+import com.userservice.dto.request.UserUpdateRequestDTO;
 import com.userservice.dto.response.UserProfileResponseDTO;
+import com.userservice.entity.User;
 import com.userservice.mapper.UserMapper;
 import com.userservice.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -30,6 +33,7 @@ public class UserService {
   private final EmergencyContactRepository emergencyContactRepository;
   private final IdentityClient identityClient;
   private final UserMapper userMapper;
+  private final CloudinaryService cloudinaryService;
 
   @Value("${idp.client-id}")
   String clientId;
@@ -39,16 +43,68 @@ public class UserService {
 
   @Transactional(readOnly = true)
   public UserProfileResponseDTO getMe(String authorizationHeader) {
+    User user = getUserFromAuthorizationHeader(authorizationHeader);
+    return toUserProfileResponse(user);
+  }
+
+  @Transactional
+  public UserProfileResponseDTO updateMe(String authorizationHeader, UserUpdateRequestDTO request) {
+    User user = getUserFromAuthorizationHeader(authorizationHeader);
+
+    if (request.firstName() != null) {
+      user.setFirstName(request.firstName().trim());
+    }
+    if (request.lastName() != null) {
+      user.setLastName(request.lastName().trim());
+    }
+    if (request.dateOfBirth() != null) {
+      user.setDateOfBirth(request.dateOfBirth().atStartOfDay());
+    }
+    if (request.gender() != null) {
+      user.setGender(request.gender().trim());
+    }
+    if (request.bio() != null) {
+      user.setBio(request.bio().trim());
+    }
+
+    User updatedUser = userRepository.save(user);
+    return toUserProfileResponse(updatedUser);
+  }
+
+  @Transactional
+  public UserProfileResponseDTO updateAvatar(String authorizationHeader, MultipartFile file) {
+    User user = getUserFromAuthorizationHeader(authorizationHeader);
+    String avatarUrl = cloudinaryService.uploadAvatar(file, user.getUserId().toString());
+    user.setAvatarUrl(avatarUrl);
+
+    User updatedUser = userRepository.save(user);
+    return toUserProfileResponse(updatedUser);
+  }
+
+  private User getUserFromAuthorizationHeader(String authorizationHeader) {
     if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
       throw new RuntimeException("Missing or invalid Authorization header");
     }
     String token = authorizationHeader.substring(7);
     String keycloakUserId = extractSubFromJwt(token);
 
-    var user = userRepository.findByKeycloakUserId(keycloakUserId)
+    return userRepository.findByKeycloakUserId(keycloakUserId)
         .orElseThrow(() -> new RuntimeException("User not found for keycloakUserId: " + keycloakUserId));
+  }
 
-    return userMapper.toUserProfileResponseDTO(user);
+  private UserProfileResponseDTO toUserProfileResponse(User user) {
+    return new UserProfileResponseDTO(
+        user.getUserId(),
+        user.getFullName().trim(),
+        user.getFirstName(),
+        user.getLastName(),
+        user.getDateOfBirth() != null ? user.getDateOfBirth().toLocalDate() : null,
+        user.getGender(),
+        user.getBio(),
+        user.getAvatarUrl(),
+        List.of(),
+        user.getHostProfile() != null
+    );
   }
 
   private String extractSubFromJwt(String token) {
@@ -114,10 +170,13 @@ public class UserService {
 
     var profile = userMapper.toUser(request);
     profile.setKeycloakUserId(userId);
+    if (request.getDateOfBirth() != null) {
+      profile.setDateOfBirth(request.getDateOfBirth().atStartOfDay());
+    }
 
     profile = userRepository.save(profile);
 
-    return userMapper.toUserProfileResponseDTO(profile);
+    return toUserProfileResponse(profile);
   }
 
   private String extractUserId(ResponseEntity<?> response){

@@ -4,6 +4,7 @@ import com.userservice.dto.ApiResponse;
 import com.userservice.dto.identity.LoginRequest;
 import com.userservice.dto.identity.TokenExchangeResponse;
 import com.userservice.dto.request.RegistrationRequest;
+import com.userservice.dto.request.UserUpdateRequestDTO;
 import com.userservice.dto.response.UserProfileResponseDTO;
 import com.userservice.service.PublicProfileService;
 import com.userservice.service.UserService;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ public class UserController {
                         .data(response)
                         .build());
     }
+
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserProfileResponseDTO>> getMe(
             @RequestHeader("Authorization") String authorizationHeader) {
@@ -50,4 +53,28 @@ public class UserController {
                 .data(response)
                 .build());
         }
+
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponse<UserProfileResponseDTO>> updateMe(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestBody UserUpdateRequestDTO request) {
+        var response = userService.updateMe(authorizationHeader, request);
+        return ResponseEntity.ok(ApiResponse.<UserProfileResponseDTO>builder()
+                .success(true)
+                .message("User profile updated")
+                .data(response)
+                .build());
+    }
+
+    @PostMapping("/me/avatar")
+    public ResponseEntity<ApiResponse<UserProfileResponseDTO>> updateAvatar(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @RequestParam("file") MultipartFile file) {
+        var response = userService.updateAvatar(authorizationHeader, file);
+        return ResponseEntity.ok(ApiResponse.<UserProfileResponseDTO>builder()
+                .success(true)
+                .message("Avatar updated")
+                .data(response)
+                .build());
+    }
 }

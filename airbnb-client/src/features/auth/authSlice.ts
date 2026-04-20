@@ -235,9 +235,13 @@ const authSlice = createSlice({
             id: profile.userId ?? state.user?.id,
             email: profile.email ?? state.user?.email,
             name: (profile.fullName ?? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim()) || state.user?.name,
+            fullName: profile.fullName,
             avatarUrl: avatar,
             firstName: profile.firstName,
             lastName: profile.lastName,
+            dateOfBirth: profile.dateOfBirth,
+            gender: profile.gender,
+            bio: profile.bio,
             isHost: profile.isHost,
           };
           saveAuthToStorage({ user: state.user });

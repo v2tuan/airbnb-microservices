@@ -10,6 +10,8 @@ public record UserProfileResponseDTO(
     String firstName,
     String lastName,
     LocalDate dateOfBirth,
+    String gender,
+    String bio,
     String avatarUrl,
     List<AddressResponseDTO> addresses,
     boolean isHost

@@ -35,3 +35,8 @@ idp:
   url: http://localhost:8080
   client-id: user_service
   client-secret: Vzg4aVN4v35o2HhDX0jsKcVX6mGN4c96
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+  api-key: ${CLOUDINARY_API_KEY:}
+  api-secret: ${CLOUDINARY_API_SECRET:}
