@@ -1,0 +1,29 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/payment_db?sslmode=require
+    username: neondb_owner
+    password: npg_GnXE70sJUjmu
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+logging:
+  level:
+    root: INFO
+    com.paymentservice: DEBUG
+
