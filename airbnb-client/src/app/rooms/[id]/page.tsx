@@ -12,6 +12,89 @@ import { notFound } from "next/navigation";
 interface PageProps {
   params: Promise<{id: string}>
 }
+
+type RatingRecord = {
+  id?: string;
+  userId?: string;
+  hostId?: string;
+  overallRating?: number;
+  cleanliness?: number;
+  accuracy?: number;
+  checkIn?: number;
+  communication?: number;
+  location?: number;
+  value?: number;
+  review?: string;
+  createdAt?: string;
+  reviewerFullName?: string;
+  reviewerAvatarUrl?: string;
+};
+
+const firstDefinedString = (...values: Array<unknown>) => {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const toRatingsArray = (payload: unknown): any[] => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object") {
+    const obj = payload as Record<string, unknown>;
+    if (Array.isArray(obj.result)) {
+      return obj.result;
+    }
+    if (Array.isArray(obj.data)) {
+      return obj.data;
+    }
+  }
+
+  return [];
+};
+
+const normalizeRating = (raw: any): RatingRecord => {
+  const reviewer = raw?.reviewer ?? raw?.user ?? raw?.profile ?? null;
+
+  return {
+    id: raw?.id,
+    userId: raw?.userId ?? raw?.user_id ?? reviewer?.userId ?? reviewer?.id,
+    hostId: raw?.hostId ?? raw?.host_id,
+    overallRating: raw?.overallRating ?? raw?.overall_rating,
+    cleanliness: raw?.cleanliness,
+    accuracy: raw?.accuracy,
+    checkIn: raw?.checkIn ?? raw?.check_in,
+    communication: raw?.communication,
+    location: raw?.location,
+    value: raw?.value,
+    review: raw?.review,
+    createdAt: raw?.createdAt ?? raw?.created_at,
+    reviewerFullName: firstDefinedString(
+      raw?.reviewerFullName,
+      raw?.reviewer_full_name,
+      raw?.fullName,
+      reviewer?.fullName,
+      reviewer?.full_name,
+      reviewer?.name
+    ),
+    reviewerAvatarUrl: firstDefinedString(
+      raw?.reviewerAvatarUrl,
+      raw?.reviewer_avatar_url,
+      raw?.avatarUrl,
+      raw?.avatar,
+      reviewer?.avatarUrl,
+      reviewer?.avatar,
+      reviewer?.profilePicture,
+      reviewer?.profile_picture,
+      reviewer?.image
+    ),
+  };
+};
+
 export default async function RoomDetail ({params}: PageProps) {
   const { id } = await params;
   try {
@@ -25,7 +108,8 @@ export default async function RoomDetail ({params}: PageProps) {
       throw listingResponse.reason
     }
 
-    const ratings = ratingsResponse.status === "fulfilled" ? ratingsResponse.value.data : []
+    const rawRatingsPayload = ratingsResponse.status === "fulfilled" ? ratingsResponse.value.data : []
+    const ratings = toRatingsArray(rawRatingsPayload).map(normalizeRating)
     const averageRating = averageResponse.status === "fulfilled" ? averageResponse.value.data : 0
 
     const response = listingResponse.value
