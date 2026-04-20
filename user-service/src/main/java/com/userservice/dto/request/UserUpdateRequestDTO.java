@@ -1,14 +1,12 @@
 package com.userservice.dto.request;
 
-import java.time.LocalDateTime;
-import java.util.List;
+import java.time.LocalDate;
 
 public record UserUpdateRequestDTO(
     String firstName,
     String lastName,
-    LocalDateTime dateOfBirth,
+    LocalDate dateOfBirth,
     String gender,
-    String bio,
-    List<String> languages
+    String bio
 ) {
 }
