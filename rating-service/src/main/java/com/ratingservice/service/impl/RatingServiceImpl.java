@@ -25,6 +25,8 @@ public class RatingServiceImpl implements RatingService {
 
   @Override
   public RatingDTO createRating(RatingDTO ratingDTO) {
+    Optional<UserProfileDTO> profile = fetchUserProfile(ratingDTO.getUserId());
+
     Rating rating = new Rating();
     rating.setListingId(ratingDTO.getListingId());
     rating.setUserId(ratingDTO.getUserId());
@@ -37,11 +39,17 @@ public class RatingServiceImpl implements RatingService {
     rating.setLocation(ratingDTO.getLocation());
     rating.setValue(ratingDTO.getValue());
     rating.setReview(ratingDTO.getReview());
+    rating.setReviewerFullName(firstDefined(
+      ratingDTO.getReviewerFullName(),
+      profile.map(UserProfileDTO::fullName).orElse(null)));
+    rating.setReviewerAvatarUrl(firstDefined(
+      ratingDTO.getReviewerAvatarUrl(),
+      profile.map(UserProfileDTO::avatarUrl).orElse(null)));
     rating.setCreatedAt(LocalDateTime.now());
     rating.setUpdatedAt(LocalDateTime.now());
 
     Rating savedRating = ratingRepository.save(rating);
-    return convertToDTO(savedRating, fetchUserProfile(savedRating.getUserId()));
+    return convertToDTO(savedRating, profile);
   }
 
   @Override
@@ -60,6 +68,22 @@ public class RatingServiceImpl implements RatingService {
             .filter(userId -> userId != null && !userId.isBlank())
             .distinct()
             .toList());
+
+    List<Rating> snapshotUpdates = ratings.stream()
+      .filter(rating -> (rating.getReviewerFullName() == null || rating.getReviewerFullName().isBlank()
+          || rating.getReviewerAvatarUrl() == null || rating.getReviewerAvatarUrl().isBlank())
+          && userProfiles.containsKey(rating.getUserId()))
+      .peek(rating -> {
+        UserProfileDTO profile = userProfiles.get(rating.getUserId());
+        rating.setReviewerFullName(firstDefined(rating.getReviewerFullName(), profile.fullName()));
+        rating.setReviewerAvatarUrl(firstDefined(rating.getReviewerAvatarUrl(), profile.avatarUrl()));
+      })
+      .filter(rating -> rating.getReviewerFullName() != null || rating.getReviewerAvatarUrl() != null)
+      .toList();
+
+    if (!snapshotUpdates.isEmpty()) {
+      ratingRepository.saveAll(snapshotUpdates);
+    }
 
     return ratings.stream()
         .map(rating -> convertToDTO(rating, Optional.ofNullable(userProfiles.get(rating.getUserId()))))
@@ -91,6 +115,8 @@ public class RatingServiceImpl implements RatingService {
     rating.setLocation(ratingDTO.getLocation());
     rating.setValue(ratingDTO.getValue());
     rating.setReview(ratingDTO.getReview());
+    rating.setReviewerFullName(firstDefined(ratingDTO.getReviewerFullName(), rating.getReviewerFullName()));
+    rating.setReviewerAvatarUrl(firstDefined(ratingDTO.getReviewerAvatarUrl(), rating.getReviewerAvatarUrl()));
     rating.setUpdatedAt(LocalDateTime.now());
 
     Rating updatedRating = ratingRepository.save(rating);
@@ -119,11 +145,23 @@ public class RatingServiceImpl implements RatingService {
     dto.setLocation(rating.getLocation());
     dto.setValue(rating.getValue());
     dto.setReview(rating.getReview());
-    userProfile.ifPresent(profile -> {
-      dto.setReviewerFullName(profile.fullName());
-      dto.setReviewerAvatarUrl(profile.avatarUrl());
-    });
+    dto.setCreatedAt(rating.getCreatedAt());
+
+    String fallbackFullName = userProfile.map(UserProfileDTO::fullName).orElse(null);
+    String fallbackAvatarUrl = userProfile.map(UserProfileDTO::avatarUrl).orElse(null);
+    dto.setReviewerFullName(firstDefined(rating.getReviewerFullName(), fallbackFullName));
+    dto.setReviewerAvatarUrl(firstDefined(rating.getReviewerAvatarUrl(), fallbackAvatarUrl));
     return dto;
+  }
+
+  private String firstDefined(String primary, String fallback) {
+    if (primary != null && !primary.isBlank()) {
+      return primary;
+    }
+    if (fallback != null && !fallback.isBlank()) {
+      return fallback;
+    }
+    return null;
   }
 
   private Optional<UserProfileDTO> fetchUserProfile(String userId) {
