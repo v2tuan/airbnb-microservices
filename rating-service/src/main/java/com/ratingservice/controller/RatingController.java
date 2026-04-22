@@ -3,11 +3,16 @@ package com.ratingservice.controller;
 import com.ratingservice.dto.RatingDTO;
 import com.ratingservice.service.RatingService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/ratings")
@@ -49,4 +54,30 @@ public class RatingController {
     ratingService.deleteRating(id);
     return ResponseEntity.noContent().build();
   }
+
+  /**
+   * Get paginated reviews for a host
+   */
+  @GetMapping("/host/{hostId}")
+  public ResponseEntity<Page<RatingDTO>> getReviewsByHost(
+      @PathVariable String hostId,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "10") int size,
+      @RequestParam(defaultValue = "createdAt") String sort,
+      @RequestParam(defaultValue = "DESC") String direction) {
+
+    Sort.Direction sortDirection = Sort.Direction.fromString(direction);
+    Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sort));
+
+    return ResponseEntity.ok(ratingService.getReviewsByHost(hostId, pageable));
+  }
+
+  /**
+   * Get rating summary for a host
+   */
+  @GetMapping("/summary/host/{hostId}")
+  public ResponseEntity<Map<String, Object>> getHostRatingSummary(@PathVariable String hostId) {
+    return ResponseEntity.ok(ratingService.getHostRatingSummary(hostId));
+  }
 }
+

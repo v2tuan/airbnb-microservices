@@ -24,6 +24,7 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .pathMatchers(HttpMethod.GET, prefix + "/profile/**").permitAll()
                         .pathMatchers(prefix + "/users/auth/**").permitAll()
                         .pathMatchers(prefix + "/listings/**").permitAll()
                         .pathMatchers(prefix + "/ratings/**").permitAll()

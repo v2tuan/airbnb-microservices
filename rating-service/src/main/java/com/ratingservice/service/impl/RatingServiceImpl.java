@@ -7,9 +7,12 @@ import com.ratingservice.entity.Rating;
 import com.ratingservice.repository.RatingRepository;
 import com.ratingservice.service.RatingService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -131,6 +134,53 @@ public class RatingServiceImpl implements RatingService {
     ratingRepository.deleteById(id);
   }
 
+  @Override
+  public Page<RatingDTO> getReviewsByHost(String hostId, Pageable pageable) {
+    Page<Rating> ratingsPage = ratingRepository.findByHostId(hostId, pageable);
+
+    // Batch fetch user profiles for all reviewers
+    Map<String, UserProfileDTO> userProfiles = userProfileClient.getByKeycloakUserIds(
+        ratingsPage.getContent().stream()
+            .map(Rating::getUserId)
+            .filter(userId -> userId != null && !userId.isBlank())
+            .distinct()
+            .toList());
+
+    // Update snapshot if needed
+    List<Rating> snapshotUpdates = ratingsPage.getContent().stream()
+        .filter(rating -> (rating.getReviewerFullName() == null || rating.getReviewerFullName().isBlank()
+            || rating.getReviewerAvatarUrl() == null || rating.getReviewerAvatarUrl().isBlank())
+            && userProfiles.containsKey(rating.getUserId()))
+        .peek(rating -> {
+          UserProfileDTO profile = userProfiles.get(rating.getUserId());
+          rating.setReviewerFullName(firstDefined(rating.getReviewerFullName(), profile.fullName()));
+          rating.setReviewerAvatarUrl(firstDefined(rating.getReviewerAvatarUrl(), profile.avatarUrl()));
+        })
+        .toList();
+
+    if (!snapshotUpdates.isEmpty()) {
+      ratingRepository.saveAll(snapshotUpdates);
+    }
+
+    return ratingsPage.map(rating -> convertToDTO(rating, Optional.ofNullable(userProfiles.get(rating.getUserId()))));
+  }
+
+  @Override
+  public Map<String, Object> getHostRatingSummary(String hostId) {
+    Object[] summary = ratingRepository.getHostRatingSummary(hostId);
+    Map<String, Object> result = new HashMap<>();
+
+    if (summary != null && summary.length > 0) {
+      result.put("reviewCount", summary[0] != null ? ((Number) summary[0]).longValue() : 0L);
+      result.put("overallRating", summary[1] != null ? ((Number) summary[1]).doubleValue() : 0.0);
+    } else {
+      result.put("reviewCount", 0L);
+      result.put("overallRating", 0.0);
+    }
+
+    return result;
+  }
+
   private RatingDTO convertToDTO(Rating rating, Optional<UserProfileDTO> userProfile) {
     RatingDTO dto = new RatingDTO();
     dto.setId(rating.getId());
@@ -151,6 +201,7 @@ public class RatingServiceImpl implements RatingService {
     String fallbackAvatarUrl = userProfile.map(UserProfileDTO::avatarUrl).orElse(null);
     dto.setReviewerFullName(firstDefined(rating.getReviewerFullName(), fallbackFullName));
     dto.setReviewerAvatarUrl(firstDefined(rating.getReviewerAvatarUrl(), fallbackAvatarUrl));
+    dto.setReviewerLocation(rating.getReviewerLocation());
     return dto;
   }
 

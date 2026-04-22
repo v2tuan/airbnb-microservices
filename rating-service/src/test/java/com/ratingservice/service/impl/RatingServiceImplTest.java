@@ -60,6 +60,8 @@ class RatingServiceImplTest {
         5.0,
         "Great stay",
         null,
+        null,
+        null,
         null));
 
     assertEquals("Nguyen Van A", response.getReviewerFullName());
@@ -112,4 +114,3 @@ class RatingServiceImplTest {
     assertNull(response.getReviewerAvatarUrl());
   }
 }
-

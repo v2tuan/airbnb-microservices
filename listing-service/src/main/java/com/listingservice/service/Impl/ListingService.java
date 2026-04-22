@@ -5,6 +5,7 @@ import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.HomeListingCardResponse;
 import com.listingservice.dto.response.HomeSectionResponse;
+import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.entity.Listing;
 import com.listingservice.entity.ListingPhoto;
@@ -17,6 +18,8 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -194,6 +197,22 @@ public class ListingService implements IListingService {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ListingItemResponse> getListingsByHostPaginated(String hostId, ListingStatus status, Pageable pageable) {
+        log.info("Getting paginated listings for host: {}, status: {}, page: {}, size: {}",
+                hostId, status, pageable.getPageNumber(), pageable.getPageSize());
+
+        Page<Listing> listingsPage;
+        if (status != null) {
+            listingsPage = listingRepository.findByHostIdAndStatus(hostId, status, pageable);
+        } else {
+            listingsPage = listingRepository.findByHostId(hostId, pageable);
+        }
+
+        return listingsPage.map(this::toListingItemResponse);
+    }
+
     private HomeSectionResponse buildSection(String sectionKey, String title, String city, int limit) {
         List<HomeListingCardResponse> listings = listingRepository
                 .findByCityIgnoreCaseAndStatus(city, ListingStatus.ACTIVE)
@@ -236,6 +255,31 @@ public class ListingService implements IListingService {
                 .build();
     }
 
+    private ListingItemResponse toListingItemResponse(Listing listing) {
+        return ListingItemResponse.builder()
+                .id(listing.getListingId().toString())
+                .title(listing.getTitle())
+                .thumbnailUrl(resolveCoverImageUrl(listing))
+                .city(listing.getCity())
+                .shortFeatures(buildShortFeatures(listing))
+                .avgRating(resolveBasicRating(listing).doubleValue())
+                .reviewCount(0L) // TODO: Fetch từ rating-service khi cần
+                .build();
+    }
+
+    private String buildShortFeatures(Listing listing) {
+        List<String> features = new java.util.ArrayList<>();
+
+        if (listing.getListingAmenities() != null && !listing.getListingAmenities().isEmpty()) {
+            // Take first few amenities
+            listing.getListingAmenities().stream()
+                    .limit(3)
+                    .forEach(amenity -> features.add(amenity.getAmenity().getName()));
+        }
+
+        return String.join("/", features);
+    }
+
     private BigDecimal resolveBasicRating(Listing listing) {
         if (listing.getListingId() == null) {
             return new BigDecimal("4.80");
@@ -269,3 +313,4 @@ public class ListingService implements IListingService {
         return Math.min(limitPerSection, MAX_SECTION_LIMIT);
     }
 }
+
