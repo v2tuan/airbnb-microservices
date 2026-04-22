@@ -5,6 +5,7 @@ import com.notificationservice.dto.request.SendEmailRequest;
 import com.notificationservice.dto.request.Sender;
 import com.notificationservice.dto.response.EmailResponse;
 import com.notificationservice.repository.httpClient.EmailClient;
+import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -55,7 +56,7 @@ public class EmailService {
             MimeMessageHelper helper =
                     new MimeMessageHelper(message, true, "UTF-8");
 
-            helper.setFrom(mailFrom);
+            helper.setFrom(new InternetAddress(mailFrom, "Airbnb HCMUTE"));
             helper.setTo(request.getTo().getEmail());
             helper.setSubject(request.getSubject());
 
