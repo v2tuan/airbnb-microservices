@@ -21,6 +21,7 @@ export default function ProfileTabsLayout({
 	children: React.ReactNode;
 }) {
 	const pathname = usePathname();
+	const isPublicProfilePage = /^\/users\/profile\/[^/]+$/.test(pathname || "");
 	const router = useRouter();
 	const loginModal = useLoginModal();
 	const isAuthenticated = useSelector(selectIsAuthenticated);
@@ -28,6 +29,11 @@ export default function ProfileTabsLayout({
 	const [checkedAuth, setCheckedAuth] = useState(false);
 
 	useEffect(() => {
+		if (isPublicProfilePage) {
+			setCheckedAuth(true);
+			return;
+		}
+
 		const storedToken =
 			typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -39,7 +45,11 @@ export default function ProfileTabsLayout({
 		setCheckedAuth(true);
 		router.replace("/");
 		loginModal.onOpen();
-	}, [isAuthenticated, token, router, loginModal]);
+	}, [isAuthenticated, token, router, loginModal, isPublicProfilePage]);
+
+	if (isPublicProfilePage) {
+		return <div className="mx-auto w-full max-w-7xl px-4 pb-14 pt-8 md:px-8">{children}</div>;
+	}
 
 	if (!checkedAuth || (!isAuthenticated && !token)) {
 		return null;

@@ -23,7 +23,15 @@ interface PricingProps {
   currency: string;
 }
 
-export function BookingCard({ pricing }: { pricing: PricingProps }) {
+export function BookingCard({
+  pricing,
+  rating,
+  reviewCount,
+}: {
+  pricing: PricingProps;
+  rating?: number;
+  reviewCount?: number;
+}) {
   const [date, setDate] = useState<DateRange | undefined>({
     from: undefined,
     to: undefined,
@@ -45,11 +53,17 @@ export function BookingCard({ pricing }: { pricing: PricingProps }) {
           <span className="text-2xl font-bold">{formatPrice(pricing.basePrice, pricing.currency)}</span>
           <span className="text-zinc-500 text-sm"> / night</span>
         </div>
-        <div className="flex items-center gap-1 text-sm font-semibold">
-          <Star className="w-3 h-3 fill-black" />
-          <span>5.0</span>
-          <span className="text-zinc-400 font-normal underline ml-1">3 reviews</span>
-        </div>
+        {typeof rating === "number" ? (
+          <div className="flex items-center gap-1 text-sm font-semibold">
+            <Star className="w-3 h-3 fill-black" />
+            <span>{rating.toFixed(1)}</span>
+            <span className="text-zinc-400 font-normal underline ml-1">
+              {typeof reviewCount === "number" ? `${reviewCount} reviews` : "guest rating"}
+            </span>
+          </div>
+        ) : (
+          <div className="text-sm font-medium text-zinc-500">Guest rating unavailable</div>
+        )}
       </div>
 
       {/* Date & Guest Inputs */}

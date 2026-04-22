@@ -1,9 +1,13 @@
 package com.listingservice.service;
 
+import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.HomeSectionResponse;
+import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -22,4 +26,10 @@ public interface IListingService {
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     List<HomeSectionResponse> getHomeSections(Integer limitPerSection);
+
+    /**
+     * Get paginated listings by host with optional status filter
+     */
+    Page<ListingItemResponse> getListingsByHostPaginated(String hostId, ListingStatus status, Pageable pageable);
 }
+

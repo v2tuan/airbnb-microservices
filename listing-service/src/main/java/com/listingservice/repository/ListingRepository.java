@@ -2,6 +2,8 @@ package com.listingservice.repository;
 
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.entity.Listing;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,49 +15,49 @@ import java.util.UUID;
 
 @Repository
 public interface ListingRepository extends JpaRepository<Listing, UUID> {
-    
-    // Tìm theo host
+
+    // Tim theo host
     List<Listing> findByHostId(String hostId);
 
-    // Tìm theo host và status
+    // Tim theo host va status
     List<Listing> findByHostIdAndStatus(String hostId, ListingStatus status);
-    
-    // Tìm theo status
+
+    // Tim theo status
     List<Listing> findByStatus(ListingStatus status);
-    
-    // Tìm theo city
+
+    // Tim theo city
     List<Listing> findByCity(String city);
 
-    // Tìm theo city và status cho section trang chủ
+    // Tim theo city va status cho section trang chu
     List<Listing> findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(String city, ListingStatus status);
 
-    // Fallback query cho section trang chủ, tránh phụ thuộc cột created_at khi dữ liệu legacy chưa đồng bộ
+    // Fallback query cho section trang chu
     List<Listing> findByCityIgnoreCaseAndStatus(String city, ListingStatus status);
 
-    // Tìm theo city và country
+    // Tim theo city va country
     List<Listing> findByCityAndCountry(String city, String country);
-    
-    // Tìm theo property type
+
+    // Tim theo property type
     List<Listing> findByPropertyType(com.listingservice.constant.PropertyType propertyType);
-    
-    // Tìm theo room type
+
+    // Tim theo room type
     List<Listing> findByRoomType(com.listingservice.constant.RoomType roomType);
-    
-    // Tìm listing có instant book
+
+    // Tim listing co instant book
     List<Listing> findByInstantBookTrueAndStatus(ListingStatus status);
-    
-    // Tìm theo số khách tối đa
+
+    // Tim theo so khach toi da
     List<Listing> findByMaxGuestsGreaterThanEqualAndStatus(Integer maxGuests, ListingStatus status);
-    
-    // Tìm trong khoảng giá (join với pricing)
+
+    // Tim trong khoang gia (join voi pricing)
     @Query("SELECT l FROM Listing l JOIN l.pricing p WHERE p.basePrice BETWEEN :minPrice AND :maxPrice AND l.status = :status")
     List<Listing> findByPriceRangeAndStatus(
-        @Param("minPrice") BigDecimal minPrice, 
+        @Param("minPrice") BigDecimal minPrice,
         @Param("maxPrice") BigDecimal maxPrice,
         @Param("status") ListingStatus status
     );
-    
-    // Tìm theo coordinates (trong bán kính)
+
+    // Tim theo coordinates (trong ban kinh)
     @Query("SELECT l FROM Listing l WHERE l.status = :status AND " +
            "(6371 * acos(cos(radians(:latitude)) * cos(radians(l.latitude)) * " +
            "cos(radians(l.longitude) - radians(:longitude)) + " +
@@ -66,13 +68,19 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
         @Param("radius") Double radius,
         @Param("status") ListingStatus status
     );
-    
-    // Kiểm tra listing tồn tại theo ID và host
+
+    // Kiem tra listing ton tai theo ID va host
     boolean existsByListingIdAndHostId(UUID listingId, String hostId);
 
-    // Đếm số listing của host
+    // Dem so listing cua host
     long countByHostId(String hostId);
 
-    // Đếm số listing active của host
+    // Dem so listing active cua host
     long countByHostIdAndStatus(String hostId, ListingStatus status);
+
+    // Pagination cho host profile
+    Page<Listing> findByHostIdAndStatus(String hostId, ListingStatus status, Pageable pageable);
+
+    // Pagination cho host profile (khong loc status)
+    Page<Listing> findByHostId(String hostId, Pageable pageable);
 }
