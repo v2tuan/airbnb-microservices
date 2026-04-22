@@ -10,7 +10,6 @@ import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.service.IListingService;
 import com.listingservice.service.Impl.ListingDetailService;
-import com.listingservice.util.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +23,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -39,18 +40,16 @@ import java.util.UUID;
 public class ListingDetailController {
 
     IListingService listingService;
-    ListingDetailService listingDetailService;
-    JwtUtils jwtUtils;
+    private final ListingDetailService listingDetailService;
 
     @PreAuthorize("hasAuthority('ROLE_HOST')")
     @PostMapping
     public ResponseEntity<ApiResponse<ListingResponse>> createListing(
-            @RequestHeader("Authorization") String authorizationHeader,
+            @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody ListingCreationRequest request) {
         log.info("REST request to create listing: {}", request.getTitle());
 
-        // Extract Keycloak user ID from JWT
-        String keycloakUserId = jwtUtils.extractKeycloakUserId(authorizationHeader);
+        String keycloakUserId = jwt.getSubject();
         log.debug("Creating listing for host: {}", keycloakUserId);
 
         ListingResponse response = listingService.createListing(request, keycloakUserId);

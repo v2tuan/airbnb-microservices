@@ -1,5 +1,6 @@
 package com.userservice.service;
 
+import com.event.dto.NotificationEvent;
 import com.userservice.dto.identity.*;
 import com.userservice.dto.request.RegistrationRequest;
 import com.userservice.dto.request.UserUpdateRequestDTO;
@@ -11,14 +12,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 
 //business logic
 @Slf4j
@@ -34,6 +38,8 @@ public class UserService {
   private final IdentityClient identityClient;
   private final UserMapper userMapper;
   private final CloudinaryService cloudinaryService;
+  private final KafkaTemplate<String, byte[]> kafkaTemplate;
+  private final ObjectMapper objectMapper;
 
   @Value("${idp.client-id}")
   String clientId;
@@ -175,6 +181,23 @@ public class UserService {
     }
 
     profile = userRepository.save(profile);
+
+    NotificationEvent event = NotificationEvent.builder()
+            .eventType("USER_REGISTERED")
+            .channel("email")
+            .recipientId(profile.getKeycloakUserId())
+            .recipientEmail(request.getEmail())
+            .locale("en")
+            .payload(Map.of(
+                    "firstName", request.getFirstName(),
+                    "lastName", request.getLastName()
+            ))
+            .occurredAt(Instant.now())
+            .build();
+
+    byte[] payload = objectMapper.writeValueAsBytes(event);
+
+    kafkaTemplate.send("user.notification.email", payload);
 
     return toUserProfileResponse(profile);
   }

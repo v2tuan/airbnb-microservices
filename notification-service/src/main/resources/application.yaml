@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: notification-service
+  mongodb:
+    uri: mongodb://localhost:27017/airbnb_db
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: laptrinhh2208@gmail.com
+    password: ${APP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+server:
+  port: 8084
+  servlet:
+    context-path: /notification
+
+notification:
+  templates:
+    USER_REGISTERED: email/welcome_email
