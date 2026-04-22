@@ -1,10 +1,12 @@
 package com.listingservice.controller;
 
+import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.CompositeListingResponse;
 import com.listingservice.dto.response.HomeSectionResponse;
+import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.service.IListingService;
 import com.listingservice.service.Impl.ListingDetailService;
@@ -14,6 +16,10 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +39,7 @@ import java.util.UUID;
 public class ListingDetailController {
 
     IListingService listingService;
-    private final ListingDetailService listingDetailService;
+    ListingDetailService listingDetailService;
     JwtUtils jwtUtils;
 
     @PreAuthorize("hasAuthority('ROLE_HOST')")
@@ -108,8 +114,7 @@ public class ListingDetailController {
     }
 
     @GetMapping("/host/{hostId}")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByHost(
-            @PathVariable String hostId) {
+    public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByHost(@PathVariable String hostId) {
         log.info("REST request to get listings by host ID: {}", hostId);
         List<ListingResponse> response = listingService.getListingsByHost(hostId);
         return ResponseEntity.ok(
@@ -118,6 +123,29 @@ public class ListingDetailController {
                         .message("Host listings retrieved successfully")
                         .result(response)
                         .build());
+    }
+
+    /**
+     * Get paginated listings by host with optional status filter
+     */
+    @GetMapping("/host/{hostId}/paginated")
+    public ResponseEntity<Page<ListingItemResponse>> getListingsByHostPaginated(
+            @PathVariable String hostId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "8") int size,
+            @RequestParam(defaultValue = "createdAt") String sort,
+            @RequestParam(defaultValue = "DESC") String direction) {
+
+        log.info("REST request to get paginated listings for host: {}, status: {}", hostId, status);
+
+        Sort.Direction sortDirection = Sort.Direction.fromString(direction);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sort));
+
+        ListingStatus listingStatus = status != null && !status.isEmpty() ? ListingStatus.valueOf(status) : null;
+        Page<ListingItemResponse> response = listingService.getListingsByHostPaginated(hostId, listingStatus, pageable);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/search")
@@ -167,13 +195,11 @@ public class ListingDetailController {
     }
 
     @GetMapping("/sections")
-        public ApiResponse<List<HomeSectionResponse>> getHomeSections(
-                @RequestParam(required = false) Integer limit
-        ) {
+    public ApiResponse<List<HomeSectionResponse>> getHomeSections(@RequestParam(required = false) Integer limit) {
         return ApiResponse.<List<HomeSectionResponse>>builder()
                 .result(listingService.getHomeSections(limit))
                 .build();
-        }       
+    }
 
     @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
     @PatchMapping("/{listingId}/activate")

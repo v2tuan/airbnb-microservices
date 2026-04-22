@@ -33,6 +33,9 @@ public class Rating {
   private String review;
   private String reviewerFullName;
   private String reviewerAvatarUrl;
+  private String reviewerLocation;
   private LocalDateTime createdAt;
   private LocalDateTime updatedAt;
 }
+
+

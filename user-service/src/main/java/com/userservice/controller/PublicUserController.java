@@ -8,8 +8,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
-@RestController@RequestMapping("/users/public")
+@RestController
+@RequestMapping("/public")
 public class PublicUserController {
 
   private final PublicProfileService publicUserProfileService;
@@ -30,5 +32,11 @@ public class PublicUserController {
       @Valid @RequestBody BatchPublicHostProfileRequest request ) {
     return ResponseEntity.ok(publicUserProfileService.getByKeycloakUserIds(request.keycloakUserIds()));
   }
-}
 
+  @GetMapping("/by-user-id/{userId}")
+  public ResponseEntity<PublicHostResponseDTO> getOneByUserId(@PathVariable UUID userId) {
+    return publicUserProfileService.getByUserId(userId)
+        .map(ResponseEntity::ok)
+        .orElseGet(() -> ResponseEntity.notFound().build());
+  }
+}
