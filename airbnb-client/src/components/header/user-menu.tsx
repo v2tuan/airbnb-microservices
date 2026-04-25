@@ -1,10 +1,11 @@
 "use client"
 
+import { cn } from '@/lib/utils';
 import { MenuIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Dropdown from '../modals/dropdown';
 
-function UserMenu() {
+function UserMenu({ buttonClassName }: { buttonClassName?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -26,7 +27,7 @@ function UserMenu() {
     <div ref={ref} className="relative">
       <button
         onClick={toggle}
-        className="cursor-pointer"
+        className={cn("cursor-pointer", buttonClassName)}
       >
         <MenuIcon/>
       </button>
