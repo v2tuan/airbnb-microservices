@@ -1,4 +1,5 @@
 import Header from "@/components/header";
+import Footer from "@/components/footer";
 import RouteContentOffset from "@/components/layout/RouteContentOffset";
 import { cn } from "@/lib/utils";
 import ModalProvider from "@/providers/ModalProvider";
@@ -38,8 +39,8 @@ export default function RootLayout({
           <Header/>
           <ModalProvider/>
           <RouteContentOffset>{children}</RouteContentOffset>
+          <Footer />
         </Providers>
-      {/* <Footer/> */}
       </body>
     </html>
   );
