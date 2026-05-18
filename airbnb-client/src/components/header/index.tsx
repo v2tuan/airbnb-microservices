@@ -8,10 +8,24 @@ import SearchBar from "./search-bar"
 import UserMenu from "./user-menu"
 import { selectCurrentUser, selectIsAuthenticated } from "@/features/auth/authSelectors"
 import Image from "next/image"
+import {RootState} from "@/store";
+import {useEffect, useState} from "react";
+import {hasRealmRole} from "@/lib/jwt";
 
 function Header() {
   const user = useSelector(selectCurrentUser)
   const isAuthenticated =  useSelector(selectIsAuthenticated)
+  const token = useSelector((state: RootState) => state.auth.token);
+  const [isHost, setIsHost] = useState(false)
+
+  useEffect(() => {
+
+    if (!token) return;
+
+    setIsHost(hasRealmRole(token, "HOST"))
+
+  }, [token]);
+
   return (
     <header className="fixed w-full bg-white z-40 border-b py-4 md:px-3 lg:px-20 lg:pt-5">
       <div className="mx-auto px-4 flex items-center justify-between">
@@ -53,7 +67,7 @@ function Header() {
         </nav>
 
         <div className="flex justify-between space-x-6">
-          <Link href="/users/profile/about?editMode=true" className="text-sm hidden lg:flex">Become a host</Link>
+          <Link href={!token ? "/login" : isHost ? "/host/manage" : "/host/become"} className="text-sm hidden lg:flex">{isHost ? "Welcoming guests" : "Become a host"}</Link>
           {isAuthenticated && user?.avatarUrl ? (
           <Image
             src={user.avatarUrl}

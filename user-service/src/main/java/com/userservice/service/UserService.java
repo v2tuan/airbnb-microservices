@@ -15,14 +15,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 //business logic
 @Slf4j
@@ -202,10 +202,82 @@ public class UserService {
     return toUserProfileResponse(profile);
   }
 
+  public TokenExchangeResponse refreshToken(
+          String refreshToken
+  ) {
+
+    MultiValueMap<String, String> formData =
+            new LinkedMultiValueMap<>();
+
+    formData.add(
+            "grant_type",
+            "refresh_token"
+    );
+
+    formData.add(
+            "client_id",
+            clientId
+    );
+
+    formData.add(
+            "client_secret",
+            clientSecret
+    );
+
+    formData.add(
+            "refresh_token",
+            refreshToken
+    );
+
+    return identityClient.refreshToken(formData);
+  }
+
+  public String getStripeAccountId(String userId) {
+    Optional<User> optionalUser = userRepository.findByKeycloakUserId(userId);
+
+    if(optionalUser.isEmpty()) throw new RuntimeException("User not found");
+
+    return optionalUser.get().getStripeAccountId();
+  }
+
   private String extractUserId(ResponseEntity<?> response){
     String location = response.getHeaders().get("Location").getFirst();
     String[] splitedStr = location.split("/");
     return splitedStr[splitedStr.length - 1];
+  }
+
+  public void becomeHost(String userId) {
+
+    // Exchange client Token
+    ClientTokenExchangeResponse token = identityClient.exchangeClientToken(ClientTokenExchangeParam.builder()
+            .grant_type("client_credentials")
+            .client_id(clientId)
+            .client_secret(clientSecret)
+            .scope("openid")
+            .build());
+
+    String accessToken = token.getAccessToken();
+
+    String bearerToken =
+            "Bearer " + accessToken;
+
+    KeycloakRoleResponse roleResponse =
+            identityClient.getRoleByName(
+                    bearerToken,
+                    "HOST"
+            );
+
+    KeycloakRoleRequest roleRequest =
+            new KeycloakRoleRequest(
+                    roleResponse.getId(),
+                    roleResponse.getName()
+            );
+
+    identityClient.assignRealmRole(
+            bearerToken,
+            userId,
+            List.of(roleRequest)
+    );
   }
 
 //  @Transactional(readOnly = true)

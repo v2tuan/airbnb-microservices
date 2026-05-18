@@ -1,0 +1,430 @@
+"use client";
+
+import { useState } from "react";
+import { format, parseISO, differenceInDays } from "date-fns";
+import { vi } from "date-fns/locale";
+import { ArrowLeft, Star, ShieldCheck } from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { formatPrice } from "@/contants";
+import {Elements} from "@stripe/react-stripe-js";
+import {stripePromise} from "@/lib/stripe";
+import CardForm from "@/components/booking/payment-form";
+import {StripeElementsOptions} from "@stripe/stripe-js";
+
+// ────────────────────────────────────────────────────────────
+// Types — khớp với response của listingAPI.getRoomById
+// ────────────────────────────────────────────────────────────
+interface Pricing {
+    basePrice: number;
+    currency: string;
+    cleaningFee: number;
+    serviceFeePercentage: number;
+}
+
+interface Photo {
+    photoUrl: string;
+    caption?: string;
+    isCover?: boolean;
+}
+
+export interface RoomDetail {
+    listingId: string;
+    title: string;
+    photos: Photo[];
+    pricing: Pricing;
+    maxGuests: number;
+    city: string;
+    country: string;
+    numBedrooms: number;
+    numBeds: number;
+    numBathrooms: number;
+}
+
+export interface BookingIntent {
+    checkin: string;
+    checkout: string;
+    numberOfAdults: number;
+    numberOfChildren: number;
+    numberOfInfants: number;
+    numberOfPets: number;
+    guestCurrency: string;
+}
+
+interface CheckoutContentProps {
+    room: RoomDetail;
+    bookingIntent: BookingIntent;
+}
+
+// ────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────
+function formatDateRange(checkin: string, checkout: string) {
+    const from = parseISO(checkin);
+    const to = parseISO(checkout);
+    const fromStr = format(from, "d", { locale: vi });
+    const toStr = format(to, "d 'thg' M, yyyy", { locale: vi });
+    return `${fromStr} – ${toStr}`;
+}
+
+function guestSummary(intent: BookingIntent) {
+    const parts: string[] = [];
+    if (intent.numberOfAdults) parts.push(`${intent.numberOfAdults} người lớn`);
+    if (intent.numberOfChildren) parts.push(`${intent.numberOfChildren} trẻ em`);
+    if (intent.numberOfInfants) parts.push(`${intent.numberOfInfants} em bé`);
+    if (intent.numberOfPets) parts.push(`${intent.numberOfPets} thú cưng`);
+    return parts.join(", ") || "1 người lớn";
+}
+
+// ────────────────────────────────────────────────────────────
+// Sub-components
+// ────────────────────────────────────────────────────────────
+function InputField({ label, placeholder, type = "text" }: {
+    label: string;
+    placeholder: string;
+    type?: string;
+}) {
+    return (
+        <div className="relative border border-zinc-300 rounded-xl px-4 pt-5 pb-2 focus-within:border-zinc-800 focus-within:ring-1 focus-within:ring-zinc-800 transition-all">
+            <label className="absolute top-2 left-4 text-[10px] text-zinc-500 font-medium">
+                {label}
+            </label>
+            <input
+                type={type}
+                placeholder={placeholder}
+                className="w-full bg-transparent text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none pt-0.5"
+            />
+        </div>
+    );
+}
+
+// ────────────────────────────────────────────────────────────
+// Main
+// ────────────────────────────────────────────────────────────
+export default function CheckoutContent({ room, bookingIntent }: CheckoutContentProps) {
+    const router = useRouter();
+
+    // ── Tính giá từ data server — không thể fake ─────────────
+    const nights = differenceInDays(
+        parseISO(bookingIntent.checkout),
+        parseISO(bookingIntent.checkin)
+    );
+    const { basePrice, cleaningFee, serviceFeePercentage, currency } = room.pricing;
+    const subtotal = basePrice * nights;
+    const serviceFee = (subtotal * serviceFeePercentage) / 100;
+    const total = subtotal + cleaningFee + serviceFee;
+
+    console.log("total", total)
+
+    const options : StripeElementsOptions = {
+        mode: 'payment',
+        amount: Math.round(total),
+        currency: 'vnd',
+        // Fully customizable with appearance API.
+        appearance: {/*...*/},
+    };
+
+    const coverPhoto = room.photos.find((p) => p.isCover) ?? room.photos[0];
+
+    // ── Local UI state ────────────────────────────────────────
+    type PaymentMethod = "momo" | "card";
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+
+    const handleSubmit = async () => {
+        setIsSubmitting(true);
+        try {
+            // TODO: gọi API tạo booking ở đây
+            // await bookingAPI.create({
+            //   roomId: room.listingId,
+            //   checkin: bookingIntent.checkin,
+            //   checkout: bookingIntent.checkout,
+            //   guests: { ... },
+            //   paymentMethod,
+            // });
+            await new Promise((r) => setTimeout(r, 1500)); // mock
+            setSubmitted(true);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // ── Success screen ────────────────────────────────────────
+    if (submitted) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white">
+                <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+                    <ShieldCheck className="w-8 h-8 text-green-600" />
+                </div>
+                <h1 className="text-2xl font-bold text-zinc-900">Đặt phòng thành công!</h1>
+                <p className="text-zinc-500 text-sm">Chúng tôi sẽ xác nhận qua email của bạn.</p>
+                <button
+                    onClick={() => router.push("/")}
+                    className="mt-4 px-6 py-3 bg-zinc-900 text-white rounded-full text-sm font-semibold hover:bg-zinc-700 transition-colors"
+                >
+                    Về trang chủ
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-white">
+            {/* Top bar */}
+            <div className="border-b border-zinc-100 px-6 py-4 flex items-center gap-4">
+                <button
+                    onClick={() => router.back()}
+                    className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-zinc-100 transition-colors"
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h1 className="text-xl font-semibold text-zinc-900">Xác nhận và thanh toán</h1>
+            </div>
+
+            {/* Body */}
+            <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-12">
+
+                {/* ── LEFT ─────────────────────────────────────────── */}
+                <div className="space-y-5">
+
+                    {/* Step 1: Payment */}
+                    <div className="border border-zinc-200 rounded-2xl p-6">
+                        <h2 className="text-lg font-semibold text-zinc-900 mb-5">
+                            1. Thêm phương thức thanh toán
+                        </h2>
+
+                        <div className="space-y-3">
+                            {/* MoMo */}
+                    {/*        <label className={cn(*/}
+                    {/*            "flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all",*/}
+                    {/*            paymentMethod === "momo"*/}
+                    {/*                ? "border-zinc-800 bg-zinc-50"*/}
+                    {/*                : "border-zinc-200 hover:border-zinc-400"*/}
+                    {/*        )}>*/}
+                    {/*            <div className="flex items-center gap-3">*/}
+                    {/*                <div className="w-10 h-10 rounded-lg bg-[#AE2070] flex items-center justify-center">*/}
+                    {/*<span className="text-white text-[10px] font-bold leading-none text-center">*/}
+                    {/*  mo<br />mo*/}
+                    {/*</span>*/}
+                    {/*                </div>*/}
+                    {/*                <span className="text-sm font-medium text-zinc-900">MoMo</span>*/}
+                    {/*            </div>*/}
+                    {/*            <input*/}
+                    {/*                type="radio"*/}
+                    {/*                name="payment"*/}
+                    {/*                value="momo"*/}
+                    {/*                checked={paymentMethod === "momo"}*/}
+                    {/*                onChange={() => setPaymentMethod("momo")}*/}
+                    {/*                className="accent-zinc-800 w-4 h-4"*/}
+                    {/*            />*/}
+                    {/*        </label>*/}
+
+                            {/* Card */}
+                            {/*<div className={cn(*/}
+                            {/*    "border rounded-xl overflow-hidden transition-all",*/}
+                            {/*    paymentMethod === "card" ? "border-zinc-800" : "border-zinc-200"*/}
+                            {/*)}>*/}
+                                {/*<label className={cn(*/}
+                                {/*    "flex items-center justify-between p-4 cursor-pointer",*/}
+                                {/*    paymentMethod === "card" ? "bg-zinc-50" : "hover:bg-zinc-50"*/}
+                                {/*)}>*/}
+                                {/*    <div className="flex items-center gap-3">*/}
+                                {/*        <div className="w-10 h-10 rounded-lg bg-zinc-100 flex items-center justify-center">*/}
+                                {/*            <svg className="w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
+                                {/*                <rect x="2" y="5" width="20" height="14" rx="2" strokeWidth="1.5" />*/}
+                                {/*                <path d="M2 10h20" strokeWidth="1.5" />*/}
+                                {/*            </svg>*/}
+                                {/*        </div>*/}
+                                {/*        <div>*/}
+                                {/*            <p className="text-sm font-medium text-zinc-900">*/}
+                                {/*                Thẻ tín dụng hoặc thẻ ghi nợ*/}
+                                {/*            </p>*/}
+                                {/*            <div className="flex gap-1 mt-0.5">*/}
+                                {/*                <span className="text-[10px] font-bold text-blue-700 border border-blue-200 rounded px-1">VISA</span>*/}
+                                {/*                <span className="text-[10px] font-bold text-red-600 border border-red-200 rounded px-1">MC</span>*/}
+                                {/*            </div>*/}
+                                {/*        </div>*/}
+                                {/*    </div>*/}
+                                {/*    <input*/}
+                                {/*        type="radio"*/}
+                                {/*        name="payment"*/}
+                                {/*        value="card"*/}
+                                {/*        checked={paymentMethod === "card"}*/}
+                                {/*        onChange={() => setPaymentMethod("card")}*/}
+                                {/*        className="accent-zinc-800 w-4 h-4"*/}
+                                {/*    />*/}
+                                {/*</label>*/}
+
+                                {/*{paymentMethod === "card" && (*/}
+                                {/*    <div className="px-4 pb-4 space-y-3 border-t border-zinc-100">*/}
+                                {/*        <div className="pt-3">*/}
+                                {/*            <InputField label="Số thẻ" placeholder="1234 5678 9012 3456" />*/}
+                                {/*        </div>*/}
+                                {/*        <div className="grid grid-cols-2 gap-3">*/}
+                                {/*            <InputField label="Ngày hết hạn" placeholder="MM / YY" />*/}
+                                {/*            <InputField label="CVV" placeholder="•••" />*/}
+                                {/*        </div>*/}
+                                {/*        <InputField label="Mã bưu chính" placeholder="70000" />*/}
+                                {/*        <div className="relative border border-zinc-300 rounded-xl px-4 pt-5 pb-2 focus-within:border-zinc-800 transition-all">*/}
+                                {/*            <label className="absolute top-2 left-4 text-[10px] text-zinc-500 font-medium">*/}
+                                {/*                Quốc gia/khu vực*/}
+                                {/*            </label>*/}
+                                {/*            <select className="w-full bg-transparent text-sm text-zinc-900 focus:outline-none pt-0.5 appearance-none">*/}
+                                {/*                <option>Việt Nam</option>*/}
+                                {/*                <option>Hoa Kỳ</option>*/}
+                                {/*                <option>Singapore</option>*/}
+                                {/*                <option>Nhật Bản</option>*/}
+                                {/*            </select>*/}
+                                {/*            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">*/}
+                                {/*                <svg className="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
+                                {/*                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />*/}
+                                {/*                </svg>*/}
+                                {/*            </div>*/}
+                                {/*        </div>*/}
+                                {/*    </div>*/}
+                                {/*)}*/}
+
+                                <Elements
+                                    stripe={stripePromise}
+                                    // options={{
+                                    //     clientSecret,
+                                    // }}
+                                    options={options}
+                                >
+                                    <CardForm roomId={room.listingId}
+                                              bookingIntent={bookingIntent}/>
+                                </Elements>
+                            {/*</div>*/}
+                        </div>
+
+                        {/*<button*/}
+                        {/*    onClick={handleSubmit}*/}
+                        {/*    disabled={isSubmitting}*/}
+                        {/*    className={cn(*/}
+                        {/*        "mt-6 w-full py-4 rounded-xl text-white font-bold text-base transition-all",*/}
+                        {/*        isSubmitting*/}
+                        {/*            ? "bg-zinc-300 cursor-not-allowed"*/}
+                        {/*            : "bg-zinc-900 hover:bg-zinc-700 active:scale-[0.99]"*/}
+                        {/*    )}*/}
+                        {/*>*/}
+                        {/*    {isSubmitting ? "Đang xử lý..." : "Tiếp theo"}*/}
+                        {/*</button>*/}
+                    </div>
+
+                    {/* Step 2: collapsed */}
+                    {/*<div className="border border-zinc-200 rounded-2xl p-6 opacity-50">*/}
+                    {/*    <h2 className="text-lg font-semibold text-zinc-900">*/}
+                    {/*        2. Xem lại lượt đặt của bạn*/}
+                    {/*    </h2>*/}
+                    {/*</div>*/}
+                </div>
+
+                {/* ── RIGHT: Summary ────────────────────────────────── */}
+                <div>
+                    <div className="sticky top-10 border border-zinc-200 rounded-2xl p-6 shadow-md space-y-5">
+
+                        {/* Room info — từ API, không thể fake */}
+                        <div className="flex gap-4">
+                            <div className="relative w-24 h-20 rounded-xl overflow-hidden shrink-0 bg-zinc-100">
+                                {coverPhoto ? (
+                                    <Image
+                                        src={coverPhoto.photoUrl}
+                                        alt={room.title}
+                                        fill
+                                        className="object-cover"
+                                        unoptimized
+                                    />
+                                ) : (
+                                    <div className="w-full h-full bg-zinc-200" />
+                                )}
+                            </div>
+                            <div className="flex flex-col justify-center min-w-0">
+                                <p className="text-sm font-medium text-zinc-900 leading-snug line-clamp-3">
+                                    {room.title}
+                                </p>
+                                <p className="text-xs text-zinc-400 mt-1">
+                                    {room.city}, {room.country}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Non-refundable notice */}
+                        <div className="bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-3 text-sm text-zinc-700 leading-relaxed">
+                            Đặt phòng/đặt chỗ này không được hoàn tiền.{" "}
+                            <a href="#" className="underline font-medium hover:text-zinc-900">
+                                Toàn bộ chính sách
+                            </a>
+                        </div>
+
+                        <div className="border-t border-zinc-100 pt-4 space-y-3">
+                            {/* Dates — từ URL params (intent), an toàn vì giá tính ở server */}
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-zinc-900">Ngày</p>
+                                    <p className="text-sm text-zinc-600 mt-0.5">
+                                        {formatDateRange(bookingIntent.checkin, bookingIntent.checkout)}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => router.back()}
+                                    className="text-xs font-semibold text-zinc-900 underline hover:text-zinc-500 transition-colors"
+                                >
+                                    Thay đổi
+                                </button>
+                            </div>
+
+                            {/* Guests */}
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-zinc-900">Khách</p>
+                                    <p className="text-sm text-zinc-600 mt-0.5">{guestSummary(bookingIntent)}</p>
+                                </div>
+                                <button
+                                    onClick={() => router.back()}
+                                    className="text-xs font-semibold text-zinc-900 underline hover:text-zinc-500 transition-colors"
+                                >
+                                    Thay đổi
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Price breakdown — tính từ data server */}
+                        <div className="border-t border-zinc-100 pt-4 space-y-2">
+                            <p className="text-sm font-semibold text-zinc-900 mb-3">Chi tiết giá</p>
+
+                            <div className="flex justify-between text-sm text-zinc-600">
+                <span className="underline">
+                  {formatPrice(basePrice, currency)} × {nights} đêm
+                </span>
+                                <span>{formatPrice(subtotal, currency)}</span>
+                            </div>
+
+                            <div className="flex justify-between text-sm text-zinc-600">
+                                <span className="underline">Phí dọn dẹp</span>
+                                <span>{formatPrice(cleaningFee, currency)}</span>
+                            </div>
+
+                            <div className="flex justify-between text-sm text-zinc-600">
+                                <span className="underline">Phí dịch vụ ({serviceFeePercentage}%)</span>
+                                <span>{formatPrice(serviceFee, currency)}</span>
+                            </div>
+
+                            <div className="flex justify-between text-sm font-semibold text-zinc-900 pt-3 border-t border-zinc-100">
+                                <span>Tổng {currency}</span>
+                                <span>{formatPrice(total, currency)}</span>
+                            </div>
+
+                            <a href="#" className="block text-xs underline text-zinc-600 hover:text-zinc-900">
+                                Chi tiết giá
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

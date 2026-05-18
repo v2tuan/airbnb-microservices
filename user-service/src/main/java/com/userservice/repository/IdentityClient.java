@@ -5,9 +5,10 @@ import feign.QueryMap;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @FeignClient(name = "identity-client", url = "${idp.url}")
 public interface IdentityClient {
@@ -19,9 +20,33 @@ public interface IdentityClient {
             consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
     TokenExchangeResponse exchangeToken(@QueryMap TokenExchangeParam param);
 
+    @PostMapping(value = "/realms/airbnb/protocol/openid-connect/token",
+            consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+    TokenExchangeResponse refreshToken(@RequestBody MultiValueMap<String, String> formData);
+
     @PostMapping(value = "/admin/realms/airbnb/users",
             consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<?> createUser(
             @RequestHeader("authorization") String token,
             @RequestBody UserCreationParam param);
+
+    @GetMapping(
+            "/admin/realms/airbnb/roles/{roleName}"
+    )
+    KeycloakRoleResponse getRoleByName(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("roleName") String roleName
+    );
+
+    @PostMapping(
+            "/admin/realms/airbnb/users/{userId}/role-mappings/realm"
+    )
+    void assignRealmRole(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("userId") String userId,
+
+            @RequestBody List<KeycloakRoleRequest> roles
+    );
 }

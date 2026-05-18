@@ -138,6 +138,30 @@ export const registerThunk = createAsyncThunk<
   }
 });
 
+export const refreshThunk = createAsyncThunk<
+    any,
+    void,
+    { rejectValue: string }
+>("auth/refresh", async (_, { rejectWithValue, dispatch }) => {
+
+  try {
+    const response = await authAPI.refresh();
+    const normalized = normalizeAuthResponse(response.data);
+
+    if (normalized.token || normalized.user) {
+      saveAuthToStorage(normalized);
+    }
+
+    if (normalized.token) {
+      dispatch(fetchMeThunk(normalized.token));
+    }
+
+    return response.data;
+  } catch (error: any) {
+    return rejectWithValue(getErrorMessage(error, "Refresh token thất bại"));
+  }
+});
+
 const initialState: AuthState = {
   user: null,
   token: null,
@@ -224,6 +248,26 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.payload || "Đăng ký thất bại";
       })
+
+        // REFRESH
+        .addCase(refreshThunk.pending, (state) => {
+          state.loading = true;
+          state.error = null;
+          state.registerSuccessMessage = null;
+        })
+        .addCase(refreshThunk.fulfilled, (state, action: PayloadAction<any>) => {
+          const normalized = normalizeAuthResponse(action.payload);
+
+          state.loading = false;
+          state.error = null;
+          state.user = normalized.user;
+          state.token = normalized.token;
+          state.isAuthenticated = !!normalized.token;
+        })
+        .addCase(refreshThunk.rejected, (state, action) => {
+          state.loading = false;
+          state.error = action.payload || "Refresh token thất bại";
+        })
 
       // FETCH ME
       .addCase(fetchMeThunk.fulfilled, (state, action: PayloadAction<any>) => {
