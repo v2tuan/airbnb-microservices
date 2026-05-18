@@ -14,7 +14,7 @@ import tools.jackson.databind.annotation.JsonNaming;
 public class TokenExchangeResponse {
     String accessToken;
     String expiresIn;
-    String refreshExpiresIn;
+    Integer refreshExpiresIn;
     String refreshToken;
     String tokenType;
     String idToken;

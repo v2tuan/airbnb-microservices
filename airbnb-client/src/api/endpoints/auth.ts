@@ -46,7 +46,15 @@ export const authAPI = {
   login: (
     credentials: LoginCredentials
   ): Promise<AxiosResponse<AuthResponse>> => {
-    return apiClient.post(`${prefix}/users/auth/login`, credentials);
+    return apiClient.post(`${prefix}/users/auth/login`, credentials, {
+      withCredentials: true
+    });
+  },
+
+  refresh: (): Promise<AxiosResponse<AuthResponse>> => {
+    return apiClient.post(`${prefix}/users/auth/refresh`, {}, {
+      withCredentials: true
+    })
   },
 
   register: (

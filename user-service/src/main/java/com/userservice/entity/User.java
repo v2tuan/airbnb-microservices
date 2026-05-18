@@ -31,6 +31,13 @@ public class User {
     private String avatarUrl;
     private String bio;
 
+    @Column(name = "stripe_account_id", unique = true)
+    private String stripeAccountId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stripe_account_status")
+    private StripeAccountStatus stripeAccountStatus = StripeAccountStatus.NONE;
+
     //library for postgre text[]
 //    @Type(ListArrayType.class)
 //    @Column(columnDefinition = "text[]")

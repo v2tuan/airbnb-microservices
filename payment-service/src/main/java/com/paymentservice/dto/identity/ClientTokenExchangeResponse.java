@@ -1,0 +1,21 @@
+package com.paymentservice.dto.identity;
+
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+import tools.jackson.databind.PropertyNamingStrategies;
+import tools.jackson.databind.annotation.JsonNaming;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@FieldDefaults(level = AccessLevel.PRIVATE)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+public class ClientTokenExchangeResponse {
+    String accessToken;
+    String expiresIn;
+    String refreshExpiresIn;
+    String tokenType;
+    String idToken;
+    String scope;
+}

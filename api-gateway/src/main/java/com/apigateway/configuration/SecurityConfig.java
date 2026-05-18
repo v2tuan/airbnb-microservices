@@ -3,11 +3,19 @@ package com.apigateway.configuration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpCookie;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Mono;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -16,24 +24,131 @@ public class SecurityConfig {
     @Value("${app.api-prefix}")
     String prefix;
 
-    @Bean
-    public SecurityWebFilterChain securityFilterChain(ServerHttpSecurity http) {
+    /**
+     * Cách cũ khi token hết hạn thì khi vào các api public cũng bị chặn
+     */
+//    @Bean
+//    public SecurityWebFilterChain securityFilterChain(ServerHttpSecurity http) {
+//
+//        http
+//                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+//                .cors(Customizer.withDefaults())
+//                .authorizeExchange(exchange -> exchange
+//                        .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+//                        .pathMatchers(HttpMethod.GET, prefix + "/profile/**").permitAll()
+//                        .pathMatchers(prefix + "/users/auth/**").permitAll()
+//                        .pathMatchers(prefix + "/listings/**").permitAll()
+//                        .pathMatchers(prefix + "/ratings/**").permitAll()
+//                        .anyExchange().authenticated()
+//                )
+//                .oauth2ResourceServer(oauth ->
+//                        oauth.jwt(Customizer.withDefaults())
+//                );
+//
+//        return http.build();
+//    }
 
-        http
+    // =========================
+    // 1. PUBLIC API (NO JWT)
+    // =========================
+    @Bean
+    @Order(1)
+    public SecurityWebFilterChain publicChain(ServerHttpSecurity http) {
+
+        return http
+                .securityMatcher(ServerWebExchangeMatchers.pathMatchers(
+                        prefix + "/users/auth/**",
+                        prefix + "/listings/**",
+                        prefix + "/ratings/**",
+                        prefix + "/profile/**",
+                        prefix + "/payments/webhook"
+                ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .cors(Customizer.withDefaults())
-                .authorizeExchange(exchange -> exchange
+                .authorizeExchange(ex -> ex.anyExchange().permitAll())
+                .build();
+    }
+
+    // =========================
+    // 2. SECURE API (JWT REQUIRED)
+    // =========================
+    @Bean
+    @Order(2)
+    public SecurityWebFilterChain secureChain(ServerHttpSecurity http) {
+
+        return http
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(Customizer.withDefaults())
+                .authorizeExchange(ex -> ex
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .pathMatchers(HttpMethod.GET, prefix + "/profile/**").permitAll()
-                        .pathMatchers(prefix + "/users/auth/**").permitAll()
-                        .pathMatchers(prefix + "/listings/**").permitAll()
-                        .pathMatchers(prefix + "/ratings/**").permitAll()
                         .anyExchange().authenticated()
                 )
                 .oauth2ResourceServer(oauth ->
-                        oauth.jwt(Customizer.withDefaults())
-                );
-
-        return http.build();
+                        oauth
+//                                .bearerTokenConverter(bearerTokenConverter())
+                                .jwt(Customizer.withDefaults())
+                )
+                .build();
     }
+
+//    @Bean
+//    public ServerAuthenticationConverter bearerTokenConverter() {
+//
+//        return exchange -> {
+//
+//            // Header trước
+//            String authHeader = exchange.getRequest()
+//                    .getHeaders()
+//                    .getFirst(HttpHeaders.AUTHORIZATION);
+//
+//            if (StringUtils.hasText(authHeader)
+//                    && authHeader.startsWith("Bearer ")) {
+//
+//                String token = authHeader.substring(7);
+//
+//                return Mono.just(
+//                        new BearerTokenAuthenticationToken(token)
+//                );
+//            }
+//
+//            // Cookie sau
+//            HttpCookie cookie = exchange.getRequest()
+//                    .getCookies()
+//                    .getFirst("accessToken");
+//
+//            if (cookie == null) {
+//                return Mono.empty();
+//            }
+//
+//            return Mono.just(
+//                    new BearerTokenAuthenticationToken(cookie.getValue())
+//            );
+//        };
+//    }
+
+//    @Bean
+//    public BearerTokenResolver cookieTokenResolver() {
+//        return request -> {
+//
+//            // 1. ưu tiên Authorization header
+//            String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+//
+//            if (StringUtils.hasText(authHeader) &&
+//                    authHeader.startsWith("Bearer ")) {
+//
+//                return authHeader.substring(7);
+//            }
+//
+//            // 2. lấy từ cookie
+//            if (request.getCookies() != null) {
+//                for (Cookie cookie : request.getCookies()) {
+//                    if ("accessToken".equals(cookie.getName())) {
+//                        return cookie.getValue();
+//                    }
+//                }
+//            }
+//
+//            return null;
+//        };
+//    }
 }

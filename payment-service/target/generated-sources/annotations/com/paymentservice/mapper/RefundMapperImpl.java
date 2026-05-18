@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 @Generated(
     value = "org.mapstruct.ap.MappingProcessor",
-    comments = "version: 1.5.5.Final, compiler: Eclipse JDT (IDE) 3.46.0.v20260407-0427, environment: Java 21.0.10 (Eclipse Adoptium)"
+    comments = "version: 1.5.5.Final, compiler: javac, environment: Java 21.0.5 (Oracle Corporation)"
 )
 @Component
 public class RefundMapperImpl implements RefundMapper {
@@ -20,16 +20,16 @@ public class RefundMapperImpl implements RefundMapper {
 
         RefundResponse.RefundResponseBuilder refundResponse = RefundResponse.builder();
 
-        refundResponse.completedAt( refund.getCompletedAt() );
+        refundResponse.refundId( refund.getRefundId() );
+        refundResponse.refundAmount( refund.getRefundAmount() );
+        refundResponse.refundType( refund.getRefundType() );
+        refundResponse.refundReason( refund.getRefundReason() );
+        refundResponse.refundDetails( refund.getRefundDetails() );
+        refundResponse.status( refund.getStatus() );
+        refundResponse.processedBy( refund.getProcessedBy() );
         refundResponse.gatewayRefundId( refund.getGatewayRefundId() );
         refundResponse.initiatedAt( refund.getInitiatedAt() );
-        refundResponse.processedBy( refund.getProcessedBy() );
-        refundResponse.refundAmount( refund.getRefundAmount() );
-        refundResponse.refundDetails( refund.getRefundDetails() );
-        refundResponse.refundId( refund.getRefundId() );
-        refundResponse.refundReason( refund.getRefundReason() );
-        refundResponse.refundType( refund.getRefundType() );
-        refundResponse.status( refund.getStatus() );
+        refundResponse.completedAt( refund.getCompletedAt() );
 
         return refundResponse.build();
     }
@@ -42,16 +42,16 @@ public class RefundMapperImpl implements RefundMapper {
 
         Refund.RefundBuilder refund = Refund.builder();
 
-        refund.completedAt( response.getCompletedAt() );
+        refund.refundId( response.getRefundId() );
+        refund.refundAmount( response.getRefundAmount() );
+        refund.refundType( response.getRefundType() );
+        refund.refundReason( response.getRefundReason() );
+        refund.refundDetails( response.getRefundDetails() );
+        refund.status( response.getStatus() );
+        refund.processedBy( response.getProcessedBy() );
         refund.gatewayRefundId( response.getGatewayRefundId() );
         refund.initiatedAt( response.getInitiatedAt() );
-        refund.processedBy( response.getProcessedBy() );
-        refund.refundAmount( response.getRefundAmount() );
-        refund.refundDetails( response.getRefundDetails() );
-        refund.refundId( response.getRefundId() );
-        refund.refundReason( response.getRefundReason() );
-        refund.refundType( response.getRefundType() );
-        refund.status( response.getStatus() );
+        refund.completedAt( response.getCompletedAt() );
 
         return refund.build();
     }

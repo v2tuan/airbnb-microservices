@@ -3,9 +3,18 @@ server:
   servlet:
     context-path: /users
 
+app:
+  frontend-url: http://localhost:3000
+
 spring:
   application:
     name: user-service
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/airbnb
 
   datasource:
     url: jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/user_db?sslmode=require
@@ -46,3 +55,11 @@ cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:}
   api-key: ${CLOUDINARY_API_KEY:}
   api-secret: ${CLOUDINARY_API_SECRET:}
+
+# ===== STRIPE CONFIG =====
+stripe:
+  # Secret key - dùng test key khi develop
+  secret-key: ${STRIPE_SECRET_KEY:}
+
+  # Publishable key - dùng ở Frontend (an toàn để expose)
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
