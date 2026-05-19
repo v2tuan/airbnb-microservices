@@ -1,12 +1,13 @@
 "use client"
 
-import { MenuIcon } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
-import Dropdown from "../modals/dropdown"
+import { cn } from '@/lib/utils';
+import { MenuIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import Dropdown from '../modals/dropdown';
 
-function UserMenu() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+function UserMenu({ buttonClassName }: { buttonClassName?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
@@ -25,9 +26,10 @@ function UserMenu() {
   const toggle = () => setOpen((prev) => !prev)
 
   return (
-      <div
-          ref={ref}
-          className="relative flex items-center"
+    <div ref={ref} className="relative">
+      <button
+        onClick={toggle}
+        className={cn("cursor-pointer", buttonClassName)}
       >
         <button
             onClick={toggle}

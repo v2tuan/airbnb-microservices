@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Star } from "lucide-react";
 
 interface RatingRecord {
@@ -197,7 +198,16 @@ export function ListingRatingPanel({
                   )}
 
                   <div>
-                    <p className="font-medium text-zinc-900">{toGuestLabel(rating)}</p>
+                    {rating.userId ? (
+                      <Link
+                        href={`/users/profile/${rating.userId}`}
+                        className="font-medium text-zinc-900 hover:underline transition"
+                      >
+                        {toGuestLabel(rating)}
+                      </Link>
+                    ) : (
+                      <p className="font-medium text-zinc-900">{toGuestLabel(rating)}</p>
+                    )}
                     <p className="text-xs text-zinc-400">
                       {displayDate || "Guest review"}
                     </p>
