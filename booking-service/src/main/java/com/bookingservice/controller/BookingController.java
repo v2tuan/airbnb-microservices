@@ -1,9 +1,12 @@
 package com.bookingservice.controller;
 
+import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.CreateBookingRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
 import com.bookingservice.dto.response.BookingResponse;
+import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
+import com.bookingservice.entity.BookingStatus;
 import com.bookingservice.service.BookingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +20,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -42,6 +46,20 @@ public class BookingController {
 
         // Trả về 201 Created khi tạo thành công
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping
+    public List<BookingResponse> getMyBookings(
+            @RequestParam(required = false) List<BookingStatus> statuses
+    ) {
+        return bookingService.getBookingsByUserAndStatuses(statuses);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<List<BookingTripResponse>> getMyBookings(
+            @RequestParam(defaultValue = "ALL") BookingFilterType type
+    ) {
+        return ResponseEntity.ok(bookingService.getMyBookings(type));
     }
 
     /**
