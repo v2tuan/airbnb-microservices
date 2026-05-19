@@ -1,6 +1,7 @@
 package com.listingservice.controller;
 
 import com.listingservice.constant.ListingStatus;
+import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
@@ -98,6 +99,20 @@ public class ListingDetailController {
                         .message("Listing retrieved successfully")
                         .result(response)
                         .build());
+    }
+
+    /**
+     * Batch API cho microservices (BookingService, PaymentService,...)
+     */
+    @PostMapping("/batch")
+    public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByIds(
+            @RequestBody ListingBatchRequest request
+    ) {
+        log.info("Internal batch listing request: {}", request.listingIds().size());
+
+        return ResponseEntity.ok(ApiResponse.<List<ListingResponse>>builder()
+                .result(listingService.getListingsByIds(request.listingIds()))
+                .build());
     }
 
     @GetMapping

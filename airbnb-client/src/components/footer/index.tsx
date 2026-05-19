@@ -1,131 +1,169 @@
-import { Facebook, Globe, Instagram, Twitter } from "lucide-react";
-import Link from "next/link";
+"use client"
 
-const supportLinks = [
-  "Help Center",
-  "Get help with a safety issue",
-  "AirCover",
-  "Travel insurance",
-  "Anti-discrimination",
-  "Disability support",
-  "Cancellation options",
-  "Report neighborhood concern",
-];
+import Link from "next/link"
+import {
+    Globe,
+    Facebook,
+    Instagram,
+} from "lucide-react"
 
-const hostingLinks = [
-  "Airbnb your home",
-  "Airbnb your experience",
-  "Airbnb your service",
-  "AirCover for Hosts",
-  "Hosting resources",
-  "Community forum",
-  "Hosting responsibly",
-  "Airbnb-friendly apartments",
-  "Join a free hosting class",
-  "Find a co-host",
-  "Refer a host",
-];
+export default function Footer() {
+    return (
+        <footer className="border-t bg-[#f7f7f7] px-10 py-12 text-[#222222]">
+            {/* Top */}
+            <div className="grid grid-cols-1 gap-10 md:grid-cols-3">
+                {/* Support */}
+                <div className="space-y-5">
+                    <h3 className="text-sm font-semibold">Support</h3>
 
-const aboutLinks = [
-  "2025 Summer Release",
-  "Newsroom",
-  "Careers",
-  "Investors",
-  "Gift cards",
-  "Airbnb.org emergency stays",
-];
+                    <div className="flex flex-col gap-4 text-sm">
+                        <FooterLink href="/">Help Centre</FooterLink>
+                        <FooterLink href="/">
+                            Get help with a safety issue
+                        </FooterLink>
+                        <FooterLink href="/">AirCover</FooterLink>
+                        <FooterLink href="/">Anti-discrimination</FooterLink>
+                        <FooterLink href="/">Disability support</FooterLink>
+                        <FooterLink href="/">Cancellation options</FooterLink>
+                        <FooterLink href="/">
+                            Report neighbourhood concern
+                        </FooterLink>
+                    </div>
+                </div>
 
-const languageItems = [
-  { label: "English (US)", icon: Globe },
-  { label: "VND", icon: Globe },
-];
+                {/* Hosting */}
+                <div className="space-y-5">
+                    <h3 className="text-sm font-semibold">Hosting</h3>
 
-function FooterColumn({
-  title,
-  links,
-}: {
-  title: string;
-  links: string[];
+                    <div className="flex flex-col gap-4 text-sm">
+                        <FooterLink href="/">Airbnb your home</FooterLink>
+                        <FooterLink href="/">
+                            Airbnb your experience
+                        </FooterLink>
+                        <FooterLink href="/">Airbnb your service</FooterLink>
+                        <FooterLink href="/">AirCover for Hosts</FooterLink>
+                        <FooterLink href="/">Hosting resources</FooterLink>
+                        <FooterLink href="/">Community forum</FooterLink>
+                        <FooterLink href="/">Hosting responsibly</FooterLink>
+                        <FooterLink href="/">
+                            Join a free hosting class
+                        </FooterLink>
+                        <FooterLink href="/">Find a co-host</FooterLink>
+                        <FooterLink href="/">Refer a host</FooterLink>
+                    </div>
+                </div>
+
+                {/* Airbnb */}
+                <div className="space-y-5">
+                    <h3 className="text-sm font-semibold">Airbnb</h3>
+
+                    <div className="flex flex-col gap-4 text-sm">
+                        <FooterLink href="/">
+                            2025 Summer Release
+                        </FooterLink>
+                        <FooterLink href="/">Newsroom</FooterLink>
+                        <FooterLink href="/">Careers</FooterLink>
+                        <FooterLink href="/">Investors</FooterLink>
+                        <FooterLink href="/">Gift cards</FooterLink>
+                        <FooterLink href="/">
+                            Airbnb.org emergency stays
+                        </FooterLink>
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom */}
+            <div className="mt-14 flex flex-col gap-5 border-t pt-6 lg:flex-row lg:items-center lg:justify-between">
+                {/* Left */}
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span>© 2026 Airbnb, Inc.</span>
+
+                    <Dot />
+
+                    <FooterLink href="/">Privacy</FooterLink>
+
+                    <Dot />
+
+                    <FooterLink href="/">Terms</FooterLink>
+
+                    <Dot />
+
+                    <FooterLink href="/">
+                        UK Modern Slavery Act
+                    </FooterLink>
+
+                    <Dot />
+
+                    <FooterLink href="/">
+                        Company details
+                    </FooterLink>
+
+                    <Dot />
+
+                    <FooterLink href="/">
+                        Airbnb UK Limited S.172 Statement
+                    </FooterLink>
+
+                    <Dot />
+
+                    <FooterLink href="/">
+                        Airbnb Payments UK Limited S.172 Statement
+                    </FooterLink>
+                </div>
+
+                {/* Right */}
+                <div className="flex items-center gap-5 text-sm">
+                    <button className="flex items-center gap-2 font-medium hover:underline">
+                        <Globe className="h-4 w-4" />
+                        English (GB)
+                    </button>
+
+                    <button className="font-medium hover:underline">
+                        ₫ VND
+                    </button>
+
+                    <div className="flex items-center gap-4">
+                        <Link href="/" className="hover:opacity-70">
+                            <Facebook className="h-5 w-5" />
+                        </Link>
+
+                        <Link href="/" className="hover:opacity-70">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 1200 1227"
+                                className="h-4 w-4 fill-current"
+                            >
+                                <path d="M714.163 519.284 1160.89 0h-105.86L667.137 450.887 357.328 0H0l468.492 681.821L0 1226.37h105.866l409.612-476.152 327.194 476.152H1200L714.137 519.284h.026ZM569.165 687.828l-47.468-67.894L144.011 79.694h162.604l304.797 436.066 47.468 67.894 396.2 566.721H892.476L569.165 687.854v-.026Z" />
+                            </svg>
+                        </Link>
+
+                        <Link href="/" className="hover:opacity-70">
+                            <Instagram className="h-5 w-5" />
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    )
+}
+
+function FooterLink({
+                        href,
+                        children,
+                    }: {
+    href: string
+    children: React.ReactNode
 }) {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-base font-semibold text-zinc-900">{title}</h2>
-      <ul className="space-y-3">
-        {links.map((link) => (
-          <li key={link}>
-            <Link
-              href="#"
-              className="text-sm leading-6 text-zinc-600 transition hover:text-zinc-900 hover:underline"
-            >
-              {link}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+    return (
+        <Link
+            href={href}
+            className="w-fit transition hover:underline"
+        >
+            {children}
+        </Link>
+    )
 }
 
-function Footer() {
-  return (
-    <footer className="border-t border-zinc-200 bg-white">
-      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-12 md:grid-cols-3 md:gap-8">
-          <FooterColumn title="Support" links={supportLinks} />
-          <FooterColumn title="Hosting" links={hostingLinks} />
-          <FooterColumn title="Airbnb" links={aboutLinks} />
-        </div>
-
-        <div className="mt-14 border-t border-zinc-200 pt-6">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-col gap-3 text-sm text-zinc-600 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-              <p className="font-medium text-zinc-900">© {new Date().getFullYear()} Airbnb, Inc.</p>
-              <div className="flex flex-wrap items-center gap-3">
-                <Link href="#" className="transition hover:text-zinc-900 hover:underline">
-                  Privacy
-                </Link>
-                <span className="hidden text-zinc-300 sm:inline">·</span>
-                <Link href="#" className="transition hover:text-zinc-900 hover:underline">
-                  Terms
-                </Link>
-                <span className="hidden text-zinc-300 sm:inline">·</span>
-                <Link href="#" className="transition hover:text-zinc-900 hover:underline">
-                  Your Privacy Choices
-                </Link>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-5">
-              <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-zinc-700">
-                {languageItems.map(({ label, icon: Icon }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className="inline-flex items-center gap-2 transition hover:text-zinc-900"
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-4 text-zinc-600">
-                <Link href="#" aria-label="Facebook" className="transition hover:text-zinc-900">
-                  <Facebook className="h-5 w-5" />
-                </Link>
-                <Link href="#" aria-label="X" className="transition hover:text-zinc-900">
-                  <Twitter className="h-5 w-5" />
-                </Link>
-                <Link href="#" aria-label="Instagram" className="transition hover:text-zinc-900">
-                  <Instagram className="h-5 w-5" />
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </footer>
-  );
+function Dot() {
+    return <span className="text-xs">·</span>
 }
-
-export default Footer;

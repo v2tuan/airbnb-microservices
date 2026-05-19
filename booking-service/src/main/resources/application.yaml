@@ -1,0 +1,80 @@
+server:
+  port: 8086
+  servlet:
+    context-path: /bookings
+
+spring:
+  application:
+    name: booking-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/booking_db
+    username: postgres
+    password: 1234567890
+    # HikariCP connection pool (Spring Boot default)
+    hikari:
+      maximum-pool-size: 20      # Tối đa 20 connection đồng thời
+      minimum-idle: 5            # Giữ tối thiểu 5 connection sẵn sàng
+      connection-timeout: 30000  # 30s timeout khi lấy connection từ pool
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/airbnb
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      # JSON serializer: tự động serialize Java object thành JSON string
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Đảm bảo message được ghi vào tất cả ISR replicas trước khi confirm
+      acks: all
+      # Retry 3 lần nếu send fail (network timeout, broker không available)
+      retries: 3
+    consumer:
+      group-id: booking-service-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # Chỉ cho phép deserialize các class trong package này (security)
+#      properties:
+#        spring.json.trusted.packages: "com.airbnb.common.event.*"
+      # earliest: đọc từ đầu topic nếu chưa có offset
+      # latest: chỉ đọc message mới (default)
+      auto-offset-reset: earliest
+      # Tắt auto-commit: Spring Kafka tự commit sau khi listener xử lý xong
+      # Nếu listener throw exception → không commit → message được retry
+      enable-auto-commit: false
+
+# Tên các Kafka topic — tập trung ở đây để dễ thay đổi
+kafka:
+  topics:
+    booking-saga-started: booking-saga-started
+    room-reservation-command: room-reservation-commands
+    room-reserved: room-reserved
+    room-reservation-failed: room-reservation-failed
+    payment-command: payment-commands
+    payment-completed: payment-completed
+    payment-failed: payment-failed
+    payout-completed: payout-completed
+    notifications: notifications
+
+listings:
+  url: http://localhost:8081/listings
+
+# ===== STRIPE CONFIG =====
+stripe:
+  # Webhook secret - lấy từ Stripe CLI hoặc Stripe Dashboard
+  # Chạy: stripe listen --forward-to localhost:8080/webhook
+  # CLI sẽ hiện: "webhook signing secret: whsec_..."
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_21d16feabfa118dd96ba5395e29b7113b6561c9e3d12f51b15b34fbdf624400a}

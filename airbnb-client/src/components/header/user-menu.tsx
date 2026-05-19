@@ -9,31 +9,41 @@ function UserMenu({ buttonClassName }: { buttonClassName?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // click outside to close
   useEffect(() => {
     const handler = (event: MouseEvent) => {
       if (!ref.current?.contains(event.target as Node)) {
-        setOpen(false);
+        setOpen(false)
       }
     }
 
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler)
-  },[])
+    document.addEventListener("mousedown", handler)
 
-  const toggle = () => setOpen(!open);
- 
+    return () => {
+      document.removeEventListener("mousedown", handler)
+    }
+  }, [])
+
+  const toggle = () => setOpen((prev) => !prev)
+
   return (
     <div ref={ref} className="relative">
       <button
         onClick={toggle}
         className={cn("cursor-pointer", buttonClassName)}
       >
-        <MenuIcon/>
-      </button>
+        <button
+            onClick={toggle}
+            className="cursor-pointer"
+        >
+          <MenuIcon />
+        </button>
 
-      {open && <Dropdown/> }
-    </div>
+        {open && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <Dropdown />
+            </div>
+        )}
+      </div>
   )
 }
 

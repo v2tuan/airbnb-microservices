@@ -18,6 +18,7 @@ public interface IListingService {
     ListingResponse updateListing(UUID listingId, ListingUpdateRequest request);
     void deleteListing(UUID listingId);
     ListingResponse getListingById(UUID listingId);
+    List<ListingResponse> getListingsByIds(List<UUID> listingIds);
     List<ListingResponse> getAllListings();
     List<ListingResponse> getListingsByHost(String hostId);
     List<ListingResponse> searchListings(String city, String country, Integer maxGuests);

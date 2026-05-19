@@ -57,7 +57,7 @@ spring:
                 - Path=${app.api-prefix}/users/**
               filters:
                 - StripPrefix=2
-                - PrefixPath=/users
+#                - PrefixPath=/users
             - id: listing_service
               uri: http://localhost:8081
               predicates:
@@ -79,6 +79,12 @@ spring:
             - id: payment_service
               uri: http://localhost:8085
               predicates:
-                - Path=${app.api-prefix}/payment-methods/**,${app.api-prefix}/transactions/**,${app.api-prefix}/refunds/**
+                - Path=${app.api-prefix}/payment-methods/**,${app.api-prefix}/transactions/**,${app.api-prefix}/refunds/**,${app.api-prefix}/payments/**
+              filters:
+                - StripPrefix=2
+            - id: booking_service
+              uri: http://localhost:8086
+              predicates:
+                - Path=${app.api-prefix}/bookings/**
               filters:
                 - StripPrefix=2

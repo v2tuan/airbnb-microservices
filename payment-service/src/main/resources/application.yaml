@@ -1,7 +1,7 @@
 server:
   port: 8085
   servlet:
-    context-path: /
+    context-path: /payments
 
 spring:
   application:
@@ -22,8 +22,32 @@ spring:
       ddl-auto: update
     show-sql: false
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/airbnb
+
 logging:
   level:
     root: INFO
     com.paymentservice: DEBUG
 
+idp:
+  url: http://localhost:8080
+  client-id: payment_service
+  client-secret: by2n65zqJJrNemDHwVRSiOtl3f5CwdgK
+
+
+# ===== STRIPE CONFIG =====
+stripe:
+  # Secret key - dùng test key khi develop
+  secret-key: ${STRIPE_SECRET_KEY:}
+
+  # Webhook secret - lấy từ Stripe CLI hoặc Stripe Dashboard
+  # Chạy: stripe listen --forward-to localhost:8080/webhook
+  # CLI sẽ hiện: "webhook signing secret: whsec_..."
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+
+  # Publishable key - dùng ở Frontend (an toàn để expose)
+  publishable-key: ${STRIPE_PUBLISHABLE_KEY:}

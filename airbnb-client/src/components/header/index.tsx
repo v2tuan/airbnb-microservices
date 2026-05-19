@@ -56,60 +56,13 @@ function Header() {
         {/* logo */}
         <Logo/>
 
-        {/* Navigation */}
-        <nav className="hidden md:flex items-center space-x-20 text-gray-600 font-medium">
-          <Link href="/" className="text-black transition flex flex-row items-center">
-            <Image 
-              src="/header/home.png" 
-              alt="home indicator"
-              width={80} // Tương đương size={12} bạn muốn
-              height={12}
-              className="object-contain"
-            />
-            Homes
-          </Link>            
-          <Link href="/experiences" className="text-black transition flex flex-row items-center">
-            <Image 
-              src="/header/experience.png" 
-              alt="home indicator"
-              width={80} // Tương đương size={12} bạn muốn
-              height={12}
-              className="object-contain"
-            />
-            Experiences
-          </Link>   
-          <Link href="/services" className="text-black transition flex flex-row items-center">
-            <Image 
-              src="/header/services.png" 
-              alt="home indicator"
-              width={80} // Tương đương size={12} bạn muốn
-              height={12}
-              className="object-contain"
-            />
-            Services
-          </Link>   
-        </nav>
+  // HOME + ROOM DETAIL
+  if (isHomePage || isRoomPage) {
+    return <MainHeader />
+  }
 
-        <div className="flex justify-between space-x-6">
-          <Link href="/users/profile/about?editMode=true" className="text-sm hidden lg:flex">Become a host</Link>
-          {isAuthenticated && user?.avatarUrl ? (
-          <Image
-            src={user.avatarUrl}
-            alt="avatar"
-            width={32}
-            height={32}
-            className="w-8 h-8 rounded-full object-cover cursor-pointer"
-          />
-        ) : (
-          <GlobeIcon />
-        )}
-          <UserMenu/>
-        </div>
-      </div>
-      
-      <SearchBar/>
-    </header>
-  )
+  // DEFAULT USER PAGES
+  return <SecondaryHeader />
 }
 
 export default Header
