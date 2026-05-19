@@ -1,8 +1,11 @@
 package com.bookingservice.service;
 
+import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.CreateBookingRequest;
+import com.bookingservice.dto.request.ListingBatchRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
 import com.bookingservice.dto.response.BookingResponse;
+import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.entity.Booking;
@@ -16,9 +19,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -175,6 +180,72 @@ public class BookingService {
         }
     }
 
+    public List<BookingResponse> getBookingsByUserAndStatuses(List<BookingStatus> statuses) {
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Jwt jwt = (Jwt) authentication.getPrincipal();
+        String userId = jwt.getSubject();
+
+        UUID guestId = UUID.fromString(userId);
+
+        List<Booking> bookings;
+
+        // nếu không truyền status → lấy tất cả
+        if (statuses == null || statuses.isEmpty()) {
+            bookings = bookingRepository.findByGuestId(guestId);
+        } else {
+            bookings = bookingRepository.findByGuestIdAndStatusIn(guestId, statuses);
+        }
+
+        return bookings.stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    public List<BookingTripResponse> getMyBookings(BookingFilterType type) {
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Jwt jwt = (Jwt) authentication.getPrincipal();
+        UUID userId = UUID.fromString(jwt.getSubject());
+
+        // 1. Get bookings
+        List<Booking> bookings = bookingRepository.findBookingsByType(
+                userId,
+                type.name()
+        );
+
+        if (bookings.isEmpty()) {
+            return List.of();
+        }
+
+        // 2. Extract listingIds
+        List<UUID> listingIds = bookings.stream()
+                .map(Booking::getListingId)
+                .distinct()
+                .toList();
+
+        // 3. Batch call listing service
+        List<ListingResponse> listings =
+                listingClient.getListingsByIds(new ListingBatchRequest(listingIds))
+                        .getResult();
+
+        // 4. Convert to map (VERY IMPORTANT)
+        Map<UUID, ListingResponse> listingMap = listings.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ListingResponse::getListingId,
+                        l -> l
+                ));
+
+        // 5. Merge booking + listing
+        return bookings.stream()
+                .map(booking -> {
+                    ListingResponse listing = listingMap.get(booking.getListingId());
+
+                    return mapToTripResponse(booking, listing);
+                })
+                .toList();
+    }
+
     /**
      * Map Booking entity → BookingResponse DTO
      */
@@ -206,5 +277,104 @@ public class BookingService {
                 .guestNotes(booking.getGuestNotes())
                 .secondsUntilExpiry(secondsUntilExpiry)
                 .build();
+    }
+
+    private BookingTripResponse mapToTripResponse(
+            Booking booking,
+            ListingResponse listing
+    ) {
+
+        long secondsUntilExpiry = 0;
+
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
+                && booking.getExpiresAt() != null) {
+
+            secondsUntilExpiry = Math.max(0,
+                    ChronoUnit.SECONDS.between(
+                            LocalDateTime.now(),
+                            booking.getExpiresAt()
+                    ));
+        }
+
+        // Trip label logic (Airbnb style)
+        String tripLabel = resolveTripLabel(booking);
+
+        return BookingTripResponse.builder()
+                .bookingId(booking.getBookingId())
+                .listingId(booking.getListingId())
+
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .totalNights(booking.getTotalNights())
+                .totalAmount(booking.getTotalPrice())
+                .currency(booking.getCurrency())
+
+                .status(booking.getStatus())
+                .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
+
+                .createdAt(booking.getCreatedAt())
+                .expiresAt(booking.getExpiresAt())
+                .paidAt(booking.getPaidAt())
+                .secondsUntilExpiry(secondsUntilExpiry)
+
+                // ===== Listing =====
+                .title(listing != null ? listing.getTitle() : null)
+                .city(listing != null ? listing.getCity() : null)
+                .country(listing != null ? listing.getCountry() : null)
+                .basePrice(listing != null && listing.getPricing() != null
+                        ? listing.getPricing().getBasePrice().longValue()
+                        : null)
+                .coverImageUrl(resolveCoverImage(listing))
+
+                // ===== UI =====
+                .tripLabel(tripLabel)
+
+                .build();
+    }
+
+    private String resolveTripLabel(Booking booking) {
+
+        LocalDate today = LocalDate.now();
+
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            return "Cancelled trip";
+        }
+
+        if (booking.getStatus() == BookingStatus.PAID) {
+
+            if (booking.getCheckInDate().isAfter(today)) {
+                return "Upcoming trip";
+            }
+
+            if (booking.getCheckOutDate().isBefore(today)) {
+                return "Past trip";
+            }
+
+            return "Ongoing trip";
+        }
+
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+            return "Waiting for payment";
+        }
+
+        return "Trip";
+    }
+
+    private String resolveCoverImage(ListingResponse listing) {
+
+        if (listing == null || listing.getPhotos() == null || listing.getPhotos().isEmpty()) {
+            return null;
+        }
+
+        return listing.getPhotos().stream()
+                .filter(photo -> Boolean.TRUE.equals(photo.getIsCover()))
+                .map(photo -> photo.getPhotoUrl())
+                .findFirst()
+                .orElse(
+                        listing.getPhotos().stream()
+                                .findFirst()
+                                .map(photo -> photo.getPhotoUrl())
+                                .orElse(null)
+                );
     }
 }

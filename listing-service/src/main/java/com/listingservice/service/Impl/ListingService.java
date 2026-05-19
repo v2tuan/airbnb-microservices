@@ -96,6 +96,23 @@ public class ListingService implements IListingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<ListingResponse> getListingsByIds(List<UUID> listingIds) {
+
+        if (listingIds == null || listingIds.isEmpty()) {
+            return List.of();
+        }
+
+        log.info("Fetching listings by ids: {}", listingIds.size());
+
+        List<Listing> listings = listingRepository.findByListingIdIn(listingIds);
+
+        return listings.stream()
+                .map(listingMapper::toResponse)
+                .toList();
+    }
+
+    @Override
     public List<ListingResponse> getAllListings() {
         log.info("Getting all listings");
 
