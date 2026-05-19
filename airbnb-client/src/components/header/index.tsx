@@ -1,91 +1,32 @@
 "use client"
 
-import { GlobeIcon } from "lucide-react"
-import Link from "next/link"
-import { useSelector } from "react-redux"
-import Logo from "../logo"
-import SearchBar from "./search-bar"
-import UserMenu from "./user-menu"
-import { selectCurrentUser, selectIsAuthenticated } from "@/features/auth/authSelectors"
-import Image from "next/image"
-import {RootState} from "@/store";
-import {useEffect, useState} from "react";
-import {hasRealmRole} from "@/lib/jwt";
+import { usePathname } from "next/navigation"
+
+import MainHeader from "./main-header"
+import SecondaryHeader from "./secondary-header"
+import HostHeader from "./host-header"
 
 function Header() {
-  const user = useSelector(selectCurrentUser)
-  const isAuthenticated =  useSelector(selectIsAuthenticated)
-  const token = useSelector((state: RootState) => state.auth.token);
-  const [isHost, setIsHost] = useState(false)
+  const pathname = usePathname()
 
-  useEffect(() => {
+  const isHomePage = pathname === "/"
 
-    if (!token) return;
+  const isRoomPage = pathname.startsWith("/rooms")
 
-    setIsHost(hasRealmRole(token, "HOST"))
+  const isHostPage = pathname.startsWith("/host")
 
-  }, [token]);
+  // HOST
+  if (isHostPage) {
+    return <HostHeader />
+  }
 
-  return (
-    <header className="fixed w-full bg-white z-40 border-b py-4 md:px-3 lg:px-20 lg:pt-5">
-      <div className="mx-auto px-4 flex items-center justify-between">
-        {/* logo */}
-        <Logo/>
+  // HOME + ROOM DETAIL
+  if (isHomePage || isRoomPage) {
+    return <MainHeader />
+  }
 
-        {/* Navigation */}
-        <nav className="hidden md:flex items-center space-x-20 text-gray-600 font-medium">
-          <Link href="/" className="text-black transition flex flex-row items-center">
-            <Image 
-              src="/header/home.png" 
-              alt="home indicator"
-              width={80} // Tương đương size={12} bạn muốn
-              height={12}
-              className="object-contain"
-            />
-            Homes
-          </Link>            
-          <Link href="/experiences" className="text-black transition flex flex-row items-center">
-            <Image 
-              src="/header/experience.png" 
-              alt="home indicator"
-              width={80} // Tương đương size={12} bạn muốn
-              height={12}
-              className="object-contain"
-            />
-            Experiences
-          </Link>   
-          <Link href="/services" className="text-black transition flex flex-row items-center">
-            <Image 
-              src="/header/services.png" 
-              alt="home indicator"
-              width={80} // Tương đương size={12} bạn muốn
-              height={12}
-              className="object-contain"
-            />
-            Services
-          </Link>   
-        </nav>
-
-        <div className="flex justify-between space-x-6">
-          <Link href={!token ? "/login" : isHost ? "/host/manage" : "/host/become"} className="text-sm hidden lg:flex">{isHost ? "Welcoming guests" : "Become a host"}</Link>
-          {isAuthenticated && user?.avatarUrl ? (
-          <Image
-            src={user.avatarUrl}
-            alt="avatar"
-            width={32}
-            height={32}
-            className="w-8 h-8 rounded-full object-cover cursor-pointer"
-          />
-        ) : (
-          <GlobeIcon />
-        )}
-          <UserMenu/>
-        </div>
-      </div>
-      
-      <SearchBar/>
-    </header>
-  )
+  // DEFAULT USER PAGES
+  return <SecondaryHeader />
 }
 
 export default Header
