@@ -1,4 +1,6 @@
 import Header from "@/components/header";
+import Footer from "@/components/footer";
+import RouteContentOffset from "@/components/layout/RouteContentOffset";
 import { cn } from "@/lib/utils";
 import ModalProvider from "@/providers/ModalProvider";
 import Providers from "@/providers/provider";
@@ -37,9 +39,9 @@ export default function RootLayout({
         <Providers>
           <Header/>
           <ModalProvider/>
-          <div className="pt-65">{children}</div>
+          <RouteContentOffset>{children}</RouteContentOffset>
+          <Footer />
         </Providers>
-       <Footer/>
       </body>
     </html>
   );

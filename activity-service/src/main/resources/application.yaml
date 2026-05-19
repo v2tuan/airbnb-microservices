@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: activity-service
+  datasource:
+    url: jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/activity_db?sslmode=require
+    username: neondb_owner
+    password: npg_GnXE70sJUjmu
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
