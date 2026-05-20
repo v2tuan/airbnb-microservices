@@ -38,7 +38,7 @@ public class AvailabilityCalendarController {
                 ApiResponse.<AvailabilityResponse>builder()
                         .code(1000)
                         .message("Availability set successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -55,7 +55,7 @@ public class AvailabilityCalendarController {
                 ApiResponse.<List<AvailabilityResponse>>builder()
                         .code(1000)
                         .message("Availability retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -71,7 +71,7 @@ public class AvailabilityCalendarController {
                 ApiResponse.<Boolean>builder()
                         .code(1000)
                         .message("Availability checked successfully")
-                        .result(isAvailable)
+                        .data(isAvailable)
                         .build());
     }
 

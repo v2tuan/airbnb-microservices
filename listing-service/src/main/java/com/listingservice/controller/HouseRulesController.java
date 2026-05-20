@@ -35,7 +35,7 @@ public class HouseRulesController {
                 ApiResponse.<HouseRulesResponse>builder()
                         .code(1000)
                         .message("House rules saved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -48,7 +48,7 @@ public class HouseRulesController {
                 ApiResponse.<HouseRulesResponse>builder()
                         .code(1000)
                         .message("House rules retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
