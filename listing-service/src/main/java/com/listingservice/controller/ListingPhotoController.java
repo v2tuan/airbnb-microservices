@@ -37,7 +37,7 @@ public class ListingPhotoController {
                 .body(ApiResponse.<ListingPhotoResponse>builder()
                         .code(1000)
                         .message("Photo added successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -53,7 +53,7 @@ public class ListingPhotoController {
                 ApiResponse.<ListingPhotoResponse>builder()
                         .code(1000)
                         .message("Photo updated successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -81,7 +81,7 @@ public class ListingPhotoController {
                 ApiResponse.<ListingPhotoResponse>builder()
                         .code(1000)
                         .message("Photo retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -94,7 +94,7 @@ public class ListingPhotoController {
                 ApiResponse.<List<ListingPhotoResponse>>builder()
                         .code(1000)
                         .message("Photos retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 

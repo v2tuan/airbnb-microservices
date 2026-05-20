@@ -60,7 +60,7 @@ public class ListingAmenityController {
                 ApiResponse.<List<AmenityResponse>>builder()
                         .code(1000)
                         .message("Listing amenities retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 

@@ -58,7 +58,7 @@ public class ListingDetailController {
                 .body(ApiResponse.<ListingResponse>builder()
                         .code(1000)
                         .message("Listing created successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -73,7 +73,7 @@ public class ListingDetailController {
                 ApiResponse.<ListingResponse>builder()
                         .code(1000)
                         .message("Listing updated successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -97,7 +97,7 @@ public class ListingDetailController {
                 ApiResponse.<ListingResponse>builder()
                         .code(1000)
                         .message("Listing retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -111,7 +111,7 @@ public class ListingDetailController {
         log.info("Internal batch listing request: {}", request.listingIds().size());
 
         return ResponseEntity.ok(ApiResponse.<List<ListingResponse>>builder()
-                .result(listingService.getListingsByIds(request.listingIds()))
+                .data(listingService.getListingsByIds(request.listingIds()))
                 .build());
     }
 
@@ -123,7 +123,7 @@ public class ListingDetailController {
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Listings retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -135,7 +135,7 @@ public class ListingDetailController {
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Host listings retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -174,7 +174,7 @@ public class ListingDetailController {
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Search results retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -188,7 +188,7 @@ public class ListingDetailController {
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Price range search results retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -204,14 +204,14 @@ public class ListingDetailController {
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Location search results retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
     @GetMapping("/sections")
     public ApiResponse<List<HomeSectionResponse>> getHomeSections(@RequestParam(required = false) Integer limit) {
         return ApiResponse.<List<HomeSectionResponse>>builder()
-                .result(listingService.getHomeSections(limit))
+                .data(listingService.getHomeSections(limit))
                 .build();
     }
 

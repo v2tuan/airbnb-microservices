@@ -38,7 +38,7 @@ public class CustomPricingController {
                 ApiResponse.<CustomPricingResponse>builder()
                         .code(1000)
                         .message("Custom pricing set successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -55,7 +55,7 @@ public class CustomPricingController {
                 ApiResponse.<List<CustomPricingResponse>>builder()
                         .code(1000)
                         .message("Custom pricing retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 

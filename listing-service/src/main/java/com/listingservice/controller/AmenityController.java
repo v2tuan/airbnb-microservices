@@ -36,7 +36,7 @@ public class AmenityController {
                 .body(ApiResponse.<AmenityResponse>builder()
                         .code(1000)
                         .message("Amenity created successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -51,7 +51,7 @@ public class AmenityController {
                 ApiResponse.<AmenityResponse>builder()
                         .code(1000)
                         .message("Amenity updated successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -75,7 +75,7 @@ public class AmenityController {
                 ApiResponse.<AmenityResponse>builder()
                         .code(1000)
                         .message("Amenity retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -87,7 +87,7 @@ public class AmenityController {
                 ApiResponse.<List<AmenityResponse>>builder()
                         .code(1000)
                         .message("Amenities retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -100,7 +100,7 @@ public class AmenityController {
                 ApiResponse.<List<AmenityResponse>>builder()
                         .code(1000)
                         .message("Amenities retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 }

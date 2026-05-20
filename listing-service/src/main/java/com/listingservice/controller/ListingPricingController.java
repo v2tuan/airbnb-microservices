@@ -35,7 +35,7 @@ public class ListingPricingController {
                 ApiResponse.<ListingPricingResponse>builder()
                         .code(1000)
                         .message("Pricing saved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 
@@ -48,7 +48,7 @@ public class ListingPricingController {
                 ApiResponse.<ListingPricingResponse>builder()
                         .code(1000)
                         .message("Pricing retrieved successfully")
-                        .result(response)
+                        .data(response)
                         .build());
     }
 

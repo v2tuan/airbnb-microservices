@@ -73,7 +73,7 @@ public class BookingService {
         }
 
         // 4. Tạo booking entity với status = PENDING_PAYMENT
-        ListingResponse response = listingClient.getListingById(request.getRoomId()).getResult();
+        ListingResponse response = listingClient.getListingById(request.getRoomId()).getData();
 
         Booking booking = Booking.builder()
                 .listingId(request.getRoomId())
@@ -227,7 +227,7 @@ public class BookingService {
         // 3. Batch call listing service
         List<ListingResponse> listings =
                 listingClient.getListingsByIds(new ListingBatchRequest(listingIds))
-                        .getResult();
+                        .getData();
 
         // 4. Convert to map (VERY IMPORTANT)
         Map<UUID, ListingResponse> listingMap = listings.stream()
