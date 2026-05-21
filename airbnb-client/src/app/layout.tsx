@@ -7,7 +7,6 @@ import Providers from "@/providers/provider";
 import type { Metadata } from "next";
 import { Figtree, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Footer from "@/components/footer";
 
 const figtree = Figtree({subsets:['latin'],variable:'--font-sans'});
 

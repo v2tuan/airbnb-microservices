@@ -2,7 +2,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import CheckoutContent from "@/components/checkout/CheckoutContent";
-import {listingAPI} from "@/api/endpoints/listing";
+import {listingAPI, unwrapApiData} from "@/api/endpoints/listing";
 
 interface CheckoutPageProps {
     params: Promise<{ roomId: string }>;
@@ -32,7 +32,17 @@ export default async function CheckoutPage({ params, searchParams }: CheckoutPag
     let room;
     // try {
         const response = await listingAPI.getRoomById(roomId);
-        room = response.data.result;
+        const listing = unwrapApiData(response.data);
+        room = {
+            ...listing,
+            photos: listing.photos ?? [],
+            pricing: listing.pricing ?? {
+                basePrice: 0,
+                currency: "USD",
+                cleaningFee: 0,
+                serviceFeePercentage: 0,
+            },
+        };
     // } catch {
     //     // notFound();
     //     console.log("asdkfljas;lgjals;jdf;lạdf")

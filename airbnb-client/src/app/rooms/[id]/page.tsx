@@ -1,7 +1,7 @@
 'use client'
 
 import { ratingAPI } from "@/api/endpoints/rating";
-import { listingAPI } from "@/api/endpoints/listing";
+import { listingAPI, unwrapApiData } from "@/api/endpoints/listing";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
@@ -126,7 +126,7 @@ export default function RoomDetail () {
           throw listingResponse.reason;
         }
 
-        const listingData = listingResponse.value.data.result;
+        const listingData = unwrapApiData(listingResponse.value.data);
 
         if (!listingData) {
           notFound();

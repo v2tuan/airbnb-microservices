@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useSelector } from "react-redux";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { listingAPI, type HomeListingCardResponse } from "@/api/endpoints/listing";
+import { listingAPI, type HomeListingCardResponse, unwrapApiData } from "@/api/endpoints/listing";
 import ListingCard from "@/components/cards/ListingCard";
 import { useWishlistStore } from "@/hooks/useWishlistStore";
 import type { RootState } from "@/store";
@@ -23,7 +23,7 @@ interface RoomResult {
     basePrice?: number;
     currency?: string;
   };
-  photos?: Array<{ url?: string } | string>;
+  photos?: Array<{ url?: string; photoUrl?: string } | string>;
 }
 
 const mapRoomToCard = (room: RoomResult): HomeListingCardResponse | null => {
@@ -32,7 +32,7 @@ const mapRoomToCard = (room: RoomResult): HomeListingCardResponse | null => {
   let cover = room.coverImageUrl || "";
   if (!cover && Array.isArray(room.photos) && room.photos.length > 0) {
     const first = room.photos[0];
-    cover = typeof first === "string" ? first : first?.url || "";
+    cover = typeof first === "string" ? first : first?.url || first?.photoUrl || "";
   }
 
   return {
@@ -86,7 +86,7 @@ export default function WishlistCollectionDetailPage() {
           categoryItems.map(async (item) => {
             try {
               const res = await listingAPI.getRoomById(item.listingId);
-              return mapRoomToCard(res.data.result);
+              return mapRoomToCard(unwrapApiData(res.data));
             } catch {
               return null;
             }

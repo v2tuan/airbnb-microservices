@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSelector } from "react-redux";
 import { ChevronRight } from "lucide-react";
-import { listingAPI } from "@/api/endpoints/listing";
+import { listingAPI, unwrapApiData } from "@/api/endpoints/listing";
 import { useWishlistStore } from "@/hooks/useWishlistStore";
 import type { RootState } from "@/store";
 import { selectIsAuthenticated } from "@/features/auth/authSelectors";
@@ -67,12 +67,11 @@ export default function WishlistsPage() {
             topFour.map(async (item) => {
               try {
                 const res = await listingAPI.getRoomById(item.listingId);
-                const listing = res.data.result;
+                const listing = unwrapApiData(res.data);
 
                 const imageFromRoom =
-                  listing?.coverImageUrl ||
-                  listing?.photos?.[0]?.url ||
-                  listing?.photos?.[0] ||
+                  listing?.photos?.find((photo) => photo.isCover)?.photoUrl ||
+                  listing?.photos?.[0]?.photoUrl ||
                   placeholderImage;
 
                 return {
