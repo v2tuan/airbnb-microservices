@@ -77,7 +77,7 @@ spring:
               filters:
                 - StripPrefix=2
             - id: payment_service
-              uri: http://localhost:8085
+              uri: http://localhost:8087
               predicates:
                 - Path=${app.api-prefix}/payment-methods/**,${app.api-prefix}/transactions/**,${app.api-prefix}/refunds/**,${app.api-prefix}/payments/**
               filters:
