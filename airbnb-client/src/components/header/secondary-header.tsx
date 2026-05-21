@@ -7,7 +7,7 @@ import {usePathname} from "next/navigation";
 import {useSelector} from "react-redux";
 import {selectCurrentUser, selectIsAuthenticated} from "@/features/auth/authSelectors";
 import {RootState} from "@/store";
-import {useEffect, useState} from "react";
+import {useMemo} from "react";
 import {hasRealmRole} from "@/lib/jwt";
 import {GlobeIcon} from "lucide-react";
 import Image from "next/image";
@@ -18,13 +18,7 @@ function SecondaryHeader() {
     const isAuthenticated = useSelector(selectIsAuthenticated)
     const token = useSelector((state: RootState) => state.auth.token)
 
-    const [isHost, setIsHost] = useState(false)
-
-    useEffect(() => {
-        if (!token) return
-
-        setIsHost(hasRealmRole(token, "HOST"))
-    }, [token])
+    const isHost = useMemo(() => !!token && hasRealmRole(token, "HOST"), [token])
 
     return (
         <header className="fixed top-0 left-0 right-0 z-50 border-b bg-white">

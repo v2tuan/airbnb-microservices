@@ -9,7 +9,7 @@ import UserMenu from "./user-menu"
 import { selectCurrentUser, selectIsAuthenticated } from "@/features/auth/authSelectors"
 import Image from "next/image"
 import { RootState } from "@/store"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { hasRealmRole } from "@/lib/jwt"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -71,7 +71,7 @@ function MainHeader() {
     const isAuthenticated = useSelector(selectIsAuthenticated)
     const token = useSelector((state: RootState) => state.auth.token)
 
-    const [isHost, setIsHost] = useState(false)
+    const isHost = useMemo(() => !!token && hasRealmRole(token, "HOST"), [token])
 
     const isDetailPage = useIsDetailPage()
 
@@ -104,12 +104,6 @@ function MainHeader() {
     const [isScrolled, setIsScrolled] = useState(false)
 
     const headerRef = useRef<HTMLDivElement>(null)
-
-    useEffect(() => {
-        if (!token) return
-
-        setIsHost(hasRealmRole(token, "HOST"))
-    }, [token])
 
     /**
      * NEW
