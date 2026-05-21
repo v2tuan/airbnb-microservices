@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +40,32 @@ public class CloudinaryService {
             return secureUrl.toString();
         } catch (IOException exception) {
             throw new RuntimeException("Failed to upload avatar to Cloudinary", exception);
+        }
+    }
+
+    public String uploadImage(MultipartFile file, String folder) {
+        if (file == null || file.isEmpty()) {
+            throw new RuntimeException("Image file is required");
+        }
+
+        try {
+            Map<?, ?> uploadResult = cloudinary.uploader().upload(
+                    file.getBytes(),
+                    ObjectUtils.asMap(
+                            "folder", folder == null || folder.isBlank() ? "airbnb/uploads" : folder,
+                            "public_id", UUID.randomUUID().toString(),
+                            "resource_type", "image"
+                    )
+            );
+
+            Object secureUrl = uploadResult.get("secure_url");
+            if (secureUrl == null) {
+                throw new RuntimeException("Cloudinary upload did not return secure_url");
+            }
+
+            return secureUrl.toString();
+        } catch (IOException exception) {
+            throw new RuntimeException("Failed to upload image to Cloudinary", exception);
         }
     }
 }
