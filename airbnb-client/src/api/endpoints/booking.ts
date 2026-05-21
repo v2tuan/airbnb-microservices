@@ -4,13 +4,18 @@ const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
 
 export interface CheckoutRequest {
     roomId: string;
+    roomName?: string;
+    userId?: string;
     checkInDate: string;   // "YYYY-MM-DD"
     checkOutDate: string;  // "YYYY-MM-DD"
+    totalAmount?: number;
     currency: string;      // "usd" hoặc "vnd"
-    numberOfAdults: number;
-    numberOfChildren: number;
-    numberOfInfants: number;
-    numberOfPets: number;
+    guestCount?: number;
+    guestNotes?: string;
+    numberOfAdults?: number;
+    numberOfChildren?: number;
+    numberOfInfants?: number;
+    numberOfPets?: number;
 }
 
 export interface CheckoutResponse {
