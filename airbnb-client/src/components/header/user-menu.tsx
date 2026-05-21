@@ -28,22 +28,19 @@ function UserMenu({ buttonClassName }: { buttonClassName?: string }) {
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={toggle}
         className={cn("cursor-pointer", buttonClassName)}
       >
-        <button
-            onClick={toggle}
-            className="cursor-pointer"
-        >
-          <MenuIcon />
-        </button>
+        <MenuIcon />
+      </button>
 
-        {open && (
-            <div className="absolute right-0 top-full mt-2 z-50">
-              <Dropdown />
-            </div>
-        )}
-      </div>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-50">
+          <Dropdown />
+        </div>
+      )}
+    </div>
   )
 }
 
