@@ -28,3 +28,5 @@ replay_pid*
 docs
 
 .env
+payment-service/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
+payment-service/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst

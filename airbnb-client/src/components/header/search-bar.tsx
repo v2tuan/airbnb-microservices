@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useRouter } from "next/navigation"
 
 interface SearchBarProps {
   className?: string
@@ -11,7 +12,10 @@ interface SearchBarProps {
 
 export default function SearchBar({ className }: SearchBarProps) {
   const [activeTab, setActiveTab] = useState<"where" | "when" | "who" | null>(null)
+  const [where, setWhere] = useState("")
+  const [guests, setGuests] = useState(1)
   const searchRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
   // Click outside logic
   useEffect(() => {
@@ -30,6 +34,21 @@ export default function SearchBar({ className }: SearchBarProps) {
     if (activeTab === "where") return "left-0 w-[33.33%]"
     if (activeTab === "when") return "left-[33.33%] w-[33.33%]"
     if (activeTab === "who") return "left-[66.66%] w-[33.33%]"
+  }
+
+  const handleSearch = () => {
+    const query = new URLSearchParams()
+    const destination = where.trim()
+
+    if (destination) {
+      query.set("q", destination)
+    }
+
+    if (guests > 1) {
+      query.set("guests", String(guests))
+    }
+
+    router.push(`/search${query.toString() ? `?${query.toString()}` : ""}`)
   }
 
   return (
@@ -64,6 +83,11 @@ export default function SearchBar({ className }: SearchBarProps) {
               <p className="text-[10px] font-bold text-black uppercase">Where</p>
               <input
                   placeholder="Search destinations"
+                  value={where}
+                  onChange={(event) => setWhere(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleSearch()
+                  }}
                   className="text-sm bg-transparent outline-none placeholder:text-gray-500 w-full"
               />
             </div>
@@ -94,10 +118,15 @@ export default function SearchBar({ className }: SearchBarProps) {
             >
               <div className="flex flex-col pl-5">
                 <p className="text-[10px] font-bold text-black uppercase">Who</p>
-                <p className="text-sm">Add guests</p>
+                <p className="text-sm">{guests > 1 ? `${guests} guests` : "Add guests"}</p>
               </div>
 
               <Button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    handleSearch()
+                  }}
                   className={cn(
                       "rounded-full bg-[#e51d54] hover:bg-[#E31C5F] transition-all duration-300 flex items-center justify-center",
                       activeTab ? "px-5 gap-2 h-12" : "w-12 h-12 p-0"
@@ -115,11 +144,19 @@ export default function SearchBar({ className }: SearchBarProps) {
                 <div className="absolute left-0 w-[400px] bg-white rounded-3xl shadow-2xl border p-8 animate-in fade-in slide-in-from-top-2 duration-300">
                   <p className="font-bold mb-4">Search by region</p>
                   <div className="grid grid-cols-3 gap-4">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="flex flex-col gap-2">
+                    {["Da Nang", "Ho Chi Minh", "Ha Noi", "Nha Trang", "Da Lat", "Phu Quoc"].map((city) => (
+                        <button
+                          type="button"
+                          key={city}
+                          onClick={() => {
+                            setWhere(city)
+                            setActiveTab("who")
+                          }}
+                          className="flex flex-col gap-2 text-left"
+                        >
                           <div className="aspect-square bg-gray-100 rounded-xl border hover:border-black transition cursor-pointer" />
-                          <span className="text-xs text-center">Flexible</span>
-                        </div>
+                          <span className="text-xs text-center">{city}</span>
+                        </button>
                     ))}
                   </div>
                 </div>
@@ -136,7 +173,29 @@ export default function SearchBar({ className }: SearchBarProps) {
             {activeTab === "who" && (
                 <div className="absolute right-0 w-[400px] bg-white rounded-3xl shadow-2xl border p-8 animate-in fade-in slide-in-from-top-2 duration-300">
                   <p className="font-bold mb-4">Who's coming?</p>
-                  <p className="text-sm text-gray-500">Manage guests here</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Guests</p>
+                      <p className="text-sm text-gray-500">Adults and children</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setGuests((value) => Math.max(1, value - 1))}
+                        className="h-8 w-8 rounded-full border border-gray-300 text-lg"
+                      >
+                        -
+                      </button>
+                      <span className="w-6 text-center text-sm font-semibold">{guests}</span>
+                      <button
+                        type="button"
+                        onClick={() => setGuests((value) => value + 1)}
+                        className="h-8 w-8 rounded-full border border-gray-300 text-lg"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
             )}
           </div>

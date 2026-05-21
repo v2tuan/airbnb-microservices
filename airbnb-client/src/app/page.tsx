@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { HomeSectionResponse, listingAPI } from "@/api/endpoints/listing";
+import { HomeSectionResponse, listingAPI, unwrapApiData } from "@/api/endpoints/listing";
 import ListingCard from "@/components/cards/ListingCard";
 import { useWishlistStore } from "@/hooks/useWishlistStore";
 import useLoginModal from "@/hooks/userLoginModal";
@@ -27,7 +27,7 @@ export default function Home() {
       try {
         const response = await listingAPI.getHomeSections();
         if (response.data.code === 1000) {
-          setSections(response.data.result);
+          setSections(unwrapApiData(response.data));
         } else {
           setErrorMessage(response.data.message ?? "Không thể tải dữ liệu.");
         }
