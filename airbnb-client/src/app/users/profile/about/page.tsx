@@ -138,7 +138,7 @@ export default function AboutPage() {
         syncForm(nextProfile);
       }
       await dispatch(fetchMeThunk(token));
-      toast.success(response.data?.message ?? "Profile updated successfully.");
+      toast.success((response as any)?.data?.message ?? "Profile updated successfully.");
       toggleEditMode(false);
     } catch (error) {
       const message = extractApiMessage(error, "Unable to update profile.");
@@ -162,7 +162,7 @@ export default function AboutPage() {
         syncForm(nextProfile);
       }
       await dispatch(fetchMeThunk(token));
-      toast.success(response.data?.message ?? "Avatar updated successfully.");
+      toast.success((response as any)?.data?.message ?? "Avatar updated successfully.");
     } catch (error) {
       const message = extractApiMessage(error, "Unable to upload avatar.");
       setErrorMessage(message);

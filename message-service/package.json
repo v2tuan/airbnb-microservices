@@ -1,0 +1,44 @@
+{
+  "name": "message-service",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Express message-service ported from EstageGo message module",
+  "author": "duy",
+  "engines": {
+    "node": ">=18.x"
+  },
+  "scripts": {
+    "lint": "eslint src --ext js --report-unused-disable-directives --max-warnings 0",
+    "clean": "rimraf build && mkdir build",
+    "build-babel": "babel ./src -d ./build/src",
+    "build": "npm run clean && npm run build-babel",
+    "production": "npm run build && cross-env BUILD_MODE=production ./build/src/server.js",
+    "dev": "cross-env BUILD_MODE=dev nodemon --exec babel-node ./src/server.js"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.27.6",
+    "async-exit-hook": "^2.0.1",
+    "cloudinary": "^2.7.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "http-status-codes": "^2.3.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.18.0",
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.27.6",
+    "@babel/core": "^7.27.6",
+    "@babel/node": "^7.27.6",
+    "@babel/plugin-transform-runtime": "^7.27.6",
+    "@babel/preset-env": "^7.27.6",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "eslint": "^9.31.0",
+    "nodemon": "^3.1.10",
+    "rimraf": "^6.1.2"
+  }
+}
