@@ -10,4 +10,5 @@ public interface IListingAmenityService {
     void removeAmenityFromListing(UUID listingId, UUID amenityId);
     List<AmenityResponse> getListingAmenities(UUID listingId);
     void updateListingAmenities(UUID listingId, List<UUID> amenityIds);
+    void updateListingAmenityNames(UUID listingId, List<String> amenityNames);
 }

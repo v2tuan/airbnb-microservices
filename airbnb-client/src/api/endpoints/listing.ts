@@ -204,9 +204,21 @@ export interface AvailabilityPayload {
   maxNights?: number;
 }
 
-const withAuth = (token: string | null) => ({
-  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-});
+const getCurrentToken = (token: string | null) => {
+  if (typeof window === "undefined") return token;
+
+  return localStorage.getItem("access_token") ?? token;
+};
+
+const withAuth = (token: string | null) => {
+  const currentToken = getCurrentToken(token);
+
+  return {
+    headers: currentToken
+      ? { Authorization: `Bearer ${currentToken}` }
+      : undefined,
+  };
+};
 
 export const unwrapApiData = <T>(payload: ApiResponse<T> | T): T => {
   if (payload && typeof payload === "object") {
@@ -236,6 +248,10 @@ export const listingAPI = {
     AxiosResponse<ApiResponse<ListingResponse[]>>
   > => {
     return apiClient.get(`${prefix}/listings`);
+  },
+
+  getAmenities: (): Promise<AxiosResponse<ApiResponse<AmenityResponse[]>>> => {
+    return apiClient.get(`${prefix}/amenities`);
   },
 
   searchListings: (params: {
@@ -391,6 +407,30 @@ export const listingAPI = {
     return apiClient.post(
       `${prefix}/listings/${listingId}/house-rules`,
       payload,
+      withAuth(token),
+    );
+  },
+
+  updateListingAmenities: (
+    token: string | null,
+    listingId: string,
+    amenityIds: string[],
+  ): Promise<AxiosResponse<ApiResponse<null>>> => {
+    return apiClient.put(
+      `${prefix}/listings/${listingId}/amenities`,
+      amenityIds,
+      withAuth(token),
+    );
+  },
+
+  updateListingAmenityNames: (
+    token: string | null,
+    listingId: string,
+    amenityNames: string[],
+  ): Promise<AxiosResponse<ApiResponse<null>>> => {
+    return apiClient.put(
+      `${prefix}/listings/${listingId}/amenities/names`,
+      amenityNames,
       withAuth(token),
     );
   },

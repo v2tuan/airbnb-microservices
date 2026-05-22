@@ -19,6 +19,7 @@ import {
   Power,
   PowerOff,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
   Users,
@@ -36,6 +37,7 @@ import {
 } from "react";
 import { useSelector } from "react-redux";
 import {
+  type AmenityResponse,
   type AvailabilityPayload,
   type HouseRulesPayload,
   type ListingMutationPayload,
@@ -48,11 +50,19 @@ import {
   unwrapApiData,
 } from "@/api/endpoints/listing";
 import { uploadAPI } from "@/api/endpoints/upload";
+import AmenityPicker from "@/components/listing/AmenityPicker";
+import LocationPickerMap from "@/components/listing/LocationPickerMap";
 import { formatPrice } from "@/contants";
 import { hasRealmRole } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
-type PanelKey = "details" | "photos" | "pricing" | "rules" | "availability";
+type PanelKey =
+  | "details"
+  | "photos"
+  | "amenities"
+  | "pricing"
+  | "rules"
+  | "availability";
 
 const propertyOptions: Array<{ value: PropertyType; label: string }> = [
   { value: "APARTMENT", label: "Apartment" },
@@ -89,6 +99,7 @@ const roomOptions: Array<{
 const panels: Array<{ key: PanelKey; label: string; icon: ElementType }> = [
   { key: "details", label: "Listing editor", icon: Pencil },
   { key: "photos", label: "Photo tour", icon: Camera },
+  { key: "amenities", label: "Amenities", icon: Sparkles },
   { key: "pricing", label: "Pricing", icon: CircleDollarSign },
   { key: "rules", label: "House rules", icon: ShieldCheck },
   { key: "availability", label: "Availability", icon: CalendarDays },
@@ -248,6 +259,8 @@ export default function EditListingPage() {
   const [form, setForm] = useState<ListingMutationPayload | null>(null);
   const [pricing, setPricing] = useState<ListingPricingPayload>(defaultPricing);
   const [rules, setRules] = useState<HouseRulesPayload>(defaultRules);
+  const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
+  const [selectedAmenityNames, setSelectedAmenityNames] = useState<string[]>([]);
   const [photos, setPhotos] = useState<ListingPhotoResponse[]>([]);
   const [photoUrl, setPhotoUrl] = useState("");
   const [availability, setAvailability] = useState<AvailabilityPayload>({
@@ -280,6 +293,9 @@ export default function EditListingPage() {
       setForm(toListingForm(nextListing));
       setPricing({ ...defaultPricing, ...nextListing.pricing });
       setRules({ ...defaultRules, ...nextListing.houseRules });
+      setSelectedAmenityNames(
+        nextListing.amenities?.map((amenity) => amenity.name) ?? [],
+      );
       setPhotos(nextListing.photos ?? []);
     } catch {
       setError("Unable to load listing.");
@@ -291,6 +307,13 @@ export default function EditListingPage() {
   useEffect(() => {
     void loadListing();
   }, [loadListing]);
+
+  useEffect(() => {
+    listingAPI
+      .getAmenities()
+      .then((response) => setAmenities(unwrapApiData(response.data)))
+      .catch(() => setAmenities([]));
+  }, []);
 
   const flashSuccess = (message: string) => {
     setSuccess(message);
@@ -357,6 +380,27 @@ export default function EditListingPage() {
       void loadListing();
     } catch (error: any) {
       setError(error?.response?.data?.message ?? "Unable to save rules.");
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const handleSaveAmenities = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token) return;
+
+    setSaving("amenities");
+    setError("");
+    try {
+      await listingAPI.updateListingAmenityNames(
+        token,
+        listingId,
+        selectedAmenityNames,
+      );
+      flashSuccess("Amenities saved.");
+      void loadListing();
+    } catch (error: any) {
+      setError(error?.response?.data?.message ?? "Unable to save amenities.");
     } finally {
       setSaving("");
     }
@@ -781,6 +825,26 @@ export default function EditListingPage() {
                       <h3 className="text-lg font-semibold text-neutral-950">
                         Location
                       </h3>
+                      <div className="mt-5">
+                        <LocationPickerMap
+                          address={[form.address, form.city, form.country]
+                            .filter(Boolean)
+                            .join(", ")}
+                          latitude={form.latitude}
+                          longitude={form.longitude}
+                          onChange={(position) =>
+                            setForm((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    latitude: position.latitude,
+                                    longitude: position.longitude,
+                                  }
+                                : current,
+                            )
+                          }
+                        />
+                      </div>
                       <div className="mt-5 grid gap-5 md:grid-cols-2">
                         <Field label="Street address" wide>
                           <input
@@ -1041,6 +1105,36 @@ export default function EditListingPage() {
                     </div>
                   )}
                 </section>
+              ) : null}
+
+              {activePanel === "amenities" ? (
+                <form onSubmit={handleSaveAmenities} className="max-w-5xl">
+                  <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">
+                        Amenities
+                      </h2>
+                      <p className="mt-2 text-neutral-500">
+                        Select everything guests can use during their stay.
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-neutral-500">
+                      {selectedAmenityNames.length} selected
+                    </p>
+                  </div>
+
+                  <AmenityPicker
+                    amenities={amenities}
+                    selectedNames={selectedAmenityNames}
+                    onChange={setSelectedAmenityNames}
+                  />
+
+                  <div className="mt-10 flex justify-end">
+                    <SaveButton loading={saving === "amenities"}>
+                      Save amenities
+                    </SaveButton>
+                  </div>
+                </form>
               ) : null}
 
               {activePanel === "pricing" ? (

@@ -14,6 +14,8 @@ public interface AmenityRepository extends JpaRepository<Amenity, UUID> {
     
     // Tìm theo tên
     Optional<Amenity> findByName(String name);
+
+    Optional<Amenity> findByNameIgnoreCase(String name);
     
     // Tìm theo category
     List<Amenity> findByCategory(AmenityCategory category);
