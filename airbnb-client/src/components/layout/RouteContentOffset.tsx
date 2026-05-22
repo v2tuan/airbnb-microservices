@@ -1,7 +1,7 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 export default function RouteContentOffset({
   children,
@@ -9,11 +9,9 @@ export default function RouteContentOffset({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isMessagesRoute = pathname?.startsWith("/guest/messages");
+  const isHomeRoute = pathname === "/";
+  const isRoomRoute = pathname?.startsWith("/rooms");
+  const offsetClass = isHomeRoute || isRoomRoute ? "pt-65" : "pt-20";
 
-  return (
-    <div className={cn(isMessagesRoute ? "pt-30" : "pt-65")}>
-      {children}
-    </div>
-  );
+  return <div className={cn(offsetClass)}>{children}</div>;
 }
