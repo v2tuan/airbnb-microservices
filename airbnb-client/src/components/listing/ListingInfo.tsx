@@ -11,8 +11,10 @@ interface ListingData {
 
 export function ListingInfo({
   data,
+  hostName = "LocalHost",
 }: {
   data: ListingData;
+  hostName?: string;
 }) {
   const displayPropertyType = data.propertyType.charAt(0) + data.propertyType.slice(1).toLowerCase()
   return (
@@ -20,7 +22,7 @@ export function ListingInfo({
       {/* title and keystats */}
       <div>
         <h2 className="text-2xl font-semibold mb-2">
-          Entire {displayPropertyType} hosted by LocalHost
+          Entire {displayPropertyType} hosted by {hostName}
         </h2>
         <div className="flex flex-wrap gap-1 text-zinc-600 font-light">
           <span>{data.maxGuests} guests</span>

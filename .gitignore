@@ -30,3 +30,50 @@ docs
 .env
 payment-service/target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
 payment-service/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
+
+# Node modules
+**/node_modules/
+
+# Next.js / front-end
+airbnb-client/.next/
+airbnb-client/out/
+airbnb-client/.next/cache/
+
+# TypeScript
+**/*.tsbuildinfo
+
+# npm / pnpm / yarn logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Package managers
+package-lock.json
+yarn.lock
+.pnpm-store/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Maven / Java build outputs - ignore all target folders
+**/target/
+
+# Other build artifacts
+dist/
+build/
+coverage/
+
+# Environment files
+**/.env
+**/.env.*
+
+# Ignore local generated files
+*.orig
+
+./message-service/node_modules

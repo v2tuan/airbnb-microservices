@@ -6,6 +6,7 @@ import { store } from '@/store'
 import type { AppDispatch, RootState } from '@/store'
 import { fetchMeThunk, hydrateAuthFromStorage } from '@/features/auth/authSlice'
 import { selectIsAuthenticated } from '@/features/auth/authSelectors'
+import SocketProvider from './SocketProvider'
 
 function AuthInitializer() {
   const dispatch = useDispatch<AppDispatch>()
@@ -29,7 +30,7 @@ function Providers({children} : {children: React.ReactNode}) {
   return (
     <Provider store={store}>
       <AuthInitializer />
-      {children}
+      <SocketProvider>{children}</SocketProvider>
     </Provider>
   )
 }

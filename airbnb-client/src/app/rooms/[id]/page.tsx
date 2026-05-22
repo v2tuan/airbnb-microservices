@@ -1,5 +1,6 @@
 'use client'
 
+import { userAPI, type PublicProfilePageData } from "@/api/endpoints/user";
 import { ratingAPI } from "@/api/endpoints/rating";
 import { listingAPI, unwrapApiData } from "@/api/endpoints/listing";
 import { BookingCard } from "@/components/listing/BookingCard";
@@ -8,7 +9,7 @@ import { ListingInfo } from "@/components/listing/ListingInfo";
 import { ListingRatingForm } from "@/components/listing/ListingRatingForm";
 import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
-import { Share } from "lucide-react";
+import { CalendarDays, CheckCircle2, MessageSquare, Share, Sparkles, Star, Users } from "lucide-react";
 import {notFound, useParams} from "next/navigation";
 import {useEffect, useState} from "react";
 
@@ -31,6 +32,25 @@ type RatingRecord = {
   createdAt?: string;
   reviewerFullName?: string;
   reviewerAvatarUrl?: string;
+};
+
+type HostPreview = {
+  fullName?: string;
+  avatarUrl?: string;
+  isSuperhost?: boolean;
+  hostSince?: string;
+  location?: string;
+  responseRate?: string;
+  responseTime?: string;
+};
+
+const formatHostSince = (hostSince?: string) => {
+  if (!hostSince) return "Joined recently";
+
+  const date = new Date(hostSince);
+  if (Number.isNaN(date.getTime())) return "Joined recently";
+
+  return `Joined ${date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`;
 };
 
 const firstDefinedString = (...values: Array<unknown>) => {
@@ -106,6 +126,7 @@ export default function RoomDetail () {
   const { id } = params;
 
   const [listing, setListing] = useState<any>(null);
+  const [host, setHost] = useState<HostPreview | null>(null);
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [averageRating, setAverageRating] = useState(0);
 
@@ -149,6 +170,27 @@ export default function RoomDetail () {
         setListing(listingData);
         setRatings(normalizedRatings);
         setAverageRating(avgRating);
+
+        const hostId = listingData?.hostId;
+        if (hostId) {
+          try {
+            const hostResponse = await userAPI.getPublicProfilePageData(hostId, { reviewPage: 0, listingPage: 0 });
+            const hostProfile = (hostResponse.data as PublicProfilePageData | undefined)?.host;
+
+            setHost({
+              fullName: hostProfile?.fullName,
+              avatarUrl: hostProfile?.avatarUrl,
+              isSuperhost: hostProfile?.isSuperhost,
+              hostSince: hostProfile?.hostSince,
+              location: hostProfile?.location,
+              responseRate: hostProfile?.responseRate,
+              responseTime: hostProfile?.responseTime,
+            });
+          } catch (hostError) {
+            console.error("Failed to fetch host profile:", hostError);
+            setHost(null);
+          }
+        }
       } catch (error) {
         console.error("Failed to fetch listing:", error);
         setError(true);
@@ -169,20 +211,25 @@ export default function RoomDetail () {
   }
 
   return (
-      <main className="max-w-7xl mx-auto px-6 md:px-10 lg:px-20 py-8">
-        {/* Header Section */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold">{listing.title}</h1>
+      <main className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_30%),linear-gradient(180deg,#fff_0%,#fff_60%,#f8fafc_100%)] px-4 py-6 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">Stay detail</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950 md:text-4xl">{listing.title}</h1>
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-500">
+                <span className="font-medium text-zinc-700">{listing.address}, {listing.city}, {listing.country}</span>
+                <span className="hidden h-1 w-1 rounded-full bg-zinc-300 sm:inline-block" />
+                <span>{listing.maxGuests} guests</span>
+                <span className="hidden h-1 w-1 rounded-full bg-zinc-300 sm:inline-block" />
+                <span>{listing.numBeds} beds</span>
+              </p>
+            </div>
 
-          <div className="mt-2 flex items-center justify-between gap-4">
-          <span className="underline font-medium text-sm cursor-pointer">
-            {listing.address}, {listing.city}, {listing.country}
-          </span>
-
-            <div className="flex items-center gap-4 text-sm font-medium">
+            <div className="flex items-center gap-3">
               <button
                   type="button"
-                  className="hidden md:inline-flex items-center gap-2 underline hover:bg-zinc-100 px-2 py-1 rounded-md transition"
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-zinc-900 hover:text-zinc-950"
               >
                 <Share className="h-4 w-4" />
                 Share
@@ -191,41 +238,71 @@ export default function RoomDetail () {
               <RoomWishlistButton listingId={listing.listingId} />
             </div>
           </div>
-        </div>
 
-        {/* Photos Grid */}
-        <ListingGallery photos={listing.photos} />
+          <ListingGallery photos={listing.photos ?? []} title={listing.title} />
 
-        {/* Content Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-12 mt-12">
-          {/* Left Column */}
-          <div className="md:col-span-3">
-            <ListingInfo data={listing} />
+          <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="space-y-8">
+              <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] md:p-8">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-900 text-white shadow-lg">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Hosted by</p>
+                    <p className="mt-1 text-xl font-semibold text-zinc-950">{host?.fullName ?? "LocalHost"}</p>
+                    <p className="mt-1 text-sm text-zinc-500">{host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-zinc-50 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Status</p>
+                    <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      {host?.isSuperhost ? "Superhost" : "Member host"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Response</p>
+                    <p className="mt-2 text-sm font-semibold text-zinc-900">{host?.responseRate ?? "Fast response"}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{host?.responseTime ?? "Typically replies soon"}</p>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-50 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Location</p>
+                    <p className="mt-2 text-sm font-semibold text-zinc-900">{host?.location ?? listing.city}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] md:p-8">
+                <ListingInfo data={listing} hostName={host?.fullName ?? "LocalHost"} />
+              </section>
+
+              <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] md:p-8">
+                <ListingRatingPanel
+                    averageRating={averageRating}
+                    ratings={ratings}
+                />
+
+                <ListingRatingForm
+                    listingId={listing.listingId}
+                    hostId={listing.hostId}
+                />
+              </section>
+            </div>
+
+            <div className="lg:sticky lg:top-24 lg:self-start">
+              <BookingCard
+                  roomId={listing.listingId}
+                  maxGuests={listing.maxGuests}
+                  petsAllowed={true}
+                  pricing={listing.pricing}
+                  rating={averageRating}
+                  reviewCount={ratings.length}
+              />
+            </div>
           </div>
-
-          {/* Right Column */}
-          <div className="relative md:col-span-2 m-5">
-            <BookingCard
-                roomId={listing.listingId}
-                maxGuests={listing.maxGuests}
-                petsAllowed={true}
-                pricing={listing.pricing}
-                rating={averageRating}
-                reviewCount={ratings.length}
-            />
-          </div>
-        </div>
-
-        <div className="mt-12">
-          <ListingRatingPanel
-              averageRating={averageRating}
-              ratings={ratings}
-          />
-
-          <ListingRatingForm
-              listingId={listing.listingId}
-              hostId={listing.hostId}
-          />
         </div>
       </main>
   );

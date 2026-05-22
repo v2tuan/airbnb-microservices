@@ -45,12 +45,12 @@ spring:
 
           routes:
             - id: profile_service
-              uri: http://localhost:8082
+              uri: http://localhost:8888
               predicates:
                 - Path=${app.api-prefix}/profile/**
               filters:
                 - StripPrefix=3
-                - PrefixPath=/users/profile
+                - PrefixPath=/internal/profile
             - id: user_service
               uri: http://localhost:8082
               predicates:
@@ -82,6 +82,13 @@ spring:
                 - Path=${app.api-prefix}/payment-methods/**,${app.api-prefix}/transactions/**,${app.api-prefix}/refunds/**,${app.api-prefix}/payments/**
               filters:
                 - StripPrefix=2
+            - id: message_service
+              uri: http://localhost:8017
+              predicates:
+                - Path=${app.api-prefix}/conversations/**,${app.api-prefix}/messages/**
+              filters:
+                - StripPrefix=2
+                - PrefixPath=/V1
             - id: booking_service
               uri: http://localhost:8086
               predicates:
