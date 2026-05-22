@@ -34,6 +34,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/airbnb
+          jwk-set-uri: http://localhost:8080/realms/airbnb/protocol/openid-connect/certs
 
 jwt:
   signerKey: "1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij"

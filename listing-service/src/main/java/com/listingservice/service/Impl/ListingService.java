@@ -49,6 +49,7 @@ public class ListingService implements IListingService {
         Listing listing = listingMapper.toEntity(request);
         listing.setHostId(keycloakUserId);  // Set Keycloak user ID as hostId
         listing.setStatus(ListingStatus.DRAFT);
+        validateCheckInWindow(listing);
 
         Listing savedListing = listingRepository.save(listing);
         log.info("Listing created with ID: {}", savedListing.getListingId());
@@ -65,6 +66,7 @@ public class ListingService implements IListingService {
                 .orElseThrow(() -> new AppException(ErrorCode.LISTING_NOT_FOUND));
 
         listingMapper.updateEntity(listing, request);
+        validateCheckInWindow(listing);
 
         Listing updatedListing = listingRepository.save(listing);
         log.info("Listing updated: {}", listingId);
@@ -329,5 +331,14 @@ public class ListingService implements IListingService {
 
         return Math.min(limitPerSection, MAX_SECTION_LIMIT);
     }
-}
 
+    private void validateCheckInWindow(Listing listing) {
+        if (listing.getCheckInStartTime() == null || listing.getCheckInEndTime() == null) {
+            return;
+        }
+
+        if (!listing.getCheckInStartTime().isBefore(listing.getCheckInEndTime())) {
+            throw new AppException(ErrorCode.INVALID_CHECK_IN_TIME);
+        }
+    }
+}
