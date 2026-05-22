@@ -22,9 +22,10 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import {
+  type AmenityResponse,
   type ListingMutationPayload,
   listingAPI,
   type PropertyType,
@@ -32,11 +33,19 @@ import {
   unwrapApiData,
 } from "@/api/endpoints/listing";
 import { uploadAPI } from "@/api/endpoints/upload";
+import AmenityPicker from "@/components/listing/AmenityPicker";
+import LocationPickerMap from "@/components/listing/LocationPickerMap";
 import { formatPrice } from "@/contants";
 import { hasRealmRole } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
-type StepKey = "place" | "basics" | "location" | "photos" | "publish";
+type StepKey =
+  | "place"
+  | "basics"
+  | "amenities"
+  | "location"
+  | "photos"
+  | "publish";
 
 const steps: Array<{
   key: StepKey;
@@ -58,21 +67,27 @@ const steps: Array<{
       "Add the details guests scan first: room type, guests, beds, and baths.",
   },
   {
-    key: "location",
+    key: "amenities",
     eyebrow: "Step 3",
+    title: "Add the amenities guests can use",
+    description: "Select the comforts and essentials available at your place.",
+  },
+  {
+    key: "location",
+    eyebrow: "Step 4",
     title: "Where's your place located?",
     description:
       "Use a clear address and city so guests know the area before booking.",
   },
   {
     key: "photos",
-    eyebrow: "Step 4",
+    eyebrow: "Step 5",
     title: "Add a cover photo and a title",
     description: "A bright, honest first photo helps your place stand out.",
   },
   {
     key: "publish",
-    eyebrow: "Step 5",
+    eyebrow: "Step 6",
     title: "Set your price and finish up",
     description:
       "You can update pricing, photos, and rules later from your host dashboard.",
@@ -240,6 +255,8 @@ export default function NewListingPage() {
   const [form, setForm] = useState<ListingMutationPayload>(initialForm);
   const [basePrice, setBasePrice] = useState(100);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
+  const [selectedAmenityNames, setSelectedAmenityNames] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -253,6 +270,13 @@ export default function NewListingPage() {
       propertyOptions[0],
     [form.propertyType],
   );
+
+  useEffect(() => {
+    listingAPI
+      .getAmenities()
+      .then((response) => setAmenities(unwrapApiData(response.data)))
+      .catch(() => setAmenities([]));
+  }, []);
 
   const update = <K extends keyof ListingMutationPayload>(
     field: K,
@@ -315,6 +339,14 @@ export default function NewListingPage() {
     try {
       const response = await listingAPI.createListing(token, form);
       const created = unwrapApiData(response.data);
+
+      if (selectedAmenityNames.length > 0) {
+        await listingAPI.updateListingAmenityNames(
+          token,
+          created.listingId,
+          selectedAmenityNames,
+        );
+      }
 
       await listingAPI.savePricing(token, created.listingId, {
         basePrice,
@@ -530,6 +562,21 @@ export default function NewListingPage() {
 
             {currentStep.key === "location" && (
               <div className="space-y-5">
+                <LocationPickerMap
+                  address={[form.address, form.city, form.country]
+                    .filter(Boolean)
+                    .join(", ")}
+                  latitude={form.latitude}
+                  longitude={form.longitude}
+                  onChange={(position) =>
+                    setForm((current) => ({
+                      ...current,
+                      latitude: position.latitude,
+                      longitude: position.longitude,
+                    }))
+                  }
+                />
+
                 <label className="block">
                   <span className="text-sm font-semibold text-neutral-950">
                     Street address
@@ -595,6 +642,21 @@ export default function NewListingPage() {
                     />
                   </label>
                 </div>
+              </div>
+            )}
+
+            {currentStep.key === "amenities" && (
+              <div>
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <p className="text-sm font-semibold text-neutral-500">
+                    {selectedAmenityNames.length} selected
+                  </p>
+                </div>
+                <AmenityPicker
+                  amenities={amenities}
+                  selectedNames={selectedAmenityNames}
+                  onChange={setSelectedAmenityNames}
+                />
               </div>
             )}
 

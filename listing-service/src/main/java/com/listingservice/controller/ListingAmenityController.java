@@ -77,4 +77,18 @@ public class ListingAmenityController {
                         .message("Listing amenities updated successfully")
                         .build());
     }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
+    @PutMapping("/names")
+    public ResponseEntity<ApiResponse<Void>> updateListingAmenityNames(
+            @PathVariable UUID listingId,
+            @RequestBody List<String> amenityNames) {
+        log.info("REST request to update amenity names for listing ID: {}", listingId);
+        listingAmenityService.updateListingAmenityNames(listingId, amenityNames);
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .code(1000)
+                        .message("Listing amenities updated successfully")
+                        .build());
+    }
 }

@@ -25,7 +25,7 @@ public interface IListingMapper {
     @Mapping(target = "availabilityCalendar", ignore = true)
     Listing toEntity(ListingCreationRequest request);
     
-    @Mapping(target = "amenities", source = "listingAmenities")
+    @Mapping(target = "amenities", source = "listingAmenities", qualifiedByName = "toAmenityResponseList")
     @Mapping(target = "photos", source = "photos")
     @Mapping(target = "pricing", source = "pricing")
     @Mapping(target = "houseRules", source = "houseRules")
