@@ -7,6 +7,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
 
 @Data
 @Builder
@@ -72,4 +73,12 @@ public class ListingCreationRequest {
     BigDecimal longitude;
     
     Boolean instantBook;
+
+    @NotNull(message = "CHECK_IN_START_TIME_REQUIRED")
+    LocalTime checkInStartTime;
+
+    LocalTime checkInEndTime;
+
+    @NotNull(message = "CHECK_OUT_TIME_REQUIRED")
+    LocalTime checkOutTime;
 }

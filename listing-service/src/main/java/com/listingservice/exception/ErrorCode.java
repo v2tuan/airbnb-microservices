@@ -104,6 +104,7 @@ public enum ErrorCode {
     CHECK_IN_FROM_REQUIRED(2657, "Check-in start time is required", HttpStatus.BAD_REQUEST),
     CHECK_IN_TO_REQUIRED(2658, "Check-in end time is required", HttpStatus.BAD_REQUEST),
     CHECK_OUT_TIME_REQUIRED(2659, "Check-out time is required", HttpStatus.BAD_REQUEST),
+    CHECK_IN_START_TIME_REQUIRED(2660, "Check-in start time is required", HttpStatus.BAD_REQUEST),
     
     // Photo validation errors
     PHOTO_URL_REQUIRED(2661, "Photo URL is required", HttpStatus.BAD_REQUEST),

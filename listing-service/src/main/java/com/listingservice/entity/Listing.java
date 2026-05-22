@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -88,6 +89,15 @@ public class Listing extends BaseEntity {
     @Column(name = "instant_book", nullable = false)
     @Builder.Default
     Boolean instantBook = false;
+
+    @Column(name = "check_in_start_time")
+    LocalTime checkInStartTime;
+
+    @Column(name = "check_in_end_time")
+    LocalTime checkInEndTime;
+
+    @Column(name = "check_out_time")
+    LocalTime checkOutTime;
     
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

@@ -15,7 +15,7 @@ public class HouseRulesRequest {
     
     @NotNull(message = "CHECK_IN_FROM_REQUIRED")
     LocalTime checkInFrom;
-    
+
     @NotNull(message = "CHECK_IN_TO_REQUIRED")
     LocalTime checkInTo;
     

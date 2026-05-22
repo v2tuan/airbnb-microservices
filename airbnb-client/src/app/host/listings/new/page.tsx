@@ -168,10 +168,20 @@ const initialForm: ListingMutationPayload = {
   latitude: 10.762622,
   longitude: 106.660172,
   instantBook: false,
+  checkInStartTime: "",
+  checkInEndTime: "",
+  checkOutTime: "",
 };
 
 const fallbackPreview =
   "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=1200&auto=format&fit=crop";
+
+function hasValidCheckInWindow(form: ListingMutationPayload) {
+  return (
+    !form.checkInEndTime ||
+    (!!form.checkInStartTime && form.checkInStartTime < form.checkInEndTime)
+  );
+}
 
 function Stepper({
   label,
@@ -258,13 +268,23 @@ export default function NewListingPage() {
       );
     if (currentStep.key === "photos")
       return !!form.title.trim() && !!form.description.trim();
-    if (currentStep.key === "publish") return basePrice > 0;
+    if (currentStep.key === "publish")
+      return (
+        basePrice > 0 &&
+        !!form.checkInStartTime &&
+        !!form.checkOutTime &&
+        hasValidCheckInWindow(form)
+      );
     return true;
   };
 
   const goNext = () => {
     if (!canContinue()) {
-      setError("Please complete the required fields on this step.");
+      setError(
+        form.checkInEndTime && !hasValidCheckInWindow(form)
+          ? "Check-in start time must be before check-in end time."
+          : "Please complete the required fields on this step.",
+      );
       return;
     }
 
@@ -282,7 +302,11 @@ export default function NewListingPage() {
     if (!token) return;
 
     if (!canContinue()) {
-      setError("Please complete the required fields before publishing.");
+      setError(
+        form.checkInEndTime && !hasValidCheckInWindow(form)
+          ? "Check-in start time must be before check-in end time."
+          : "Please complete the required fields before publishing.",
+      );
       return;
     }
 
@@ -711,6 +735,62 @@ export default function NewListingPage() {
                     Cleaning fee starts at 0 and service fee is set to 5%. You
                     can change both after publishing.
                   </p>
+                </div>
+
+                <div className="rounded-2xl border border-neutral-200 p-6">
+                  <p className="text-base font-semibold text-neutral-950">
+                    Check-in and check-out
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Set the arrival window guests will see before booking.
+                  </p>
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    <label className="block">
+                      <span className="text-sm font-semibold text-neutral-950">
+                        Check-in starts
+                      </span>
+                      <input
+                        type="time"
+                        value={form.checkInStartTime}
+                        onChange={(event) =>
+                          update("checkInStartTime", event.target.value)
+                        }
+                        className="mt-2 h-12 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-neutral-950">
+                        Check-in ends
+                      </span>
+                      <input
+                        type="time"
+                        value={form.checkInEndTime ?? ""}
+                        onChange={(event) =>
+                          update(
+                            "checkInEndTime",
+                            event.target.value || undefined,
+                          )
+                        }
+                        className="mt-2 h-12 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
+                      <span className="mt-1 block text-xs text-neutral-500">
+                        Optional
+                      </span>
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-neutral-950">
+                        Check-out
+                      </span>
+                      <input
+                        type="time"
+                        value={form.checkOutTime}
+                        onChange={(event) =>
+                          update("checkOutTime", event.target.value)
+                        }
+                        className="mt-2 h-12 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 <button

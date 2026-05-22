@@ -14,7 +14,11 @@ export type PropertyType =
 
 export type RoomType = "ENTIRE_PLACE" | "PRIVATE_ROOM" | "SHARED_ROOM";
 
-export type ListingStatus = "DRAFT" | "ACTIVE" | "INACTIVE" | "PENDING_APPROVAL";
+export type ListingStatus =
+  | "DRAFT"
+  | "ACTIVE"
+  | "INACTIVE"
+  | "PENDING_APPROVAL";
 
 export interface HomeListingCardResponse {
   listingId: string;
@@ -115,6 +119,9 @@ export interface ListingResponse {
   longitude: number;
   status: ListingStatus;
   instantBook?: boolean;
+  checkInStartTime?: string;
+  checkInEndTime?: string;
+  checkOutTime?: string;
   photos?: ListingPhotoResponse[];
   amenities?: AmenityResponse[];
   pricing?: ListingPricingResponse;
@@ -159,6 +166,9 @@ export interface ListingMutationPayload {
   latitude: number;
   longitude: number;
   instantBook?: boolean;
+  checkInStartTime: string;
+  checkInEndTime?: string;
+  checkOutTime: string;
 }
 
 export interface ListingPricingPayload {
@@ -178,7 +188,7 @@ export interface ListingPhotoPayload {
 
 export interface HouseRulesPayload {
   checkInFrom: string;
-  checkInTo: string;
+  checkInTo?: string;
   checkOutTime: string;
   smokingAllowed?: boolean;
   petsAllowed?: boolean;
@@ -208,17 +218,23 @@ export const unwrapApiData = <T>(payload: ApiResponse<T> | T): T => {
 };
 
 export const listingAPI = {
-  getHomeSections: (limit?: number): Promise<AxiosResponse<ApiResponse<HomeSectionResponse[]>>> => {
+  getHomeSections: (
+    limit?: number,
+  ): Promise<AxiosResponse<ApiResponse<HomeSectionResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/sections`, {
       params: { limit },
     });
   },
 
-  getRoomById: (id: string): Promise<AxiosResponse<ApiResponse<ListingResponse>>> => {
+  getRoomById: (
+    id: string,
+  ): Promise<AxiosResponse<ApiResponse<ListingResponse>>> => {
     return apiClient.get(`${prefix}/listings/${id}`);
   },
 
-  getAllListings: (): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
+  getAllListings: (): Promise<
+    AxiosResponse<ApiResponse<ListingResponse[]>>
+  > => {
     return apiClient.get(`${prefix}/listings`);
   },
 
@@ -254,21 +270,27 @@ export const listingAPI = {
       children?: number;
       infants?: number;
       pets?: number;
-    }
+    },
   ): Promise<AxiosResponse<any>> => {
     return apiClient.get(`${prefix}/listings/${id}/detail`, { params });
   },
 
   getListingsByHost: (
     hostId: string,
-    params?: { status?: ListingStatus; page?: number; size?: number }
-  ): Promise<AxiosResponse<PageResponse<ListingItemResponse> | ApiResponse<ListingResponse[]>>> => {
-    return apiClient.get(`${prefix}/listings/host/${hostId}/paginated`, { params });
+    params?: { status?: ListingStatus; page?: number; size?: number },
+  ): Promise<
+    AxiosResponse<
+      PageResponse<ListingItemResponse> | ApiResponse<ListingResponse[]>
+    >
+  > => {
+    return apiClient.get(`${prefix}/listings/host/${hostId}/paginated`, {
+      params,
+    });
   },
 
   createListing: (
     token: string | null,
-    payload: ListingMutationPayload
+    payload: ListingMutationPayload,
   ): Promise<AxiosResponse<ApiResponse<ListingResponse>>> => {
     return apiClient.post(`${prefix}/listings`, payload, withAuth(token));
   },
@@ -276,69 +298,113 @@ export const listingAPI = {
   updateListing: (
     token: string | null,
     listingId: string,
-    payload: Partial<ListingMutationPayload>
+    payload: Partial<ListingMutationPayload>,
   ): Promise<AxiosResponse<ApiResponse<ListingResponse>>> => {
-    return apiClient.put(`${prefix}/listings/${listingId}`, payload, withAuth(token));
+    return apiClient.put(
+      `${prefix}/listings/${listingId}`,
+      payload,
+      withAuth(token),
+    );
   },
 
-  deleteListing: (token: string | null, listingId: string): Promise<AxiosResponse<ApiResponse<null>>> => {
+  deleteListing: (
+    token: string | null,
+    listingId: string,
+  ): Promise<AxiosResponse<ApiResponse<null>>> => {
     return apiClient.delete(`${prefix}/listings/${listingId}`, withAuth(token));
   },
 
-  activateListing: (token: string | null, listingId: string): Promise<AxiosResponse<ApiResponse<null>>> => {
-    return apiClient.patch(`${prefix}/listings/${listingId}/activate`, {}, withAuth(token));
+  activateListing: (
+    token: string | null,
+    listingId: string,
+  ): Promise<AxiosResponse<ApiResponse<null>>> => {
+    return apiClient.patch(
+      `${prefix}/listings/${listingId}/activate`,
+      {},
+      withAuth(token),
+    );
   },
 
-  deactivateListing: (token: string | null, listingId: string): Promise<AxiosResponse<ApiResponse<null>>> => {
-    return apiClient.patch(`${prefix}/listings/${listingId}/deactivate`, {}, withAuth(token));
+  deactivateListing: (
+    token: string | null,
+    listingId: string,
+  ): Promise<AxiosResponse<ApiResponse<null>>> => {
+    return apiClient.patch(
+      `${prefix}/listings/${listingId}/deactivate`,
+      {},
+      withAuth(token),
+    );
   },
 
   savePricing: (
     token: string | null,
     listingId: string,
-    payload: ListingPricingPayload
+    payload: ListingPricingPayload,
   ): Promise<AxiosResponse<ApiResponse<ListingPricingResponse>>> => {
-    return apiClient.post(`${prefix}/listings/${listingId}/pricing`, payload, withAuth(token));
+    return apiClient.post(
+      `${prefix}/listings/${listingId}/pricing`,
+      payload,
+      withAuth(token),
+    );
   },
 
   addPhoto: (
     token: string | null,
     listingId: string,
-    payload: ListingPhotoPayload
+    payload: ListingPhotoPayload,
   ): Promise<AxiosResponse<ApiResponse<ListingPhotoResponse>>> => {
-    return apiClient.post(`${prefix}/listings/${listingId}/photos`, payload, withAuth(token));
+    return apiClient.post(
+      `${prefix}/listings/${listingId}/photos`,
+      payload,
+      withAuth(token),
+    );
   },
 
   deletePhoto: (
     token: string | null,
     listingId: string,
-    photoId: string
+    photoId: string,
   ): Promise<AxiosResponse<ApiResponse<null>>> => {
-    return apiClient.delete(`${prefix}/listings/${listingId}/photos/${photoId}`, withAuth(token));
+    return apiClient.delete(
+      `${prefix}/listings/${listingId}/photos/${photoId}`,
+      withAuth(token),
+    );
   },
 
   setCoverPhoto: (
     token: string | null,
     listingId: string,
-    photoId: string
+    photoId: string,
   ): Promise<AxiosResponse<ApiResponse<ListingPhotoResponse>>> => {
-    return apiClient.patch(`${prefix}/listings/${listingId}/photos/${photoId}/set-cover`, {}, withAuth(token));
+    return apiClient.patch(
+      `${prefix}/listings/${listingId}/photos/${photoId}/set-cover`,
+      {},
+      withAuth(token),
+    );
   },
 
   saveHouseRules: (
     token: string | null,
     listingId: string,
-    payload: HouseRulesPayload
+    payload: HouseRulesPayload,
   ): Promise<AxiosResponse<ApiResponse<HouseRulesResponse>>> => {
-    return apiClient.post(`${prefix}/listings/${listingId}/house-rules`, payload, withAuth(token));
+    return apiClient.post(
+      `${prefix}/listings/${listingId}/house-rules`,
+      payload,
+      withAuth(token),
+    );
   },
 
   saveAvailability: (
     token: string | null,
     listingId: string,
-    payload: AvailabilityPayload
+    payload: AvailabilityPayload,
   ): Promise<AxiosResponse<ApiResponse<AvailabilityResponse>>> => {
-    return apiClient.post(`${prefix}/listings/${listingId}/availability`, payload, withAuth(token));
+    return apiClient.post(
+      `${prefix}/listings/${listingId}/availability`,
+      payload,
+      withAuth(token),
+    );
   },
 };
 

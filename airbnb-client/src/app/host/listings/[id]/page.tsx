@@ -97,6 +97,13 @@ const panels: Array<{ key: PanelKey; label: string; icon: ElementType }> = [
 const fallbackPreview =
   "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=1400&auto=format&fit=crop";
 
+function hasValidCheckInWindow(form: ListingMutationPayload) {
+  return (
+    !form.checkInEndTime ||
+    (!!form.checkInStartTime && form.checkInStartTime < form.checkInEndTime)
+  );
+}
+
 const defaultPricing: ListingPricingPayload = {
   basePrice: 100,
   currency: "USD",
@@ -136,6 +143,9 @@ function toListingForm(listing: ListingResponse): ListingMutationPayload {
     latitude: listing.latitude ?? 10.762622,
     longitude: listing.longitude ?? 106.660172,
     instantBook: !!listing.instantBook,
+    checkInStartTime: listing.checkInStartTime ?? "",
+    checkInEndTime: listing.checkInEndTime ?? "",
+    checkOutTime: listing.checkOutTime ?? "",
   };
 }
 
@@ -297,6 +307,11 @@ export default function EditListingPage() {
   const handleSaveListing = async (event: FormEvent) => {
     event.preventDefault();
     if (!token || !form) return;
+
+    if (!hasValidCheckInWindow(form)) {
+      setError("Check-in start time must be before check-in end time.");
+      return;
+    }
 
     setSaving("listing");
     setError("");
@@ -833,6 +848,50 @@ export default function EditListingPage() {
                                 "longitude",
                                 Number(event.target.value),
                               )
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
+                        </Field>
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3 className="text-lg font-semibold text-neutral-950">
+                        Check-in and check-out
+                      </h3>
+                      <div className="mt-5 grid gap-5 md:grid-cols-3">
+                        <Field label="Check-in starts">
+                          <input
+                            type="time"
+                            value={form.checkInStartTime}
+                            onChange={(event) =>
+                              updateForm("checkInStartTime", event.target.value)
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
+                        </Field>
+                        <Field label="Check-in ends">
+                          <input
+                            type="time"
+                            value={form.checkInEndTime ?? ""}
+                            onChange={(event) =>
+                              updateForm(
+                                "checkInEndTime",
+                                event.target.value || undefined,
+                              )
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
+                          <span className="mt-1 block text-xs text-neutral-500">
+                            Optional
+                          </span>
+                        </Field>
+                        <Field label="Check-out">
+                          <input
+                            type="time"
+                            value={form.checkOutTime}
+                            onChange={(event) =>
+                              updateForm("checkOutTime", event.target.value)
                             }
                             className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
                           />

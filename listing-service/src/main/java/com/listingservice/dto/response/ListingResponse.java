@@ -8,6 +8,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,6 +38,9 @@ public class ListingResponse {
     BigDecimal longitude;
     ListingStatus status;
     Boolean instantBook;
+    LocalTime checkInStartTime;
+    LocalTime checkInEndTime;
+    LocalTime checkOutTime;
     
     List<ListingPhotoResponse> photos;
     List<AmenityResponse> amenities;
