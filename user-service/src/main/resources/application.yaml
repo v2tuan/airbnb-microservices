@@ -10,6 +10,11 @@ spring:
   application:
     name: user-service
 
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:user-service/.env[.properties]
+
   security:
     oauth2:
       resourceserver:
