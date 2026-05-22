@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { Plus, Pencil, Power, Trash2 } from "lucide-react";
 import { listingAPI, type ListingItemResponse, type ListingResponse, type ListingStatus, unwrapApiData } from "@/api/endpoints/listing";
-import { selectCurrentUser } from "@/features/auth/authSelectors";
 import { hasRealmRole, parseJwt } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
@@ -30,14 +29,13 @@ function normalizeItems(payload: unknown): ListingItemResponse[] {
 
 export default function HostListingsPage() {
   const token = useSelector((state: RootState) => state.auth.token);
-  const user = useSelector(selectCurrentUser);
   const [status, setStatus] = useState<"ALL" | ListingStatus>("ALL");
   const [items, setItems] = useState<ListingItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const isHost = useMemo(() => !!token && hasRealmRole(token, "HOST"), [token]);
-  const hostId = useMemo(() => user?.id ?? (token ? parseJwt(token)?.sub : undefined), [token, user?.id]);
+  const hostId = useMemo(() => (token ? parseJwt(token)?.sub : undefined), [token]);
 
   const loadListings = async () => {
     if (!isHost || !hostId) {
