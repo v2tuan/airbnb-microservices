@@ -1,9 +1,5 @@
 "use client";
 
-import Image from "next/image";
-import { FormEvent, type ElementType, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useSelector } from "react-redux";
 import {
   ArrowLeft,
   Bath,
@@ -28,14 +24,25 @@ import {
   Users,
   X,
 } from "lucide-react";
+import Image from "next/image";
+import { useParams, useRouter } from "next/navigation";
 import {
-  listingAPI,
+  type ElementType,
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useSelector } from "react-redux";
+import {
   type AvailabilityPayload,
   type HouseRulesPayload,
   type ListingMutationPayload,
   type ListingPhotoResponse,
   type ListingPricingPayload,
   type ListingResponse,
+  listingAPI,
   type PropertyType,
   type RoomType,
   unwrapApiData,
@@ -57,10 +64,26 @@ const propertyOptions: Array<{ value: PropertyType; label: string }> = [
   { value: "BUNGALOW", label: "Bungalow" },
 ];
 
-const roomOptions: Array<{ value: RoomType; label: string; description: string }> = [
-  { value: "ENTIRE_PLACE", label: "Entire place", description: "Guests have the whole place to themselves." },
-  { value: "PRIVATE_ROOM", label: "Private room", description: "Guests have a room and may share common spaces." },
-  { value: "SHARED_ROOM", label: "Shared room", description: "Guests sleep in a shared area." },
+const roomOptions: Array<{
+  value: RoomType;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "ENTIRE_PLACE",
+    label: "Entire place",
+    description: "Guests have the whole place to themselves.",
+  },
+  {
+    value: "PRIVATE_ROOM",
+    label: "Private room",
+    description: "Guests have a room and may share common spaces.",
+  },
+  {
+    value: "SHARED_ROOM",
+    label: "Shared room",
+    description: "Guests sleep in a shared area.",
+  },
 ];
 
 const panels: Array<{ key: PanelKey; label: string; icon: ElementType }> = [
@@ -126,10 +149,10 @@ function Field({
   wide?: boolean;
 }) {
   return (
-    <label className={wide ? "md:col-span-2" : undefined}>
+    <div className={wide ? "md:col-span-2" : undefined}>
       <span className="text-sm font-semibold text-neutral-950">{label}</span>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -154,18 +177,24 @@ function Stepper({
         <span className="flex size-11 items-center justify-center rounded-full bg-neutral-100">
           <Icon className="size-5 text-neutral-900" />
         </span>
-        <span className="text-base font-semibold text-neutral-950">{label}</span>
+        <span className="text-base font-semibold text-neutral-950">
+          {label}
+        </span>
       </div>
       <div className="flex items-center gap-4">
         <button
           type="button"
-          onClick={() => onChange(Math.max(min, Number((value - step).toFixed(1))))}
+          onClick={() =>
+            onChange(Math.max(min, Number((value - step).toFixed(1))))
+          }
           disabled={value <= min}
           className="flex size-9 items-center justify-center rounded-full border border-neutral-300 text-neutral-700 transition hover:border-neutral-950 disabled:opacity-30"
         >
           <Minus className="size-4" />
         </button>
-        <span className="w-8 text-center text-base font-semibold text-neutral-950">{value}</span>
+        <span className="w-8 text-center text-base font-semibold text-neutral-950">
+          {value}
+        </span>
         <button
           type="button"
           onClick={() => onChange(Number((value + step).toFixed(1)))}
@@ -178,9 +207,16 @@ function Stepper({
   );
 }
 
-function SaveButton({ loading, children }: { loading: boolean; children: React.ReactNode }) {
+function SaveButton({
+  loading,
+  children,
+}: {
+  loading: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <button
+      type="submit"
       disabled={loading}
       className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-neutral-950 px-6 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-60"
     >
@@ -217,11 +253,14 @@ export default function EditListingPage() {
   const [success, setSuccess] = useState("");
 
   const coverPhoto = useMemo(
-    () => photos.find((photo) => photo.isCover)?.photoUrl ?? photos[0]?.photoUrl ?? fallbackPreview,
-    [photos]
+    () =>
+      photos.find((photo) => photo.isCover)?.photoUrl ??
+      photos[0]?.photoUrl ??
+      fallbackPreview,
+    [photos],
   );
 
-  const loadListing = async () => {
+  const loadListing = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -237,18 +276,21 @@ export default function EditListingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [listingId]);
 
   useEffect(() => {
     void loadListing();
-  }, [listingId]);
+  }, [loadListing]);
 
   const flashSuccess = (message: string) => {
     setSuccess(message);
     window.setTimeout(() => setSuccess(""), 2500);
   };
 
-  const updateForm = <K extends keyof ListingMutationPayload>(field: K, value: ListingMutationPayload[K]) => {
+  const updateForm = <K extends keyof ListingMutationPayload>(
+    field: K,
+    value: ListingMutationPayload[K],
+  ) => {
     setForm((current) => (current ? { ...current, [field]: value } : current));
   };
 
@@ -326,22 +368,32 @@ export default function EditListingPage() {
     }
   };
 
-  const handleUploadPhoto = async (file?: File) => {
-    if (!file || !token) return;
+  const handleUploadPhotos = async (files?: FileList | null) => {
+    if (!files?.length || !token) return;
 
     setUploadingPhoto(true);
     setError("");
     try {
-      const uploadResponse = await uploadAPI.uploadImage(token, file);
-      const imageUrl = uploadResponse.data.data.url;
-      const addResponse = await listingAPI.addPhoto(token, listingId, {
-        photoUrl: imageUrl,
-        caption: form?.title,
-      });
-      setPhotos((current) => [...current, unwrapApiData(addResponse.data)]);
-      flashSuccess("Photo uploaded.");
+      const uploadedPhotos: ListingPhotoResponse[] = [];
+
+      for (const file of Array.from(files)) {
+        const uploadResponse = await uploadAPI.uploadImage(token, file);
+        const imageUrl = uploadResponse.data.data.url;
+        const addResponse = await listingAPI.addPhoto(token, listingId, {
+          photoUrl: imageUrl,
+          caption: form?.title,
+        });
+        uploadedPhotos.push(unwrapApiData(addResponse.data));
+      }
+
+      setPhotos((current) => [...current, ...uploadedPhotos]);
+      flashSuccess(
+        uploadedPhotos.length === 1
+          ? "Photo uploaded."
+          : `${uploadedPhotos.length} photos uploaded.`,
+      );
     } catch (error: any) {
-      setError(error?.response?.data?.message ?? "Unable to upload image.");
+      setError(error?.response?.data?.message ?? "Unable to upload images.");
     } finally {
       setUploadingPhoto(false);
     }
@@ -353,7 +405,9 @@ export default function EditListingPage() {
     setError("");
     try {
       await listingAPI.deletePhoto(token, listingId, photoId);
-      setPhotos((current) => current.filter((photo) => photo.photoId !== photoId));
+      setPhotos((current) =>
+        current.filter((photo) => photo.photoId !== photoId),
+      );
       flashSuccess("Photo removed.");
     } catch (error: any) {
       setError(error?.response?.data?.message ?? "Unable to delete photo.");
@@ -369,7 +423,9 @@ export default function EditListingPage() {
       void loadListing();
       flashSuccess("Cover photo updated.");
     } catch (error: any) {
-      setError(error?.response?.data?.message ?? "Unable to update cover photo.");
+      setError(
+        error?.response?.data?.message ?? "Unable to update cover photo.",
+      );
     }
   };
 
@@ -383,7 +439,9 @@ export default function EditListingPage() {
       await listingAPI.saveAvailability(token, listingId, availability);
       flashSuccess("Availability saved.");
     } catch (error: any) {
-      setError(error?.response?.data?.message ?? "Unable to save availability.");
+      setError(
+        error?.response?.data?.message ?? "Unable to save availability.",
+      );
     } finally {
       setSaving("");
     }
@@ -400,7 +458,9 @@ export default function EditListingPage() {
       } else {
         await listingAPI.deactivateListing(token, listingId);
       }
-      flashSuccess(next === "activate" ? "Listing activated." : "Listing deactivated.");
+      flashSuccess(
+        next === "activate" ? "Listing activated." : "Listing deactivated.",
+      );
       void loadListing();
     } catch (error: any) {
       setError(error?.response?.data?.message ?? "Unable to update status.");
@@ -412,7 +472,9 @@ export default function EditListingPage() {
   if (!token) {
     return (
       <main className="mx-auto max-w-4xl px-6 pb-12">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-8">Please log in to manage this listing.</div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-8">
+          Please log in to manage this listing.
+        </div>
       </main>
     );
   }
@@ -421,8 +483,12 @@ export default function EditListingPage() {
     return (
       <main className="mx-auto max-w-4xl px-6 pb-12">
         <div className="rounded-2xl border border-neutral-200 bg-white p-8">
-          <p className="text-xl font-semibold text-neutral-950">Only hosts can edit listings</p>
-          <p className="mt-2 text-neutral-500">Complete host onboarding before managing places.</p>
+          <p className="text-xl font-semibold text-neutral-950">
+            Only hosts can edit listings
+          </p>
+          <p className="mt-2 text-neutral-500">
+            Complete host onboarding before managing places.
+          </p>
           <button
             type="button"
             onClick={() => router.push("/host/become")}
@@ -484,10 +550,19 @@ export default function EditListingPage() {
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div>
             <div className="relative overflow-hidden rounded-[28px] bg-neutral-100">
-              <Image src={coverPhoto} alt={form.title || "Listing cover"} width={1400} height={780} className="aspect-[16/8] w-full object-cover" unoptimized />
+              <Image
+                src={coverPhoto}
+                alt={form.title || "Listing cover"}
+                width={1400}
+                height={780}
+                className="aspect-[16/8] w-full object-cover"
+                unoptimized
+              />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-6 text-white">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-neutral-950">{listing?.status ?? "DRAFT"}</span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-neutral-950">
+                    {listing?.status ?? "DRAFT"}
+                  </span>
                   <span className="rounded-full bg-black/35 px-3 py-1 text-xs font-semibold backdrop-blur">
                     {photos.length} photos
                   </span>
@@ -528,7 +603,9 @@ export default function EditListingPage() {
                       type="button"
                       onClick={() => setActivePanel(panel.key)}
                       className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${
-                        active ? "bg-neutral-950 text-white" : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950"
+                        active
+                          ? "bg-neutral-950 text-white"
+                          : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950"
                       }`}
                     >
                       <Icon className="size-4" />
@@ -543,18 +620,27 @@ export default function EditListingPage() {
               {activePanel === "details" ? (
                 <form onSubmit={handleSaveListing} className="max-w-4xl">
                   <div className="mb-8">
-                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">Tell guests what to expect</h2>
-                    <p className="mt-2 text-neutral-500">{form.maxGuests} guests, {form.numBedrooms} bedrooms, {form.numBeds} beds, {form.numBathrooms} baths</p>
+                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">
+                      Tell guests what to expect
+                    </h2>
+                    <p className="mt-2 text-neutral-500">
+                      {form.maxGuests} guests, {form.numBedrooms} bedrooms,{" "}
+                      {form.numBeds} beds, {form.numBathrooms} baths
+                    </p>
                   </div>
 
                   <div className="space-y-10">
                     <section>
-                      <h3 className="text-lg font-semibold text-neutral-950">Title and description</h3>
+                      <h3 className="text-lg font-semibold text-neutral-950">
+                        Title and description
+                      </h3>
                       <div className="mt-5 grid gap-5">
                         <Field label="Listing title" wide>
                           <input
                             value={form.title}
-                            onChange={(event) => updateForm("title", event.target.value)}
+                            onChange={(event) =>
+                              updateForm("title", event.target.value)
+                            }
                             maxLength={255}
                             className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 text-base outline-none transition focus:border-neutral-950"
                           />
@@ -563,7 +649,9 @@ export default function EditListingPage() {
                           <textarea
                             rows={6}
                             value={form.description}
-                            onChange={(event) => updateForm("description", event.target.value)}
+                            onChange={(event) =>
+                              updateForm("description", event.target.value)
+                            }
                             className="mt-2 w-full rounded-xl border border-neutral-300 px-4 py-3 text-base outline-none transition focus:border-neutral-950"
                           />
                         </Field>
@@ -571,7 +659,9 @@ export default function EditListingPage() {
                     </section>
 
                     <section>
-                      <h3 className="text-lg font-semibold text-neutral-950">Property type</h3>
+                      <h3 className="text-lg font-semibold text-neutral-950">
+                        Property type
+                      </h3>
                       <div className="mt-5 grid gap-3 sm:grid-cols-2">
                         {propertyOptions.map((option) => {
                           const active = form.propertyType === option.value;
@@ -579,36 +669,17 @@ export default function EditListingPage() {
                             <button
                               key={option.value}
                               type="button"
-                              onClick={() => updateForm("propertyType", option.value)}
+                              onClick={() =>
+                                updateForm("propertyType", option.value)
+                              }
                               className={`flex h-16 items-center justify-between rounded-2xl border px-5 text-left transition ${
-                                active ? "border-neutral-950 bg-neutral-50" : "border-neutral-200 hover:border-neutral-950"
+                                active
+                                  ? "border-neutral-950 bg-neutral-50"
+                                  : "border-neutral-200 hover:border-neutral-950"
                               }`}
                             >
-                              <span className="font-semibold text-neutral-950">{option.label}</span>
-                              {active ? <Check className="size-5" /> : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h3 className="text-lg font-semibold text-neutral-950">Room type</h3>
-                      <div className="mt-5 grid gap-3">
-                        {roomOptions.map((option) => {
-                          const active = form.roomType === option.value;
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => updateForm("roomType", option.value)}
-                              className={`flex items-center justify-between rounded-2xl border p-5 text-left transition ${
-                                active ? "border-neutral-950 bg-neutral-50" : "border-neutral-200 hover:border-neutral-950"
-                              }`}
-                            >
-                              <span>
-                                <span className="block text-base font-semibold text-neutral-950">{option.label}</span>
-                                <span className="mt-1 block text-sm text-neutral-500">{option.description}</span>
+                              <span className="font-semibold text-neutral-950">
+                                {option.label}
                               </span>
                               {active ? <Check className="size-5" /> : null}
                             </button>
@@ -618,45 +689,153 @@ export default function EditListingPage() {
                     </section>
 
                     <section>
-                      <h3 className="text-lg font-semibold text-neutral-950">Basics</h3>
+                      <h3 className="text-lg font-semibold text-neutral-950">
+                        Room type
+                      </h3>
+                      <div className="mt-5 grid gap-3">
+                        {roomOptions.map((option) => {
+                          const active = form.roomType === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                updateForm("roomType", option.value)
+                              }
+                              className={`flex items-center justify-between rounded-2xl border p-5 text-left transition ${
+                                active
+                                  ? "border-neutral-950 bg-neutral-50"
+                                  : "border-neutral-200 hover:border-neutral-950"
+                              }`}
+                            >
+                              <span>
+                                <span className="block text-base font-semibold text-neutral-950">
+                                  {option.label}
+                                </span>
+                                <span className="mt-1 block text-sm text-neutral-500">
+                                  {option.description}
+                                </span>
+                              </span>
+                              {active ? <Check className="size-5" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h3 className="text-lg font-semibold text-neutral-950">
+                        Basics
+                      </h3>
                       <div className="mt-5 rounded-2xl border border-neutral-200 px-5">
-                        <Stepper label="Guests" value={form.maxGuests} min={1} icon={Users} onChange={(value) => updateForm("maxGuests", value)} />
-                        <Stepper label="Bedrooms" value={form.numBedrooms} min={0} icon={Home} onChange={(value) => updateForm("numBedrooms", value)} />
-                        <Stepper label="Beds" value={form.numBeds} min={1} icon={BedDouble} onChange={(value) => updateForm("numBeds", value)} />
+                        <Stepper
+                          label="Guests"
+                          value={form.maxGuests}
+                          min={1}
+                          icon={Users}
+                          onChange={(value) => updateForm("maxGuests", value)}
+                        />
+                        <Stepper
+                          label="Bedrooms"
+                          value={form.numBedrooms}
+                          min={0}
+                          icon={Home}
+                          onChange={(value) => updateForm("numBedrooms", value)}
+                        />
+                        <Stepper
+                          label="Beds"
+                          value={form.numBeds}
+                          min={1}
+                          icon={BedDouble}
+                          onChange={(value) => updateForm("numBeds", value)}
+                        />
                         <Stepper
                           label="Bathrooms"
                           value={form.numBathrooms}
                           min={0.5}
                           step={0.5}
                           icon={Bath}
-                          onChange={(value) => updateForm("numBathrooms", value)}
+                          onChange={(value) =>
+                            updateForm("numBathrooms", value)
+                          }
                         />
                       </div>
                     </section>
 
                     <section>
-                      <h3 className="text-lg font-semibold text-neutral-950">Location</h3>
+                      <h3 className="text-lg font-semibold text-neutral-950">
+                        Location
+                      </h3>
                       <div className="mt-5 grid gap-5 md:grid-cols-2">
                         <Field label="Street address" wide>
-                          <input value={form.address} onChange={(event) => updateForm("address", event.target.value)} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            value={form.address}
+                            onChange={(event) =>
+                              updateForm("address", event.target.value)
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                         <Field label="City">
-                          <input value={form.city} onChange={(event) => updateForm("city", event.target.value)} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            value={form.city}
+                            onChange={(event) =>
+                              updateForm("city", event.target.value)
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                         <Field label="Country">
-                          <input value={form.country} onChange={(event) => updateForm("country", event.target.value)} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            value={form.country}
+                            onChange={(event) =>
+                              updateForm("country", event.target.value)
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                         <Field label="State">
-                          <input value={form.state ?? ""} onChange={(event) => updateForm("state", event.target.value)} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            value={form.state ?? ""}
+                            onChange={(event) =>
+                              updateForm("state", event.target.value)
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                         <Field label="Postal code">
-                          <input value={form.postalCode ?? ""} onChange={(event) => updateForm("postalCode", event.target.value)} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            value={form.postalCode ?? ""}
+                            onChange={(event) =>
+                              updateForm("postalCode", event.target.value)
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                         <Field label="Latitude">
-                          <input type="number" step="0.000001" value={form.latitude} onChange={(event) => updateForm("latitude", Number(event.target.value))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            type="number"
+                            step="0.000001"
+                            value={form.latitude}
+                            onChange={(event) =>
+                              updateForm("latitude", Number(event.target.value))
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                         <Field label="Longitude">
-                          <input type="number" step="0.000001" value={form.longitude} onChange={(event) => updateForm("longitude", Number(event.target.value))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                          <input
+                            type="number"
+                            step="0.000001"
+                            value={form.longitude}
+                            onChange={(event) =>
+                              updateForm(
+                                "longitude",
+                                Number(event.target.value),
+                              )
+                            }
+                            className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                          />
                         </Field>
                       </div>
                     </section>
@@ -664,14 +843,22 @@ export default function EditListingPage() {
                     <section>
                       <button
                         type="button"
-                        onClick={() => updateForm("instantBook", !form.instantBook)}
+                        onClick={() =>
+                          updateForm("instantBook", !form.instantBook)
+                        }
                         className={`flex w-full items-center justify-between rounded-2xl border p-5 text-left transition ${
-                          form.instantBook ? "border-neutral-950 bg-neutral-50" : "border-neutral-200 hover:border-neutral-950"
+                          form.instantBook
+                            ? "border-neutral-950 bg-neutral-50"
+                            : "border-neutral-200 hover:border-neutral-950"
                         }`}
                       >
                         <span>
-                          <span className="block text-lg font-semibold text-neutral-950">Instant book</span>
-                          <span className="mt-1 block text-sm text-neutral-500">Guests can reserve without waiting for approval.</span>
+                          <span className="block text-lg font-semibold text-neutral-950">
+                            Instant book
+                          </span>
+                          <span className="mt-1 block text-sm text-neutral-500">
+                            Guests can reserve without waiting for approval.
+                          </span>
                         </span>
                         {form.instantBook ? <Check className="size-5" /> : null}
                       </button>
@@ -679,7 +866,9 @@ export default function EditListingPage() {
                   </div>
 
                   <div className="mt-10 flex justify-end">
-                    <SaveButton loading={saving === "listing"}>Save listing</SaveButton>
+                    <SaveButton loading={saving === "listing"}>
+                      Save listing
+                    </SaveButton>
                   </div>
                 </form>
               ) : null}
@@ -688,25 +877,52 @@ export default function EditListingPage() {
                 <section className="max-w-5xl">
                   <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
-                      <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">Photo tour</h2>
-                      <p className="mt-2 text-neutral-500">Choose a bright cover image and keep the gallery honest.</p>
+                      <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">
+                        Photo tour
+                      </h2>
+                      <p className="mt-2 text-neutral-500">
+                        Choose a bright cover image and keep the gallery honest.
+                      </p>
                     </div>
                     <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-neutral-950 px-6 text-sm font-semibold text-white transition hover:bg-neutral-800">
-                      {uploadingPhoto ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                      {uploadingPhoto ? "Uploading" : "Upload photo"}
-                      <input type="file" accept="image/*" onChange={(event) => void handleUploadPhoto(event.target.files?.[0])} className="hidden" />
+                      {uploadingPhoto ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Upload className="size-4" />
+                      )}
+                      {uploadingPhoto ? "Uploading" : "Upload photos"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(event) =>
+                          void handleUploadPhotos(event.target.files)
+                        }
+                        className="hidden"
+                      />
                     </label>
                   </div>
 
-                  <form onSubmit={handleAddPhotoUrl} className="mb-6 flex gap-3">
+                  <form
+                    onSubmit={handleAddPhotoUrl}
+                    className="mb-6 flex gap-3"
+                  >
                     <input
                       value={photoUrl}
                       onChange={(event) => setPhotoUrl(event.target.value)}
                       placeholder="Paste an image URL"
                       className="h-12 min-w-0 flex-1 rounded-full border border-neutral-300 px-5 text-sm outline-none transition focus:border-neutral-950"
                     />
-                    <button disabled={saving === "photo"} className="inline-flex h-12 items-center gap-2 rounded-full border border-neutral-950 px-5 text-sm font-semibold">
-                      {saving === "photo" ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+                    <button
+                      type="submit"
+                      disabled={saving === "photo"}
+                      className="inline-flex h-12 items-center gap-2 rounded-full border border-neutral-950 px-5 text-sm font-semibold"
+                    >
+                      {saving === "photo" ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <ImagePlus className="size-4" />
+                      )}
                       Add
                     </button>
                   </form>
@@ -719,7 +935,10 @@ export default function EditListingPage() {
                   ) : (
                     <div className="grid gap-4 md:grid-cols-2">
                       {photos.map((photo, index) => (
-                        <div key={photo.photoId} className={index === 0 ? "md:col-span-2" : undefined}>
+                        <div
+                          key={photo.photoId}
+                          className={index === 0 ? "md:col-span-2" : undefined}
+                        >
                           <div className="group overflow-hidden rounded-3xl border border-neutral-200 bg-white">
                             <div className="relative">
                               <Image
@@ -727,7 +946,11 @@ export default function EditListingPage() {
                                 alt={photo.caption ?? "Listing photo"}
                                 width={1100}
                                 height={720}
-                                className={index === 0 ? "aspect-[16/7] w-full object-cover" : "aspect-[4/3] w-full object-cover"}
+                                className={
+                                  index === 0
+                                    ? "aspect-[16/7] w-full object-cover"
+                                    : "aspect-[4/3] w-full object-cover"
+                                }
                                 unoptimized
                               />
                               {photo.isCover ? (
@@ -764,19 +987,33 @@ export default function EditListingPage() {
               {activePanel === "pricing" ? (
                 <form onSubmit={handleSavePricing} className="max-w-4xl">
                   <div className="mb-8">
-                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">Set your price</h2>
-                    <p className="mt-2 text-neutral-500">Nightly rate, guest fees, and discounts stay editable anytime.</p>
+                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">
+                      Set your price
+                    </h2>
+                    <p className="mt-2 text-neutral-500">
+                      Nightly rate, guest fees, and discounts stay editable
+                      anytime.
+                    </p>
                   </div>
 
                   <div className="rounded-3xl border border-neutral-200 p-6">
-                    <p className="text-sm font-semibold text-neutral-500">Nightly price</p>
+                    <p className="text-sm font-semibold text-neutral-500">
+                      Nightly price
+                    </p>
                     <div className="mt-4 flex items-center gap-3">
-                      <span className="text-6xl font-semibold text-neutral-950">$</span>
+                      <span className="text-6xl font-semibold text-neutral-950">
+                        $
+                      </span>
                       <input
                         type="number"
                         min="1"
                         value={pricing.basePrice}
-                        onChange={(event) => setPricing((current) => ({ ...current, basePrice: Number(event.target.value) }))}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            basePrice: Number(event.target.value),
+                          }))
+                        }
                         className="h-24 w-full min-w-0 border-0 text-7xl font-semibold tracking-normal outline-none"
                       />
                     </div>
@@ -784,27 +1021,96 @@ export default function EditListingPage() {
 
                   <div className="mt-6 grid gap-5 md:grid-cols-2">
                     <Field label="Currency">
-                      <input value={pricing.currency} onChange={(event) => setPricing((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        value={pricing.currency}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            currency: event.target.value.toUpperCase(),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <Field label="Cleaning fee">
-                      <input type="number" min="0" value={pricing.cleaningFee ?? 0} onChange={(event) => setPricing((current) => ({ ...current, cleaningFee: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="0"
+                        value={pricing.cleaningFee ?? 0}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            cleaningFee: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <Field label="Service fee percentage">
-                      <input type="number" min="0" max="100" value={pricing.serviceFeePercentage ?? 0} onChange={(event) => setPricing((current) => ({ ...current, serviceFeePercentage: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={pricing.serviceFeePercentage ?? 0}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            serviceFeePercentage: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <Field label="Weekend price">
-                      <input type="number" min="0" value={pricing.weekendPrice ?? 0} onChange={(event) => setPricing((current) => ({ ...current, weekendPrice: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="0"
+                        value={pricing.weekendPrice ?? 0}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            weekendPrice: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <Field label="Weekly discount">
-                      <input type="number" min="0" max="100" value={pricing.weeklyDiscount ?? 0} onChange={(event) => setPricing((current) => ({ ...current, weeklyDiscount: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={pricing.weeklyDiscount ?? 0}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            weeklyDiscount: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <Field label="Monthly discount">
-                      <input type="number" min="0" max="100" value={pricing.monthlyDiscount ?? 0} onChange={(event) => setPricing((current) => ({ ...current, monthlyDiscount: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={pricing.monthlyDiscount ?? 0}
+                        onChange={(event) =>
+                          setPricing((current) => ({
+                            ...current,
+                            monthlyDiscount: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                   </div>
 
                   <div className="mt-10 flex justify-end">
-                    <SaveButton loading={saving === "pricing"}>Save pricing</SaveButton>
+                    <SaveButton loading={saving === "pricing"}>
+                      Save pricing
+                    </SaveButton>
                   </div>
                 </form>
               ) : null}
@@ -812,27 +1118,65 @@ export default function EditListingPage() {
               {activePanel === "rules" ? (
                 <form onSubmit={handleSaveRules} className="max-w-4xl">
                   <div className="mb-8">
-                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">House rules</h2>
-                    <p className="mt-2 text-neutral-500">Set clear expectations before guests book.</p>
+                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">
+                      House rules
+                    </h2>
+                    <p className="mt-2 text-neutral-500">
+                      Set clear expectations before guests book.
+                    </p>
                   </div>
 
                   <section>
-                    <h3 className="text-lg font-semibold text-neutral-950">Check-in and checkout</h3>
+                    <h3 className="text-lg font-semibold text-neutral-950">
+                      Check-in and checkout
+                    </h3>
                     <div className="mt-5 grid gap-5 md:grid-cols-3">
                       <Field label="Check-in from">
-                        <input type="time" value={rules.checkInFrom} onChange={(event) => setRules((current) => ({ ...current, checkInFrom: event.target.value }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                        <input
+                          type="time"
+                          value={rules.checkInFrom}
+                          onChange={(event) =>
+                            setRules((current) => ({
+                              ...current,
+                              checkInFrom: event.target.value,
+                            }))
+                          }
+                          className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                        />
                       </Field>
                       <Field label="Check-in until">
-                        <input type="time" value={rules.checkInTo} onChange={(event) => setRules((current) => ({ ...current, checkInTo: event.target.value }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                        <input
+                          type="time"
+                          value={rules.checkInTo}
+                          onChange={(event) =>
+                            setRules((current) => ({
+                              ...current,
+                              checkInTo: event.target.value,
+                            }))
+                          }
+                          className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                        />
                       </Field>
                       <Field label="Checkout">
-                        <input type="time" value={rules.checkOutTime} onChange={(event) => setRules((current) => ({ ...current, checkOutTime: event.target.value }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                        <input
+                          type="time"
+                          value={rules.checkOutTime}
+                          onChange={(event) =>
+                            setRules((current) => ({
+                              ...current,
+                              checkOutTime: event.target.value,
+                            }))
+                          }
+                          className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                        />
                       </Field>
                     </div>
                   </section>
 
                   <section className="mt-10">
-                    <h3 className="text-lg font-semibold text-neutral-950">Permissions</h3>
+                    <h3 className="text-lg font-semibold text-neutral-950">
+                      Permissions
+                    </h3>
                     <div className="mt-5 grid gap-3 md:grid-cols-2">
                       {[
                         ["smokingAllowed", "Smoking allowed"],
@@ -846,15 +1190,22 @@ export default function EditListingPage() {
                           onClick={() =>
                             setRules((current) => ({
                               ...current,
-                              [field]: !current[field as keyof HouseRulesPayload],
+                              [field]:
+                                !current[field as keyof HouseRulesPayload],
                             }))
                           }
                           className={`flex h-16 items-center justify-between rounded-2xl border px-5 text-left transition ${
-                            rules[field as keyof HouseRulesPayload] ? "border-neutral-950 bg-neutral-50" : "border-neutral-200 hover:border-neutral-950"
+                            rules[field as keyof HouseRulesPayload]
+                              ? "border-neutral-950 bg-neutral-50"
+                              : "border-neutral-200 hover:border-neutral-950"
                           }`}
                         >
-                          <span className="font-semibold text-neutral-950">{label}</span>
-                          {rules[field as keyof HouseRulesPayload] ? <Check className="size-5" /> : null}
+                          <span className="font-semibold text-neutral-950">
+                            {label}
+                          </span>
+                          {rules[field as keyof HouseRulesPayload] ? (
+                            <Check className="size-5" />
+                          ) : null}
                         </button>
                       ))}
                     </div>
@@ -864,7 +1215,12 @@ export default function EditListingPage() {
                     <Field label="Additional rules" wide>
                       <textarea
                         value={rules.additionalRules ?? ""}
-                        onChange={(event) => setRules((current) => ({ ...current, additionalRules: event.target.value }))}
+                        onChange={(event) =>
+                          setRules((current) => ({
+                            ...current,
+                            additionalRules: event.target.value,
+                          }))
+                        }
                         rows={5}
                         className="mt-2 w-full rounded-xl border border-neutral-300 px-4 py-3 outline-none focus:border-neutral-950"
                       />
@@ -872,7 +1228,9 @@ export default function EditListingPage() {
                   </section>
 
                   <div className="mt-10 flex justify-end">
-                    <SaveButton loading={saving === "rules"}>Save rules</SaveButton>
+                    <SaveButton loading={saving === "rules"}>
+                      Save rules
+                    </SaveButton>
                   </div>
                 </form>
               ) : null}
@@ -880,29 +1238,78 @@ export default function EditListingPage() {
               {activePanel === "availability" ? (
                 <form onSubmit={handleSaveAvailability} className="max-w-4xl">
                   <div className="mb-8">
-                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">Availability</h2>
-                    <p className="mt-2 text-neutral-500">Open or block individual dates and set stay length.</p>
+                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-950">
+                      Availability
+                    </h2>
+                    <p className="mt-2 text-neutral-500">
+                      Open or block individual dates and set stay length.
+                    </p>
                   </div>
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <Field label="Date">
-                      <input type="date" value={availability.date} onChange={(event) => setAvailability((current) => ({ ...current, date: event.target.value }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="date"
+                        value={availability.date}
+                        onChange={(event) =>
+                          setAvailability((current) => ({
+                            ...current,
+                            date: event.target.value,
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <button
                       type="button"
-                      onClick={() => setAvailability((current) => ({ ...current, isAvailable: !current.isAvailable }))}
+                      onClick={() =>
+                        setAvailability((current) => ({
+                          ...current,
+                          isAvailable: !current.isAvailable,
+                        }))
+                      }
                       className={`mt-7 flex h-14 items-center justify-between rounded-xl border px-4 text-left transition ${
-                        availability.isAvailable ? "border-neutral-950 bg-neutral-50" : "border-neutral-200 hover:border-neutral-950"
+                        availability.isAvailable
+                          ? "border-neutral-950 bg-neutral-50"
+                          : "border-neutral-200 hover:border-neutral-950"
                       }`}
                     >
-                      <span className="font-semibold text-neutral-950">{availability.isAvailable ? "Available" : "Blocked"}</span>
-                      {availability.isAvailable ? <Check className="size-5" /> : <X className="size-5" />}
+                      <span className="font-semibold text-neutral-950">
+                        {availability.isAvailable ? "Available" : "Blocked"}
+                      </span>
+                      {availability.isAvailable ? (
+                        <Check className="size-5" />
+                      ) : (
+                        <X className="size-5" />
+                      )}
                     </button>
                     <Field label="Minimum nights">
-                      <input type="number" min="1" value={availability.minNights ?? 1} onChange={(event) => setAvailability((current) => ({ ...current, minNights: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="1"
+                        value={availability.minNights ?? 1}
+                        onChange={(event) =>
+                          setAvailability((current) => ({
+                            ...current,
+                            minNights: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                     <Field label="Maximum nights">
-                      <input type="number" min="1" value={availability.maxNights ?? 30} onChange={(event) => setAvailability((current) => ({ ...current, maxNights: Number(event.target.value) }))} className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950" />
+                      <input
+                        type="number"
+                        min="1"
+                        value={availability.maxNights ?? 30}
+                        onChange={(event) =>
+                          setAvailability((current) => ({
+                            ...current,
+                            maxNights: Number(event.target.value),
+                          }))
+                        }
+                        className="mt-2 h-14 w-full rounded-xl border border-neutral-300 px-4 outline-none focus:border-neutral-950"
+                      />
                     </Field>
                   </div>
 
@@ -913,17 +1320,23 @@ export default function EditListingPage() {
                       </span>
                       <div>
                         <p className="text-base font-semibold text-neutral-950">
-                          {availability.date} is {availability.isAvailable ? "open for booking" : "blocked"}
+                          {availability.date} is{" "}
+                          {availability.isAvailable
+                            ? "open for booking"
+                            : "blocked"}
                         </p>
                         <p className="mt-1 text-sm text-neutral-500">
-                          Guests can stay from {availability.minNights ?? 1} to {availability.maxNights ?? 30} nights on this date.
+                          Guests can stay from {availability.minNights ?? 1} to{" "}
+                          {availability.maxNights ?? 30} nights on this date.
                         </p>
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-10 flex justify-end">
-                    <SaveButton loading={saving === "availability"}>Save availability</SaveButton>
+                    <SaveButton loading={saving === "availability"}>
+                      Save availability
+                    </SaveButton>
                   </div>
                 </form>
               ) : null}
@@ -934,16 +1347,30 @@ export default function EditListingPage() {
             <div className="sticky top-24">
               <div className="overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.12)]">
                 <div className="relative aspect-[4/3] bg-neutral-100">
-                  <Image src={coverPhoto} alt="Listing preview" fill className="object-cover" unoptimized sizes="380px" />
+                  <Image
+                    src={coverPhoto}
+                    alt="Listing preview"
+                    fill
+                    className="object-cover"
+                    unoptimized
+                    sizes="380px"
+                  />
                 </div>
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h2 className="line-clamp-2 text-lg font-semibold text-neutral-950">{form.title || "Untitled listing"}</h2>
-                      <p className="mt-1 text-sm text-neutral-500">{form.city}, {form.country}</p>
+                      <h2 className="line-clamp-2 text-lg font-semibold text-neutral-950">
+                        {form.title || "Untitled listing"}
+                      </h2>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {form.city}, {form.country}
+                      </p>
                     </div>
                     <p className="shrink-0 text-sm font-semibold text-neutral-950">
-                      {formatPrice(pricing.basePrice ?? 0, pricing.currency ?? "USD")}
+                      {formatPrice(
+                        pricing.basePrice ?? 0,
+                        pricing.currency ?? "USD",
+                      )}
                     </p>
                   </div>
 
