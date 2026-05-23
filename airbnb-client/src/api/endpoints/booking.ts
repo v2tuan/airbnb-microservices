@@ -1,58 +1,8 @@
 import apiClient from "../client";
+import {ApiResponse} from "@/types/api.type";
+import {BookingFilterType, BookingTripsResponse, CheckoutRequest, CheckoutResponse} from "@/types/booking.type";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
-
-export interface CheckoutRequest {
-    roomId: string;
-    roomName?: string;
-    userId?: string;
-    checkInDate: string;   // "YYYY-MM-DD"
-    checkOutDate: string;  // "YYYY-MM-DD"
-    totalAmount?: number;
-    currency: string;      // "usd" hoặc "vnd"
-    guestCount?: number;
-    guestNotes?: string;
-    numberOfAdults?: number;
-    numberOfChildren?: number;
-    numberOfInfants?: number;
-    numberOfPets?: number;
-}
-
-export interface CheckoutResponse {
-    bookingId: string;
-    paymentIntentId: string;
-    /** Stripe client secret — dùng để gọi stripe.confirmPayment() */
-    clientSecret: string;
-    /** Stripe publishable key — dùng để khởi tạo loadStripe() */
-    publishableKey: string;
-    totalAmount: number;
-    currency: string;
-    expiresAt: string;   // ISO datetime — booking hết hạn lúc này
-    message: string;
-}
-
-export type BookingStatus = 'PENDING_PAYMENT' | 'PAID' | 'EXPIRED' | 'CANCELLED';
-
-export interface BookingDetail {
-    id: number;
-    roomId: number;
-    userId: number;
-    roomName: string;
-    checkInDate: string;
-    checkOutDate: string;
-    totalNights: number;
-    totalAmount: number;
-    currency: string;
-    status: BookingStatus;
-    statusDisplayName: string;
-    paymentIntentId?: string;
-    createdAt: string;
-    expiresAt: string;
-    paidAt?: string;
-    guestCount: number;
-    guestNotes?: string;
-    secondsUntilExpiry: number;
-}
 
 /**
  * 1 call → tạo Booking + PaymentIntent.
@@ -68,5 +18,21 @@ export async function checkout(token : string | null, data: CheckoutRequest): Pr
     const res = await apiClient.post(`${prefix}/payments/checkout`, data, {
         headers: { Authorization: `Bearer ${token}` },
     });
+    return res.data;
+}
+
+export async function getMyBookings(
+    token: string | null,
+    type: BookingFilterType = "ALL"
+): Promise<ApiResponse<BookingTripsResponse[]>> {
+    const res = await apiClient.get(`${prefix}/bookings/me`, {
+        params: {
+            type,
+        },
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
     return res.data;
 }

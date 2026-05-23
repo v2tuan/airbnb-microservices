@@ -1,6 +1,7 @@
 package com.bookingservice.dto.response;
 
 import com.bookingservice.entity.BookingStatus;
+import jakarta.persistence.Column;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,6 +16,7 @@ public class BookingTripResponse {
     // ===== Booking info =====
     private UUID bookingId;
     private UUID listingId;
+    private UUID hostId;
 
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
@@ -30,7 +32,12 @@ public class BookingTripResponse {
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
 
-    private Long secondsUntilExpiry;
+//    private Long secondsUntilExpiry;
+
+    private Integer numAdults;
+    private Integer numChildren;
+    private Integer numInfants;
+    private Integer numPets;
 
     // ===== Listing snapshot (VERY IMPORTANT for UI) =====
     private String title;

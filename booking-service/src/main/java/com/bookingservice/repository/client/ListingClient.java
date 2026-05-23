@@ -15,10 +15,11 @@ import java.util.UUID;
 @FeignClient(name = "listing-client", url = "${listings.url}")
 public interface ListingClient {
     @GetMapping("/{listingId}")
-    ApiResponse<ListingResponse> getListingById(@PathVariable UUID listingId);
+    ApiResponse<ListingResponse> getListingById(@RequestHeader("Authorization") String token, @PathVariable UUID listingId);
 
     @PostMapping("/batch")
     ApiResponse<List<ListingResponse>> getListingsByIds(
+            @RequestHeader("Authorization") String token,
             @RequestBody ListingBatchRequest request
     );
 }

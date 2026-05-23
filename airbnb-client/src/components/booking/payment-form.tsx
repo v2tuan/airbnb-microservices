@@ -61,7 +61,7 @@ export default function PaymentForm({roomId, bookingIntent} : CardFormProps) {
                 clientSecret,
                 confirmParams: {
                     // Redirect về trang success với bookingId trong query params
-                    return_url: `${window.location.origin}/users/profile/past-trips`,
+                    return_url: `${window.location.origin}/trips`,
                 },
             });
 

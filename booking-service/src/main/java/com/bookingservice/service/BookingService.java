@@ -73,7 +73,7 @@ public class BookingService {
         }
 
         // 4. Tạo booking entity với status = PENDING_PAYMENT
-        ListingResponse response = listingClient.getListingById(request.getRoomId()).getData();
+        ListingResponse response = listingClient.getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId()).getData();
 
         Booking booking = Booking.builder()
                 .listingId(request.getRoomId())
@@ -211,7 +211,8 @@ public class BookingService {
         // 1. Get bookings
         List<Booking> bookings = bookingRepository.findBookingsByType(
                 userId,
-                type.name()
+                type.name(),
+                LocalDateTime.now()
         );
 
         if (bookings.isEmpty()) {
@@ -226,7 +227,7 @@ public class BookingService {
 
         // 3. Batch call listing service
         List<ListingResponse> listings =
-                listingClient.getListingsByIds(new ListingBatchRequest(listingIds))
+                listingClient.getListingsByIds("Bearer " + jwt.getTokenValue(), new ListingBatchRequest(listingIds))
                         .getData();
 
         // 4. Convert to map (VERY IMPORTANT)
@@ -284,17 +285,17 @@ public class BookingService {
             ListingResponse listing
     ) {
 
-        long secondsUntilExpiry = 0;
-
-        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
-                && booking.getExpiresAt() != null) {
-
-            secondsUntilExpiry = Math.max(0,
-                    ChronoUnit.SECONDS.between(
-                            LocalDateTime.now(),
-                            booking.getExpiresAt()
-                    ));
-        }
+//        long secondsUntilExpiry = 0;
+//
+//        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
+//                && booking.getExpiresAt() != null) {
+//
+//            secondsUntilExpiry = Math.max(0,
+//                    ChronoUnit.SECONDS.between(
+//                            LocalDateTime.now(),
+//                            booking.getExpiresAt()
+//                    ));
+//        }
 
         // Trip label logic (Airbnb style)
         String tripLabel = resolveTripLabel(booking);
@@ -315,7 +316,12 @@ public class BookingService {
                 .createdAt(booking.getCreatedAt())
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
-                .secondsUntilExpiry(secondsUntilExpiry)
+//                .secondsUntilExpiry(secondsUntilExpiry)
+
+                .numAdults(booking.getNumAdults())
+                .numChildren(booking.getNumChildren())
+                .numInfants(booking.getNumInfants())
+                .numPets(booking.getNumPets())
 
                 // ===== Listing =====
                 .title(listing != null ? listing.getTitle() : null)

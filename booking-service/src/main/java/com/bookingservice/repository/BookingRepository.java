@@ -6,6 +6,7 @@ import feign.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,14 +32,34 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     WHERE b.guestId = :guestId
     AND (
         :type = 'ALL'
+
         OR (
-            :type = 'CANCELLED' AND b.status = com.bookingservice.entity.BookingStatus.CANCELLED
+            :type = 'CANCELLED'
+            AND (
+                b.status = com.bookingservice.entity.BookingStatus.CANCELLED
+
+                OR (
+                    b.status = com.bookingservice.entity.BookingStatus.PENDING_PAYMENT
+                    AND b.expiresAt < :now
+                )
+            )
         )
+
         OR (
             :type = 'UPCOMING'
-            AND b.status = com.bookingservice.entity.BookingStatus.PAID
-            AND b.checkInDate > CURRENT_DATE
+            AND (
+                (
+                    b.status = com.bookingservice.entity.BookingStatus.PAID
+                    AND b.checkOutDate >= CURRENT_DATE
+                )
+
+                OR (
+                    b.status = com.bookingservice.entity.BookingStatus.PENDING_PAYMENT
+                    AND b.expiresAt > :now
+                )
+            )
         )
+
         OR (
             :type = 'COMPLETED'
             AND b.status = com.bookingservice.entity.BookingStatus.PAID
@@ -49,6 +70,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 """)
     List<Booking> findBookingsByType(
             UUID guestId,
-            String type
+            String type,
+            LocalDateTime now
     );
 }

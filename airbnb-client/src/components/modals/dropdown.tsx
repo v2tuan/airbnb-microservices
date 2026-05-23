@@ -22,10 +22,10 @@ function Dropdown() {
               <Heart size={18}/>
               <p>Wishlist</p>
             </Link>
-            <div className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
+            <Link href="/trips" className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
               <Home size={18}/>
               <p>Trips</p>
-            </div>
+            </Link>
             <Link href="/guest/messages" className="flex items-center gap-3 px-4 py-2 hover:bg-gray-100 cursor-pointer">
               <MessageSquare size={18}/>
               <p>Messages</p>

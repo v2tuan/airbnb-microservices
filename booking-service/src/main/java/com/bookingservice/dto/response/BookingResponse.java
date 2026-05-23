@@ -45,10 +45,10 @@ public class BookingResponse {
      */
     public static String getStatusDisplayName(BookingStatus status) {
         return switch (status) {
-            case PENDING_PAYMENT -> "Chờ thanh toán";
-            case PAID -> "Đã thanh toán";
-            case EXPIRED -> "Hết hạn";
-            case CANCELLED -> "Đã hủy";
+            case PENDING_PAYMENT -> "Pending payment";
+            case PAID -> "Paid";
+            case EXPIRED -> "Expired";
+            case CANCELLED -> "Cancelled";
         };
     }
 }

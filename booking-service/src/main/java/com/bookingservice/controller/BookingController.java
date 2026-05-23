@@ -1,5 +1,6 @@
 package com.bookingservice.controller;
 
+import com.bookingservice.dto.ApiResponse;
 import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.CreateBookingRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
@@ -56,10 +57,14 @@ public class BookingController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<List<BookingTripResponse>> getMyBookings(
+    public ResponseEntity<ApiResponse<List<BookingTripResponse>>> getMyBookings(
             @RequestParam(defaultValue = "ALL") BookingFilterType type
     ) {
-        return ResponseEntity.ok(bookingService.getMyBookings(type));
+        return ResponseEntity.ok(ApiResponse.<List<BookingTripResponse>>builder()
+                .success(true)
+                .message("Get booking success")
+                .data(bookingService.getMyBookings(type))
+                .build());
     }
 
     /**
