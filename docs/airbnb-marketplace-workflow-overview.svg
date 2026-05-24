@@ -1,0 +1,221 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1280" viewBox="0 0 1800 1280">
+  <defs>
+    <style>
+      .bg { fill: #f7f8fb; }
+      .title { font: 700 34px Arial, sans-serif; fill: #111827; }
+      .subtitle { font: 400 18px Arial, sans-serif; fill: #4b5563; }
+      .lane-title { font: 700 20px Arial, sans-serif; fill: #111827; }
+      .box-title { font: 700 18px Arial, sans-serif; fill: #111827; }
+      .box-text { font: 400 15px Arial, sans-serif; fill: #374151; }
+      .small { font: 400 13px Arial, sans-serif; fill: #4b5563; }
+      .state { font: 700 14px Arial, sans-serif; fill: #111827; }
+      .note-title { font: 700 16px Arial, sans-serif; fill: #111827; }
+      .note { font: 400 14px Arial, sans-serif; fill: #374151; }
+      .lane { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; }
+      .client { fill: #e0f2fe; stroke: #0284c7; }
+      .booking { fill: #ecfdf5; stroke: #059669; }
+      .payment { fill: #fef3c7; stroke: #d97706; }
+      .stripe { fill: #f3e8ff; stroke: #7c3aed; }
+      .kafka { fill: #fee2e2; stroke: #dc2626; }
+      .db { fill: #eef2ff; stroke: #4f46e5; }
+      .redis { fill: #fff1f2; stroke: #e11d48; }
+      .warn { fill: #fff7ed; stroke: #ea580c; }
+      .box { stroke-width: 2; rx: 14; ry: 14; }
+      .thin { stroke-width: 1.5; }
+      .arrow { stroke: #374151; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .arrow-soft { stroke: #6b7280; stroke-width: 2; fill: none; marker-end: url(#arrow-soft); stroke-dasharray: 7 7; }
+      .arrow-green { stroke: #059669; stroke-width: 2.6; fill: none; marker-end: url(#arrow-green); }
+      .arrow-orange { stroke: #d97706; stroke-width: 2.6; fill: none; marker-end: url(#arrow-orange); }
+      .arrow-purple { stroke: #7c3aed; stroke-width: 2.6; fill: none; marker-end: url(#arrow-purple); }
+      .arrow-red { stroke: #dc2626; stroke-width: 2.6; fill: none; marker-end: url(#arrow-red); }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#374151"/>
+    </marker>
+    <marker id="arrow-soft" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#059669"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#d97706"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1800" height="1280"/>
+  <text class="title" x="70" y="62">Airbnb Marketplace Booking + Payment Workflow</text>
+  <text class="subtitle" x="70" y="94">Mental model: Booking Service giữ quyền sử dụng phòng, Payment Service giữ dòng tiền, Stripe là nguồn sự thật thanh toán, scheduler điều phối payout/refund.</text>
+
+  <rect class="lane" x="55" y="125" width="1690" height="185"/>
+  <text class="lane-title" x="80" y="158">1. Checkout: tạo booking tạm + PaymentIntent</text>
+
+  <rect class="box client" x="90" y="185" width="230" height="82"/>
+  <text class="box-title" x="115" y="215">Guest / Frontend</text>
+  <text class="box-text" x="115" y="241">POST /payments/checkout</text>
+  <text class="small" x="115" y="262">Idempotency-Key</text>
+
+  <rect class="box payment" x="390" y="178" width="275" height="96"/>
+  <text class="box-title" x="415" y="210">PaymentController</text>
+  <text class="box-text" x="415" y="236">Validate JWT + request</text>
+  <text class="small" x="415" y="257">Call PaymentService.checkout()</text>
+
+  <rect class="box booking" x="735" y="178" width="270" height="96"/>
+  <text class="box-title" x="760" y="210">Booking Service</text>
+  <text class="box-text" x="760" y="236">Create PENDING_PAYMENT</text>
+  <text class="small" x="760" y="257">Advisory lock chống double booking</text>
+
+  <rect class="box stripe" x="1075" y="178" width="260" height="96"/>
+  <text class="box-title" x="1100" y="210">Stripe</text>
+  <text class="box-text" x="1100" y="236">Create PaymentIntent</text>
+  <text class="small" x="1100" y="257">Platform charge, chưa transfer host</text>
+
+  <rect class="box db" x="1405" y="178" width="255" height="96"/>
+  <text class="box-title" x="1430" y="210">Payment DB</text>
+  <text class="box-text" x="1430" y="236">Save Payment(CREATED)</text>
+  <text class="small" x="1430" y="257">bookingId + paymentIntentId</text>
+
+  <path class="arrow" d="M320 226 H390"/>
+  <path class="arrow-green" d="M665 226 H735"/>
+  <path class="arrow-purple" d="M1005 226 H1075"/>
+  <path class="arrow" d="M1335 226 H1405"/>
+  <path class="arrow-soft" d="M1405 260 C1190 330 570 330 320 258"/>
+  <text class="small" x="790" y="302">Return clientSecret + bookingId + expiresAt cho frontend</text>
+
+  <rect class="lane" x="55" y="340" width="1690" height="240"/>
+  <text class="lane-title" x="80" y="373">2. Stripe webhook: chốt kết quả thanh toán</text>
+
+  <rect class="box stripe" x="90" y="415" width="240" height="92"/>
+  <text class="box-title" x="115" y="447">Stripe Webhook</text>
+  <text class="box-text" x="115" y="473">payment_intent.*</text>
+  <text class="small" x="115" y="494">Succeeded / Failed / Canceled</text>
+
+  <rect class="box payment" x="400" y="405" width="285" height="112"/>
+  <text class="box-title" x="425" y="437">PaymentController</text>
+  <text class="box-text" x="425" y="463">Verify Stripe-Signature</text>
+  <text class="small" x="425" y="484">Parse PaymentIntent</text>
+  <text class="small" x="425" y="503">Read metadata.bookingId</text>
+
+  <rect class="box db" x="755" y="405" width="285" height="112"/>
+  <text class="box-title" x="780" y="437">stripe_webhook_events</text>
+  <text class="box-text" x="780" y="463">eventId là primary key</text>
+  <text class="small" x="780" y="484">Duplicate event: skip</text>
+  <text class="small" x="780" y="503">RECEIVED → PROCESSED / FAILED</text>
+
+  <rect class="box payment" x="1110" y="405" width="265" height="112"/>
+  <text class="box-title" x="1135" y="437">PaymentService</text>
+  <text class="box-text" x="1135" y="463">succeeded: Payment=SUCCEEDED</text>
+  <text class="small" x="1135" y="484">failed: Payment=FAILED</text>
+  <text class="small" x="1135" y="503">canceled: Payment=CANCELLED</text>
+
+  <rect class="box booking" x="1450" y="405" width="230" height="112"/>
+  <text class="box-title" x="1475" y="437">Booking Service</text>
+  <text class="box-text" x="1475" y="463">Only succeeded → PAID</text>
+  <text class="small" x="1475" y="484">failed/canceled không PAID</text>
+  <text class="small" x="1475" y="503">pending sẽ expire nếu hết hạn</text>
+
+  <path class="arrow-purple" d="M330 461 H400"/>
+  <path class="arrow" d="M685 461 H755"/>
+  <path class="arrow-orange" d="M1040 461 H1110"/>
+  <path class="arrow-green" d="M1375 461 H1450"/>
+
+  <rect class="box kafka" x="1110" y="535" width="570" height="32"/>
+  <text class="small" x="1135" y="556">Kafka event khi succeeded: payment.succeeded → notification/activity/analytics</text>
+  <path class="arrow-red" d="M1240 517 V535"/>
+
+  <rect class="lane" x="55" y="610" width="1690" height="250"/>
+  <text class="lane-title" x="80" y="643">3. Payout: platform chuyển tiền cho host sau check-in + 24h</text>
+
+  <rect class="box db" x="90" y="690" width="250" height="105"/>
+  <text class="box-title" x="115" y="722">Payout row</text>
+  <text class="box-text" x="115" y="748">Created after payment succeeded</text>
+  <text class="small" x="115" y="769">Status: PENDING_CHECKIN</text>
+
+  <rect class="box payment" x="410" y="680" width="265" height="125"/>
+  <text class="box-title" x="435" y="712">PayoutScheduler</text>
+  <text class="box-text" x="435" y="738">Find due payouts</text>
+  <text class="small" x="435" y="759">PESSIMISTIC_WRITE lock</text>
+  <text class="small" x="435" y="780">Avoid double payout</text>
+
+  <rect class="box booking" x="745" y="680" width="270" height="125"/>
+  <text class="box-title" x="770" y="712">Booking Service</text>
+  <text class="box-text" x="770" y="738">Get booking status</text>
+  <text class="small" x="770" y="759">CHECKED_IN / COMPLETED?</text>
+  <text class="small" x="770" y="780">checkedInAt + 24h?</text>
+
+  <rect class="box stripe" x="1085" y="680" width="250" height="125"/>
+  <text class="box-title" x="1110" y="712">Stripe Transfer</text>
+  <text class="box-text" x="1110" y="738">Platform → Host Express</text>
+  <text class="small" x="1110" y="759">Idempotency: payoutId</text>
+  <text class="small" x="1110" y="780">Store stripeTransferId</text>
+
+  <rect class="box db" x="1405" y="680" width="250" height="125"/>
+  <text class="box-title" x="1430" y="712">Payout DB</text>
+  <text class="box-text" x="1430" y="738">COMPLETED / RETRY / FAILED</text>
+  <text class="small" x="1430" y="759">retryCount + nextRetryAt</text>
+  <text class="small" x="1430" y="780">Supports manual review</text>
+
+  <path class="arrow-orange" d="M340 742 H410"/>
+  <path class="arrow-green" d="M675 742 H745"/>
+  <path class="arrow-purple" d="M1015 742 H1085"/>
+  <path class="arrow" d="M1335 742 H1405"/>
+  <rect class="box kafka" x="1085" y="820" width="570" height="32"/>
+  <text class="small" x="1110" y="841">Kafka event khi completed: payout.completed</text>
+  <path class="arrow-red" d="M1210 805 V820"/>
+
+  <rect class="lane" x="55" y="890" width="1690" height="250"/>
+  <text class="lane-title" x="80" y="923">4. Refund: hoàn tiền trước payout hoặc sau payout</text>
+
+  <rect class="box client" x="90" y="970" width="250" height="104"/>
+  <text class="box-title" x="115" y="1002">Admin / Support</text>
+  <text class="box-text" x="115" y="1028">POST /api/v1/refunds</text>
+  <text class="small" x="115" y="1049">Input: original transactionId</text>
+
+  <rect class="box payment" x="410" y="960" width="285" height="124"/>
+  <text class="box-title" x="435" y="992">RefundService</text>
+  <text class="box-text" x="435" y="1018">Validate amount</text>
+  <text class="small" x="435" y="1039">Create Refund + REFUND transaction</text>
+  <text class="small" x="435" y="1060">Check payout status</text>
+
+  <rect class="box warn" x="765" y="960" width="270" height="124"/>
+  <text class="box-title" x="790" y="992">Decision</text>
+  <text class="box-text" x="790" y="1018">Payout not completed?</text>
+  <text class="small" x="790" y="1039">→ Refund directly</text>
+  <text class="small" x="790" y="1060">Payout completed? → reverse first</text>
+
+  <rect class="box stripe" x="1105" y="945" width="250" height="154"/>
+  <text class="box-title" x="1130" y="977">Stripe</text>
+  <text class="box-text" x="1130" y="1003">Refund PaymentIntent</text>
+  <text class="small" x="1130" y="1024">If paid out: TransferReversal</text>
+  <text class="small" x="1130" y="1045">Idempotency: refundId</text>
+  <text class="small" x="1130" y="1066">Return gatewayRefundId</text>
+
+  <rect class="box db" x="1425" y="960" width="230" height="124"/>
+  <text class="box-title" x="1450" y="992">Ledger DB</text>
+  <text class="box-text" x="1450" y="1018">Refund COMPLETED / FAILED</text>
+  <text class="small" x="1450" y="1039">Payment refundedAmount</text>
+  <text class="small" x="1450" y="1060">Payout REVERSED if needed</text>
+
+  <path class="arrow" d="M340 1022 H410"/>
+  <path class="arrow-orange" d="M695 1022 H765"/>
+  <path class="arrow-purple" d="M1035 1022 H1105"/>
+  <path class="arrow" d="M1355 1022 H1425"/>
+  <rect class="box kafka" x="1105" y="1115" width="550" height="32"/>
+  <text class="small" x="1130" y="1136">Kafka event khi completed: refund.completed</text>
+  <path class="arrow-red" d="M1230 1099 V1115"/>
+
+  <rect class="lane" x="55" y="1170" width="1690" height="80"/>
+  <text class="lane-title" x="80" y="1203">State machines</text>
+  <text class="state" x="90" y="1234">Booking:</text>
+  <text class="small" x="165" y="1234">PENDING_PAYMENT → PAID → CHECKED_IN → COMPLETED | EXPIRED / CANCELLED</text>
+  <text class="state" x="720" y="1234">Payment:</text>
+  <text class="small" x="800" y="1234">CREATED → SUCCEEDED / FAILED / CANCELLED → PARTIALLY_REFUNDED / REFUNDED</text>
+  <text class="state" x="1330" y="1234">Payout:</text>
+  <text class="small" x="1400" y="1234">PENDING_CHECKIN → SCHEDULED → PROCESSING → COMPLETED / RETRY / FAILED</text>
+</svg>

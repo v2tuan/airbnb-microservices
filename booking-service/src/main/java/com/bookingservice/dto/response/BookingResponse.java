@@ -19,6 +19,7 @@ public class BookingResponse {
     private UUID id;
     private UUID roomId;
     private UUID userId;
+    private UUID hostId;
     private String roomName;
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
@@ -31,6 +32,9 @@ public class BookingResponse {
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
+    private LocalDateTime checkedInAt;
+    private LocalDateTime completedAt;
+    private LocalDateTime cancelledAt;
     private Integer guestCount;
     private String guestNotes;
 
@@ -47,6 +51,8 @@ public class BookingResponse {
         return switch (status) {
             case PENDING_PAYMENT -> "Pending payment";
             case PAID -> "Paid";
+            case CHECKED_IN -> "Checked in";
+            case COMPLETED -> "Completed";
             case EXPIRED -> "Expired";
             case CANCELLED -> "Cancelled";
         };

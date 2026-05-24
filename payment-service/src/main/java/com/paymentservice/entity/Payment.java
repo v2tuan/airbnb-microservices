@@ -15,79 +15,73 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "payments")
+@Table(name = "payments", indexes = {
+        @Index(name = "idx_payments_booking", columnList = "booking_id"),
+        @Index(name = "idx_payments_pi", columnList = "stripe_payment_intent_id"),
+        @Index(name = "idx_payments_status", columnList = "status")
+})
 public class Payment {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    /**
-     * ID của booking tương ứng (foreign key sang Booking Service)
-     * Lưu locally để đối chiếu, không có JPA relationship vì khác service
-     */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @Column(name = "booking_id", nullable = false, unique = true)
     private UUID bookingId;
 
-    /**
-     * Stripe PaymentIntent ID - key chính để track payment
-     * Format: pi_xxxxxxxxxxxxxxxxxxxx
-     */
+    @Column(name = "guest_id")
+    private UUID guestId;
+
+    @Column(name = "host_id")
+    private UUID hostId;
+
+    @Column(name = "host_stripe_account_id")
+    private String hostStripeAccountId;
+
     @Column(name = "stripe_payment_intent_id", nullable = false, unique = true)
     private String stripePaymentIntentId;
 
-    /**
-     * Client Secret từ PaymentIntent - gửi cho Frontend để complete payment
-     * KHÔNG bao giờ log hay expose secret key này ra ngoài
-     */
+    @Column(name = "stripe_charge_id")
+    private String stripeChargeId;
+
     @Column(name = "client_secret", nullable = false)
     private String clientSecret;
 
-    /**
-     * Số tiền (đơn vị: cents cho USD, hoặc smallest currency unit)
-     * Ví dụ: $100.00 → amount = 10000
-     */
     @Column(name = "amount", nullable = false)
-    private Long amount;  // Stripe dùng Long (cents)
+    private Long amount;
 
-    /**
-     * Số tiền dạng decimal để hiển thị
-     */
+    @Column(name = "platform_fee_amount", nullable = false)
+    @Builder.Default
+    private Long platformFeeAmount = 0L;
+
+    @Column(name = "host_amount", nullable = false)
+    @Builder.Default
+    private Long hostAmount = 0L;
+
+    @Column(name = "refunded_amount", nullable = false)
+    @Builder.Default
+    private Long refundedAmount = 0L;
+
     @Column(name = "amount_decimal", precision = 12, scale = 2)
     private BigDecimal amountDecimal;
 
-    /**
-     * Loại tiền tệ (lowercase): usd, vnd, eur
-     */
     @Column(name = "currency", length = 3, nullable = false)
     private String currency;
 
-    /**
-     * Trạng thái payment:
-     * - CREATED: PaymentIntent đã tạo, chờ user thanh toán
-     * - SUCCEEDED: Thanh toán thành công (từ Stripe webhook)
-     * - FAILED: Thanh toán thất bại
-     * - CANCELLED: Bị hủy
-     */
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     @Builder.Default
     private PaymentStatus status = PaymentStatus.CREATED;
 
-    /**
-     * Stripe event ID từ webhook (để idempotency - tránh xử lý event 2 lần)
-     */
-    @Column(name = "stripe_event_id", unique = true)
+    @Column(name = "stripe_event_id")
     private String stripeEventId;
 
-    /**
-     * Raw payload từ Stripe webhook (để debug và audit)
-     */
     @Column(name = "webhook_payload", columnDefinition = "TEXT")
     private String webhookPayload;
 
-    /**
-     * Thông báo lỗi nếu payment thất bại
-     */
     @Column(name = "failure_message")
     private String failureMessage;
 
@@ -97,9 +91,6 @@ public class Payment {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    /**
-     * Thời điểm payment thành công
-     */
     @Column(name = "succeeded_at")
     private LocalDateTime succeededAt;
 

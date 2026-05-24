@@ -41,6 +41,10 @@ public class Booking {
     @Column(name = "booking_id")
     private UUID bookingId;
 
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     /**
      * Stripe PaymentIntent ID - lưu để đối chiếu payment
      */
@@ -200,6 +204,18 @@ public class Booking {
      */
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
+
+    @Column(name = "checked_in_at")
+    private LocalDateTime checkedInAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
 
     /**
      * Thời điểm tạo record

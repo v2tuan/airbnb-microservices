@@ -51,7 +51,8 @@ public class PaymentController {
      * POST /api/payments/checkout
      */
     @PostMapping("/checkout")
-    public ResponseEntity<?> checkout(@Valid @RequestBody CheckoutRequest request) {
+    public ResponseEntity<?> checkout(@Valid @RequestBody CheckoutRequest request,
+                                      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         Jwt jwt = (Jwt) authentication.getPrincipal();
@@ -61,7 +62,7 @@ public class PaymentController {
         log.info("[API] POST /checkout — roomId={}, userId={}, {}",
                 request.getRoomId(), userId, request.getCurrency());
         try {
-            CheckoutResponse response = paymentService.checkout(request);
+            CheckoutResponse response = paymentService.checkout(request, idempotencyKey);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
             log.error("[API] Checkout failed: {}", e.getMessage(), e);
@@ -165,7 +166,7 @@ public class PaymentController {
         // ── HANDLE EVENT ────────────────────────────────────────────────────
         paymentService.handleWebhookEvent(
                 eventType,
-                pi.getId(),
+                pi,
                 bookingId,
                 event.getId(),
                 payload

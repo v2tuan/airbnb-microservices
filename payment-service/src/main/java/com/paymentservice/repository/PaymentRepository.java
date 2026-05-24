@@ -15,7 +15,7 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     /**
      * Tìm payment theo Booking ID
      */
-    Optional<Payment> findByBookingId(Long bookingId);
+    Optional<Payment> findByBookingId(UUID bookingId);
 
     /**
      * Kiểm tra event đã xử lý chưa (idempotency)

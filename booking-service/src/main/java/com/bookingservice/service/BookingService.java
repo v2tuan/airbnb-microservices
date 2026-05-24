@@ -18,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -33,236 +34,181 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final ListingClient listingClient;
 
-    /**
-     * Tạo booking mới với trạng thái PENDING_PAYMENT.
-     *
-     * QUAN TRỌNG: Booking được tạo NGAY LẬP TỨC khi user bấm "Đặt phòng",
-     * KHÔNG đợi thanh toán thành công. Giống flow của Shopee/Tiki.
-     *
-     * @param request thông tin đặt phòng từ frontend
-     * @return response chứa bookingId để tiếp tục flow thanh toán
-     */
+    @Transactional
     public CreateBookingResponse createBooking(CreateBookingRequest request) {
+        Jwt jwt = currentJwt();
+        UUID guestId = UUID.fromString(jwt.getSubject());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        Jwt jwt = (Jwt) authentication.getPrincipal();
-
-        String userId = jwt.getSubject();
-
-        log.info("Creating new booking for roomId={}, userId={}, dates={} to {}",
-                request.getRoomId(), userId,
-                request.getCheckInDate(), request.getCheckOutDate());
-
-        // 1. Validate ngày check-in phải trước check-out
         if (!request.getCheckOutDate().isAfter(request.getCheckInDate())) {
-            throw new IllegalArgumentException("Ngày check-out phải sau ngày check-in");
+            throw new IllegalArgumentException("Check-out date must be after check-in date");
         }
 
-        // 2. Tính số đêm ở
-        int totalNights = (int) ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
+        // Lock listing ngăn double booking
+        bookingRepository.acquireListingBookingLock(request.getRoomId().toString());
 
-        // 3. Kiểm tra conflict với booking khác (optional - có thể bỏ qua trong demo)
         List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(
                 request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate());
-
         if (!conflictingBookings.isEmpty()) {
-            log.warn("Room {} has conflicting bookings for dates {} to {}",
-                    request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate());
-            throw new IllegalStateException("Phòng đã được đặt trong khoảng thời gian này");
+            throw new IllegalStateException("Listing is not available for the selected dates");
         }
 
-        // 4. Tạo booking entity với status = PENDING_PAYMENT
-        ListingResponse response = listingClient.getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId()).getData();
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId())
+                .getData();
 
+        int totalNights = (int) ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
         Booking booking = Booking.builder()
                 .listingId(request.getRoomId())
-                .hostId(UUID.fromString(response.getHostId()))
-                .guestId(UUID.fromString(userId))
+                .hostId(UUID.fromString(listing.getHostId()))
+                .guestId(guestId)
                 .checkInDate(request.getCheckInDate())
                 .checkOutDate(request.getCheckOutDate())
                 .totalNights(totalNights)
-                .totalPrice(totalNights * response.getPricing().getBasePrice().longValue())
-                .currency(request.getCurrency() != null ? request.getCurrency() : "USD")
-//                .numGuests(request.getGuestCount() != null ? request.getGuestCount() : 1)
+                .totalPrice(totalNights * listing.getPricing().getBasePrice().longValue())
+                .currency(request.getCurrency() != null ? request.getCurrency().toUpperCase() : "USD")
                 .numAdults(request.getNumberOfAdults())
                 .numChildren(request.getNumberOfChildren())
                 .numInfants(request.getNumberOfInfants())
                 .numPets(request.getNumberOfPets())
                 .guestNotes(request.getGuestNotes())
-                .status(BookingStatus.PENDING_PAYMENT)  // LUÔN bắt đầu với PENDING_PAYMENT
+                .status(BookingStatus.PENDING_PAYMENT)
                 .build();
 
-        // 5. Lưu vào database - @PrePersist sẽ set createdAt và expiresAt
-        Booking savedBooking = bookingRepository.save(booking);
-
-        log.info("Booking created successfully: bookingId={}, status={}, expiresAt={}",
-                savedBooking.getBookingId(), savedBooking.getStatus(), savedBooking.getExpiresAt());
-
-        // 6. Trả về response cho frontend để tiếp tục flow thanh toán
+        Booking saved = bookingRepository.save(booking);
         return CreateBookingResponse.builder()
-                .bookingId(savedBooking.getBookingId())
-                .hostId(savedBooking.getHostId().toString())
-                .status(savedBooking.getStatus())
-                .totalAmount(savedBooking.getTotalPrice())
-                .currency(savedBooking.getCurrency())
-                .expiresAt(savedBooking.getExpiresAt())
-                .message("Booking đã được tạo thành công. Vui lòng hoàn thành thanh toán trong 15 phút.")
+                .bookingId(saved.getBookingId())
+                .hostId(saved.getHostId().toString())
+                .status(saved.getStatus())
+                .totalAmount(saved.getTotalPrice())
+                .currency(saved.getCurrency())
+                .expiresAt(saved.getExpiresAt())
+                .message("Booking created. Complete payment before it expires.")
                 .build();
     }
 
-    // =========================================
-    // UPDATE BOOKING STATUS (gọi từ Payment Service qua webhook)
-    // =========================================
+    @Transactional
+    public BookingResponse updateBookingStatus(UUID bookingId, UpdateBookingStatusRequest request) {
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
 
-    /**
-     * Cập nhật trạng thái booking.
-     * Được gọi bởi Payment Service khi nhận Stripe webhook.
-     *
-     * FLOW:
-     * Stripe webhook → Payment Service → gọi endpoint này → update booking PENDING_PAYMENT → PAID
-     *
-     * @param bookingId ID của booking cần update
-     * @param request chứa status mới và paymentIntentId
-     */
-    public BookingResponse updateBookingStatus(UUID bookingId,
-                                               UpdateBookingStatusRequest request) {
-        log.info("Updating booking status: bookingId={}, newStatus={}, paymentIntentId={}",
-                bookingId, request.getStatus(), request.getPaymentIntentId());
+        if (booking.getStatus() == request.getStatus()) {
+            if (request.getPaymentIntentId() != null && booking.getPaymentIntentId() == null) {
+                booking.setPaymentIntentId(request.getPaymentIntentId());
+            }
+            return mapToResponse(bookingRepository.save(booking));
+        }
 
-        // 1. Tìm booking
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking không tồn tại: " + bookingId));
-
-        // 2. Validate state transition
         validateStatusTransition(booking.getStatus(), request.getStatus());
-
-        // 3. Update trạng thái
-        BookingStatus oldStatus = booking.getStatus();
         booking.setStatus(request.getStatus());
 
-        // 4. Lưu paymentIntentId nếu có (để đối chiếu sau này)
         if (request.getPaymentIntentId() != null) {
             booking.setPaymentIntentId(request.getPaymentIntentId());
         }
-
-        // 5. Nếu chuyển sang PAID, ghi lại thời điểm thanh toán
         if (request.getStatus() == BookingStatus.PAID) {
             booking.setPaidAt(LocalDateTime.now());
-            log.info("Booking {} marked as PAID at {}", bookingId, booking.getPaidAt());
+        }
+        if (request.getStatus() == BookingStatus.CHECKED_IN) {
+            booking.setCheckedInAt(LocalDateTime.now());
+        }
+        if (request.getStatus() == BookingStatus.COMPLETED) {
+            booking.setCompletedAt(LocalDateTime.now());
+        }
+        if (request.getStatus() == BookingStatus.CANCELLED) {
+            booking.setCancelledAt(LocalDateTime.now());
         }
 
-        // 6. Lưu vào database
-        Booking updatedBooking = bookingRepository.save(booking);
-
-        log.info("Booking {} status updated: {} → {}", bookingId, oldStatus, updatedBooking.getStatus());
-
-        return mapToResponse(updatedBooking);
+        return mapToResponse(bookingRepository.save(booking));
     }
 
-    /**
-     * Validate xem status transition có hợp lệ không.
-     * Ví dụ: không thể chuyển từ PAID → PENDING_PAYMENT
-     */
+    @Transactional(readOnly = true)
+    public BookingResponse getBooking(UUID bookingId) {
+        return bookingRepository.findById(bookingId)
+                .map(this::mapToResponse)
+                .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
+    }
+
+    @Transactional
+    public BookingResponse checkIn(UUID bookingId) {
+        return updateBookingStatus(bookingId, UpdateBookingStatusRequest.builder()
+                .status(BookingStatus.CHECKED_IN)
+                .build());
+    }
+
+    @Transactional
+    public BookingResponse complete(UUID bookingId) {
+        return updateBookingStatus(bookingId, UpdateBookingStatusRequest.builder()
+                .status(BookingStatus.COMPLETED)
+                .build());
+    }
+
+    @Transactional
+    public int expirePendingBookings() {
+        List<Booking> expired = bookingRepository.findExpiredPendingForUpdate(LocalDateTime.now());
+        expired.forEach(booking -> booking.setStatus(BookingStatus.EXPIRED));
+        bookingRepository.saveAll(expired);
+        return expired.size();
+    }
+
     private void validateStatusTransition(BookingStatus currentStatus, BookingStatus newStatus) {
         boolean isValid = switch (currentStatus) {
             case PENDING_PAYMENT -> newStatus == BookingStatus.PAID
                     || newStatus == BookingStatus.EXPIRED
                     || newStatus == BookingStatus.CANCELLED;
-            case PAID -> newStatus == BookingStatus.CANCELLED; // Có thể hủy sau khi đã thanh toán
-            case EXPIRED, CANCELLED -> false; // Terminal states - không thể chuyển
+            case PAID -> newStatus == BookingStatus.CHECKED_IN
+                    || newStatus == BookingStatus.CANCELLED;
+            case CHECKED_IN -> newStatus == BookingStatus.COMPLETED
+                    || newStatus == BookingStatus.CANCELLED;
+            case EXPIRED, CANCELLED, COMPLETED -> false;
         };
 
         if (!isValid) {
-            throw new IllegalStateException(
-                    String.format("Không thể chuyển trạng thái booking từ %s sang %s",
-                            currentStatus, newStatus));
+            throw new IllegalStateException("Invalid booking transition from " + currentStatus + " to " + newStatus);
         }
     }
 
+    @Transactional(readOnly = true)
     public List<BookingResponse> getBookingsByUserAndStatuses(List<BookingStatus> statuses) {
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Jwt jwt = (Jwt) authentication.getPrincipal();
-        String userId = jwt.getSubject();
-
-        UUID guestId = UUID.fromString(userId);
-
-        List<Booking> bookings;
-
-        // nếu không truyền status → lấy tất cả
-        if (statuses == null || statuses.isEmpty()) {
-            bookings = bookingRepository.findByGuestId(guestId);
-        } else {
-            bookings = bookingRepository.findByGuestIdAndStatusIn(guestId, statuses);
-        }
-
-        return bookings.stream()
-                .map(this::mapToResponse)
-                .toList();
+        UUID guestId = UUID.fromString(currentJwt().getSubject());
+        List<Booking> bookings = statuses == null || statuses.isEmpty()
+                ? bookingRepository.findByGuestId(guestId)
+                : bookingRepository.findByGuestIdAndStatusIn(guestId, statuses);
+        return bookings.stream().map(this::mapToResponse).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<BookingTripResponse> getMyBookings(BookingFilterType type) {
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        Jwt jwt = (Jwt) authentication.getPrincipal();
+        Jwt jwt = currentJwt();
         UUID userId = UUID.fromString(jwt.getSubject());
 
-        // 1. Get bookings
-        List<Booking> bookings = bookingRepository.findBookingsByType(
-                userId,
-                type.name(),
-                LocalDateTime.now()
-        );
-
+        List<Booking> bookings = bookingRepository.findBookingsByType(userId, type.name(), LocalDateTime.now());
         if (bookings.isEmpty()) {
             return List.of();
         }
 
-        // 2. Extract listingIds
-        List<UUID> listingIds = bookings.stream()
-                .map(Booking::getListingId)
-                .distinct()
-                .toList();
+        List<UUID> listingIds = bookings.stream().map(Booking::getListingId).distinct().toList();
+        List<ListingResponse> listings = listingClient
+                .getListingsByIds("Bearer " + jwt.getTokenValue(), new ListingBatchRequest(listingIds))
+                .getData();
 
-        // 3. Batch call listing service
-        List<ListingResponse> listings =
-                listingClient.getListingsByIds("Bearer " + jwt.getTokenValue(), new ListingBatchRequest(listingIds))
-                        .getData();
-
-        // 4. Convert to map (VERY IMPORTANT)
         Map<UUID, ListingResponse> listingMap = listings.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        ListingResponse::getListingId,
-                        l -> l
-                ));
+                .collect(java.util.stream.Collectors.toMap(ListingResponse::getListingId, listing -> listing));
 
-        // 5. Merge booking + listing
         return bookings.stream()
-                .map(booking -> {
-                    ListingResponse listing = listingMap.get(booking.getListingId());
-
-                    return mapToTripResponse(booking, listing);
-                })
+                .map(booking -> mapToTripResponse(booking, listingMap.get(booking.getListingId())))
                 .toList();
     }
 
-    /**
-     * Map Booking entity → BookingResponse DTO
-     */
     private BookingResponse mapToResponse(Booking booking) {
-        // Tính thời gian còn lại để thanh toán
         long secondsUntilExpiry = 0;
         if (booking.getStatus() == BookingStatus.PENDING_PAYMENT && booking.getExpiresAt() != null) {
-            secondsUntilExpiry = Math.max(0,
-                    ChronoUnit.SECONDS.between(LocalDateTime.now(), booking.getExpiresAt()));
+            secondsUntilExpiry = Math.max(0, ChronoUnit.SECONDS.between(LocalDateTime.now(), booking.getExpiresAt()));
         }
 
         return BookingResponse.builder()
                 .id(booking.getBookingId())
                 .roomId(booking.getListingId())
                 .userId(booking.getGuestId())
-//                .roomName(booking.getRoomName())
+                .hostId(booking.getHostId())
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
                 .totalNights(booking.getTotalNights())
@@ -274,56 +220,33 @@ public class BookingService {
                 .createdAt(booking.getCreatedAt())
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
+                .checkedInAt(booking.getCheckedInAt())
+                .completedAt(booking.getCompletedAt())
+                .cancelledAt(booking.getCancelledAt())
                 .guestCount(booking.getNumAdults())
                 .guestNotes(booking.getGuestNotes())
                 .secondsUntilExpiry(secondsUntilExpiry)
                 .build();
     }
 
-    private BookingTripResponse mapToTripResponse(
-            Booking booking,
-            ListingResponse listing
-    ) {
-
-//        long secondsUntilExpiry = 0;
-//
-//        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
-//                && booking.getExpiresAt() != null) {
-//
-//            secondsUntilExpiry = Math.max(0,
-//                    ChronoUnit.SECONDS.between(
-//                            LocalDateTime.now(),
-//                            booking.getExpiresAt()
-//                    ));
-//        }
-
-        // Trip label logic (Airbnb style)
-        String tripLabel = resolveTripLabel(booking);
-
+    private BookingTripResponse mapToTripResponse(Booking booking, ListingResponse listing) {
         return BookingTripResponse.builder()
                 .bookingId(booking.getBookingId())
                 .listingId(booking.getListingId())
-
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
                 .totalNights(booking.getTotalNights())
                 .totalAmount(booking.getTotalPrice())
                 .currency(booking.getCurrency())
-
                 .status(booking.getStatus())
                 .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
-
                 .createdAt(booking.getCreatedAt())
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
-//                .secondsUntilExpiry(secondsUntilExpiry)
-
                 .numAdults(booking.getNumAdults())
                 .numChildren(booking.getNumChildren())
                 .numInfants(booking.getNumInfants())
                 .numPets(booking.getNumPets())
-
-                // ===== Listing =====
                 .title(listing != null ? listing.getTitle() : null)
                 .city(listing != null ? listing.getCity() : null)
                 .country(listing != null ? listing.getCountry() : null)
@@ -331,56 +254,35 @@ public class BookingService {
                         ? listing.getPricing().getBasePrice().longValue()
                         : null)
                 .coverImageUrl(resolveCoverImage(listing))
-
-                // ===== UI =====
-                .tripLabel(tripLabel)
-
+                .tripLabel(resolveTripLabel(booking))
                 .build();
     }
 
     private String resolveTripLabel(Booking booking) {
-
         LocalDate today = LocalDate.now();
-
-        if (booking.getStatus() == BookingStatus.CANCELLED) {
-            return "Cancelled trip";
-        }
-
+        if (booking.getStatus() == BookingStatus.CANCELLED) return "Cancelled trip";
+        if (booking.getStatus() == BookingStatus.CHECKED_IN) return "Ongoing trip";
+        if (booking.getStatus() == BookingStatus.COMPLETED) return "Past trip";
         if (booking.getStatus() == BookingStatus.PAID) {
-
-            if (booking.getCheckInDate().isAfter(today)) {
-                return "Upcoming trip";
-            }
-
-            if (booking.getCheckOutDate().isBefore(today)) {
-                return "Past trip";
-            }
-
-            return "Ongoing trip";
+            return booking.getCheckInDate().isAfter(today) ? "Upcoming trip" : "Ongoing trip";
         }
-
-        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
-            return "Waiting for payment";
-        }
-
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) return "Waiting for payment";
         return "Trip";
     }
 
     private String resolveCoverImage(ListingResponse listing) {
-
         if (listing == null || listing.getPhotos() == null || listing.getPhotos().isEmpty()) {
             return null;
         }
-
         return listing.getPhotos().stream()
                 .filter(photo -> Boolean.TRUE.equals(photo.getIsCover()))
                 .map(photo -> photo.getPhotoUrl())
                 .findFirst()
-                .orElse(
-                        listing.getPhotos().stream()
-                                .findFirst()
-                                .map(photo -> photo.getPhotoUrl())
-                                .orElse(null)
-                );
+                .orElseGet(() -> listing.getPhotos().getFirst().getPhotoUrl());
+    }
+
+    private Jwt currentJwt() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return (Jwt) authentication.getPrincipal();
     }
 }

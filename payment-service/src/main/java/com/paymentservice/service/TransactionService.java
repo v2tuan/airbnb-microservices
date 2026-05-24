@@ -10,6 +10,8 @@ import com.paymentservice.repository.PaymentAuditLogRepository;
 import com.paymentservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,6 +69,7 @@ public class TransactionService {
     /**
      * Update transaction status
      */
+    @CacheEvict(cacheNames = {"transaction", "bookingTransactions", "userPaymentTransactions", "userPayoutTransactions"}, allEntries = true)
     public void updateTransactionStatus(UUID transactionId, String newStatus) {
         Transaction transaction = transactionRepository.findById(transactionId)
             .orElseThrow(() -> new RuntimeException("Transaction not found"));
@@ -83,6 +86,7 @@ public class TransactionService {
     /**
      * Get transaction by ID
      */
+    @Cacheable(cacheNames = "transaction", key = "#transactionId")
     public TransactionResponse getTransaction(UUID transactionId) {
         Transaction transaction = transactionRepository.findById(transactionId)
             .orElseThrow(() -> new RuntimeException("Transaction not found"));
@@ -92,6 +96,7 @@ public class TransactionService {
     /**
      * Get all transactions for a booking
      */
+    @Cacheable(cacheNames = "bookingTransactions", key = "#bookingId")
     public List<TransactionResponse> getBookingTransactions(UUID bookingId) {
         return transactionRepository.findByBookingId(bookingId)
             .stream()
@@ -102,6 +107,7 @@ public class TransactionService {
     /**
      * Get all transactions for a user (payer)
      */
+    @Cacheable(cacheNames = "userPaymentTransactions", key = "#userId")
     public List<TransactionResponse> getUserPaymentTransactions(UUID userId) {
         return transactionRepository.findByPayerId(userId)
             .stream()
@@ -112,6 +118,7 @@ public class TransactionService {
     /**
      * Get all transactions for a user (payee - host)
      */
+    @Cacheable(cacheNames = "userPayoutTransactions", key = "#userId")
     public List<TransactionResponse> getUserPayoutTransactions(UUID userId) {
         return transactionRepository.findByPayeeId(userId)
             .stream()

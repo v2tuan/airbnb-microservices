@@ -1,279 +1,300 @@
 package com.paymentservice.service;
 
 import com.paymentservice.config.StripeConfig;
-import com.paymentservice.dto.identity.ClientTokenExchangeParam;
-import com.paymentservice.dto.identity.ClientTokenExchangeResponse;
 import com.paymentservice.dto.request.BookingStatus;
 import com.paymentservice.dto.request.CheckoutRequest;
 import com.paymentservice.dto.request.CreateBookingRequest;
 import com.paymentservice.dto.request.UpdateBookingStatusRequest;
+import com.paymentservice.dto.response.BookingResponse;
 import com.paymentservice.dto.response.CheckoutResponse;
 import com.paymentservice.dto.response.CreateBookingResponse;
 import com.paymentservice.entity.Payment;
+import com.paymentservice.entity.PaymentAuditLog;
 import com.paymentservice.entity.PaymentStatus;
+import com.paymentservice.entity.Payout;
+import com.paymentservice.entity.StripeWebhookEvent;
+import com.paymentservice.entity.Transaction;
+import com.paymentservice.entity.WebhookEventStatus;
+import com.paymentservice.event.PaymentSucceededEvent;
 import com.paymentservice.mapper.BookingMapper;
+import com.paymentservice.repository.PaymentAuditLogRepository;
 import com.paymentservice.repository.PaymentRepository;
+import com.paymentservice.repository.PayoutRepository;
+import com.paymentservice.repository.StripeWebhookEventRepository;
+import com.paymentservice.repository.TransactionRepository;
 import com.paymentservice.repository.client.BookingClient;
-import com.paymentservice.repository.client.IdentityClient;
 import com.paymentservice.repository.client.UserClient;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
+import com.stripe.net.RequestOptions;
 import com.stripe.param.PaymentIntentCreateParams;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class PaymentService {
+    private static final long PLATFORM_FEE_PERCENT = 10L;
+
     private final PaymentRepository paymentRepository;
     private final StripeConfig stripeConfig;
     private final BookingClient bookingServiceClient;
     private final BookingMapper bookingMapper;
     private final UserClient userClient;
-    private final IdentityClient identityClient;
-    @Value("${idp.client-id}")
-    String clientId;
+    private final ServiceTokenProvider serviceTokenProvider;
+    private final StripeWebhookEventRepository webhookEventRepository;
+    private final TransactionRepository transactionRepository;
+    private final PayoutRepository payoutRepository;
+    private final PaymentAuditLogRepository auditLogRepository;
+    private final PaymentEventPublisher eventPublisher;
 
-    @Value("${idp.client-secret}")
-    String clientSecret;
+    @Transactional
+    public CheckoutResponse checkout(CheckoutRequest request, String idempotencyKey) throws StripeException {
+        Jwt jwt = currentJwt();
+        UUID guestId = UUID.fromString(jwt.getSubject());
 
-    /**
-     * Xử lý checkout: tạo Booking + PaymentIntent trong một lần gọi duy nhất.
-     *
-     *
-     * Nếu bước nào lỗi → throw exception → Frontend hiển thị lỗi,
-     * KHÔNG để booking ở trạng thái orphan (không có payment).
-     *
-     * @param request thông tin phòng + user + ngày ở + tiền
-     * @return clientSecret để Frontend complete Stripe payment
-     */
-    public CheckoutResponse checkout(CheckoutRequest request) throws StripeException {
+        CreateBookingRequest bookingRequest = bookingMapper.toCreateBookingRequest(request);
+        CreateBookingResponse booking = bookingServiceClient.createBooking("Bearer " + jwt.getTokenValue(), bookingRequest);
+        UUID bookingId = booking.getBookingId();
+        UUID hostId = UUID.fromString(booking.getHostId());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        Jwt jwt = (Jwt) authentication.getPrincipal();
-
-        String userId = jwt.getSubject();
-
-        log.info("[USERID] userId{}", userId);
-//        String email = jwt.getClaim("email");
-
-        log.info("[CHECKOUT] Start: roomId={}, userId={} {}",
-                request.getRoomId(), userId, request.getCurrency());
-
-        // ── BƯỚC 1: Tạo Booking tại Booking Service ──────────────────────────
-        // Booking được tạo NGAY LẬP TỨC với status PENDING_PAYMENT.
-        // Dù user chưa thanh toán, booking đã tồn tại trong hệ thống.
-        // → User thoát ra vẫn thấy booking ở trang "Đơn của tôi".
-        UUID bookingId;
-        CreateBookingResponse response;
-        try {
-            CreateBookingRequest bookingRequest = bookingMapper.toCreateBookingRequest(request);
-            response = bookingServiceClient.createBooking(bookingRequest);
-            bookingId = response.getBookingId();
-            log.info("[CHECKOUT] Step 1 OK — bookingId={} created (PENDING_PAYMENT)", bookingId);
-        } catch (Exception e) {
-            log.error("[CHECKOUT] Step 1 FAILED — cannot create booking: {}", e.getMessage());
-            throw new RuntimeException("Không thể tạo đơn đặt phòng: " + e.getMessage(), e);
+        String hostStripeAccountId = userClient.getStripeAccountId(booking.getHostId()).getData();
+        if (hostStripeAccountId == null || hostStripeAccountId.isBlank()) {
+            throw new IllegalStateException("Host has not completed Stripe Connect onboarding");
         }
 
-        var hostStripeAccountId = userClient.getStripeAccountId(response.getHostId()).getData();
-
-        log.info("[CHECKOUT] hostStripeAccountId={}", hostStripeAccountId);
-
-        // ── BƯỚC 2: Tạo Stripe PaymentIntent ─────────────────────────────────
-        // PaymentIntent đại diện cho 1 giao dịch thanh toán.
-        // QUAN TRỌNG: lưu bookingId vào metadata để webhook biết cần update booking nào.
-        long amountInSmallestUnit = response.getTotalAmount();
-
-        double platformFeePercent = 10.0;
-
-// 💰 tính fee
-        long platformFeeAmount = (long) (amountInSmallestUnit * platformFeePercent / 100.0);
+        long amount = booking.getTotalAmount();
+        long platformFee = amount * PLATFORM_FEE_PERCENT / 100L;
+        long hostAmount = amount - platformFee;
 
         PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
-                .setAmount(amountInSmallestUnit)
+                .setAmount(amount)
                 .setCurrency(request.getCurrency().toLowerCase())
                 .setDescription("Booking #" + bookingId)
-
-                // 🔥 CHỈ ĐỊNH HOST NHẬN TIỀN
-                .setTransferData(
-                        PaymentIntentCreateParams.TransferData.builder()
-                                .setDestination(hostStripeAccountId) // ví dụ: acct_123456
-                                .build()
-                )
-
-                // 💰 platform fee (hoa hồng của bạn)
-                .setApplicationFeeAmount(platformFeeAmount)
-
-                // ★ metadata.bookingId là "sợi dây" nối PaymentIntent ↔ Booking
-                //   Webhook sẽ đọc field này để update đúng booking
-                .putMetadata("bookingId",  bookingId.toString())
-                .putMetadata("roomId",     request.getRoomId().toString())
-                .putMetadata("userId",     userId)
-                .putMetadata("source",     "airbnb-clone")
-                .setAutomaticPaymentMethods(
-                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                                .setEnabled(true)
-                                .build()
-                )
+                .putMetadata("bookingId", bookingId.toString())
+                .putMetadata("guestId", guestId.toString())
+                .putMetadata("hostId", hostId.toString())
+                .putMetadata("hostStripeAccountId", hostStripeAccountId)
+                .putMetadata("platformFeeAmount", String.valueOf(platformFee))
+                .putMetadata("hostAmount", String.valueOf(hostAmount))
+                .setAutomaticPaymentMethods(PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                        .setEnabled(true)
+                        .build())
                 .build();
 
-        PaymentIntent paymentIntent;
-        try {
-            paymentIntent = PaymentIntent.create(params);
-            log.info("[CHECKOUT] Step 2 OK — PaymentIntent={} created for booking={}",
-                    paymentIntent.getId(), bookingId);
-        } catch (StripeException e) {
-            log.error("[CHECKOUT] Step 2 FAILED — Stripe error for booking {}: {}", bookingId, e.getMessage());
-            // Booking đã tạo xong ở bước 1; để nguyên PENDING_PAYMENT
-            // Scheduler sẽ expire sau 15 phút nếu không có payment
-            throw e;
-        }
+        RequestOptions options = RequestOptions.builder()
+                .setIdempotencyKey(resolveStripeIdempotencyKey(idempotencyKey, bookingId))
+                .build();
+        PaymentIntent paymentIntent = PaymentIntent.create(params, options);
 
-        // ── BƯỚC 3: Lưu Payment record vào DB ────────────────────────────────
         Payment payment = Payment.builder()
                 .bookingId(bookingId)
+                .guestId(guestId)
+                .hostId(hostId)
+                .hostStripeAccountId(hostStripeAccountId)
                 .stripePaymentIntentId(paymentIntent.getId())
                 .clientSecret(paymentIntent.getClientSecret())
-                .amount(amountInSmallestUnit)
-//                .amountDecimal(response.getTotalAmount())
+                .amount(amount)
+                .platformFeeAmount(platformFee)
+                .hostAmount(hostAmount)
+                .amountDecimal(BigDecimal.valueOf(amount))
                 .currency(request.getCurrency().toLowerCase())
                 .status(PaymentStatus.CREATED)
                 .build();
-
         paymentRepository.save(payment);
-        log.info("[CHECKOUT] Step 3 OK — Payment record saved for booking={}", bookingId);
 
-        // ── BƯỚC 4: Trả response ──────────────────────────────────────────────
-        // Frontend nhận clientSecret → dùng Stripe.js để collect thẻ và submit
-        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(15);
+        audit("PAYMENT_INTENT_CREATED", null, "SUCCESS",
+                Map.of("bookingId", bookingId.toString(), "paymentIntentId", paymentIntent.getId()));
 
         return CheckoutResponse.builder()
                 .bookingId(bookingId)
                 .paymentIntentId(paymentIntent.getId())
-                .clientSecret(paymentIntent.getClientSecret())   // ← Frontend cần cái này
-                .publishableKey(stripeConfig.getPublishableKey()) // ← Frontend cần để init Stripe.js
-                .totalAmount(response.getTotalAmount())
+                .clientSecret(paymentIntent.getClientSecret())
+                .publishableKey(stripeConfig.getPublishableKey())
+                .totalAmount(amount)
                 .currency(request.getCurrency())
-                .expiresAt(expiresAt)
-                .message("Booking #" + bookingId + " đã được tạo. Hoàn thành thanh toán trong 15 phút.")
+                .expiresAt(booking.getExpiresAt())
+                .message("Booking created. Complete payment before it expires.")
                 .build();
     }
 
-    /**
-     * Xử lý Stripe webhook event.
-     *
-     * Được gọi từ PaymentController sau khi đã verify Stripe-Signature.
-     *
-     * Events được xử lý:
-     *  • payment_intent.succeeded      → update booking PAID
-     *  • payment_intent.payment_failed → giữ PENDING_PAYMENT (user retry)
-     *  • payment_intent.canceled       → update payment CANCELLED
-     */
+    @Transactional
     public void handleWebhookEvent(String eventType,
-                                   String paymentIntentId,
-                                   UUID   bookingId,
+                                   PaymentIntent paymentIntent,
+                                   UUID bookingId,
                                    String stripeEventId,
                                    String rawPayload) {
-
-        log.info("[WEBHOOK] Received: type={}, piId={}, bookingId={}, eventId={}",
-                eventType, paymentIntentId, bookingId, stripeEventId);
-
-        // ── Idempotency check: tránh xử lý 1 event 2 lần ────────────────────
-        // Stripe retry webhook nếu nhận được non-2xx response.
-        // Kiểm tra event đã xử lý chưa bằng stripeEventId.
-        if (paymentRepository.existsByStripeEventId(stripeEventId)) {
-            log.warn("[WEBHOOK] Event {} already processed, skip", stripeEventId);
+        if (!registerWebhookEvent(eventType, paymentIntent.getId(), stripeEventId, rawPayload)) {
             return;
         }
 
-        // ── Tìm Payment record tương ứng ─────────────────────────────────────
-        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntentId)
-                .orElseGet(() -> {
-                    // Edge case: webhook đến trước response của createPaymentIntent (race condition)
-                    log.warn("[WEBHOOK] Payment record not found for piId={}, creating stub", paymentIntentId);
-                    return Payment.builder()
-                            .bookingId(bookingId)
-                            .stripePaymentIntentId(paymentIntentId)
-                            .clientSecret("")
-                            .amount(0L)
-                            .currency("usd")
-                            .build();
-                });
-
-        // Đánh dấu event đã xử lý (idempotency)
-        payment.setStripeEventId(stripeEventId);
-        payment.setWebhookPayload(rawPayload);
-
-        // ── Xử lý theo loại event ────────────────────────────────────────────
-        switch (eventType) {
-            case "payment_intent.succeeded" -> {
-                log.info("[WEBHOOK] SUCCEEDED → marking booking {} as PAID", bookingId);
-                payment.setStatus(PaymentStatus.SUCCEEDED);
-                payment.setSucceededAt(LocalDateTime.now());
-                // Gọi Booking Service → PAID
-                UpdateBookingStatusRequest request = UpdateBookingStatusRequest.builder()
-                                .paymentIntentId(paymentIntentId)
-                                .status(BookingStatus.PAID)
-                                .build();
-
-                // Exchange client Token
-                ClientTokenExchangeResponse token = identityClient.exchangeClientToken(ClientTokenExchangeParam.builder()
-                        .grant_type("client_credentials")
-                        .client_id(clientId)
-                        .client_secret(clientSecret)
-                        .scope("openid")
-                        .build());
-
-                bookingServiceClient.updateBookingStatus("Bearer " + token.getAccessToken(), bookingId, request);
+        try {
+            switch (eventType) {
+                case "payment_intent.succeeded" -> handlePaymentSucceeded(paymentIntent, bookingId, stripeEventId, rawPayload);
+                case "payment_intent.payment_failed" -> handlePaymentFailed(paymentIntent, stripeEventId, rawPayload);
+                case "payment_intent.canceled" -> handlePaymentCancelled(paymentIntent, stripeEventId, rawPayload);
+                default -> log.debug("Ignoring Stripe event type={}", eventType);
             }
+            markWebhookProcessed(stripeEventId);
+        } catch (Exception ex) {
+            markWebhookFailed(stripeEventId, ex.getMessage());
+            throw ex;
+        }
+    }
 
-            case "payment_intent.payment_failed" -> {
-                // Booking giữ nguyên PENDING_PAYMENT — user có thể thử lại
-                // Scheduler sẽ expire sau 15 phút nếu vẫn không thanh toán
-                log.warn("[WEBHOOK] FAILED for booking {} — booking stays PENDING_PAYMENT (user can retry)", bookingId);
-                payment.setStatus(PaymentStatus.FAILED);
-                payment.setFailureMessage("Card declined or payment failed");
-//                bookingServiceClient.notifyPaymentFailed(bookingId, "Payment declined");
-                log.warn("Payment failed for booking {}: {} — booking stays PENDING_PAYMENT", bookingId, "Payment declined");
-            }
+    private void handlePaymentSucceeded(PaymentIntent paymentIntent, UUID bookingId, String eventId, String rawPayload) {
+        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
+                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
 
-            case "payment_intent.canceled" -> {
-                log.info("[WEBHOOK] CANCELED for booking {}", bookingId);
-                payment.setStatus(PaymentStatus.CANCELLED);
-            }
-
-            default -> log.debug("[WEBHOOK] Unhandled event type: {}", eventType);
+        if (payment.getStatus() == PaymentStatus.SUCCEEDED) {
+            return;
         }
 
+        payment.setStatus(PaymentStatus.SUCCEEDED);
+        payment.setSucceededAt(LocalDateTime.now());
+        payment.setStripeEventId(eventId);
+        payment.setWebhookPayload(rawPayload);
+        paymentRepository.save(payment);
+
+        BookingResponse booking = bookingServiceClient.updateBookingStatus(
+                serviceTokenProvider.bearerToken(),
+                bookingId,
+                UpdateBookingStatusRequest.builder()
+                        .paymentIntentId(paymentIntent.getId())
+                        .status(BookingStatus.PAID)
+                        .build());
+
+        Transaction transaction = transactionRepository.findByGatewayTransactionId(paymentIntent.getId())
+                .orElseGet(() -> transactionRepository.save(Transaction.builder()
+                        .bookingId(bookingId)
+                        .payerId(payment.getGuestId())
+                        .payeeId(payment.getHostId())
+                        .transactionType("PAYMENT")
+                        .amount(BigDecimal.valueOf(payment.getAmount()))
+                        .currency(payment.getCurrency())
+                        .status("COMPLETED")
+                        .gatewayTransactionId(paymentIntent.getId())
+                        .description("Payment for booking " + bookingId)
+                        .completedAt(LocalDateTime.now())
+                        .build()));
+
+        if (payoutRepository.findByBookingId(bookingId).isEmpty()) {
+            payoutRepository.save(Payout.builder()
+                    .paymentId(payment.getId())
+                    .hostId(payment.getHostId())
+                    .bookingId(bookingId)
+                    .transaction(transaction)
+                    .hostStripeAccountId(payment.getHostStripeAccountId())
+                    .payoutAmount(BigDecimal.valueOf(payment.getHostAmount()))
+                    .platformFee(BigDecimal.valueOf(payment.getPlatformFeeAmount()))
+                    .hostEarnings(BigDecimal.valueOf(payment.getHostAmount()))
+                    .currency(payment.getCurrency())
+                    .payoutMethod("STRIPE_CONNECT")
+                    .status("PENDING_CHECKIN")
+                    .scheduledAt(booking.getCheckInDate().atStartOfDay().plusDays(1))
+                    .build());
+        }
+
+        eventPublisher.paymentSucceeded(bookingId.toString(), new PaymentSucceededEvent(
+                payment.getId(),
+                bookingId,
+                payment.getGuestId(),
+                payment.getHostId(),
+                paymentIntent.getId(),
+                payment.getAmount(),
+                payment.getPlatformFeeAmount(),
+                payment.getHostAmount(),
+                payment.getCurrency(),
+                LocalDateTime.now()
+        ));
+    }
+
+    private void handlePaymentFailed(PaymentIntent paymentIntent, String eventId, String rawPayload) {
+        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
+                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+        payment.setStatus(PaymentStatus.FAILED);
+        payment.setStripeEventId(eventId);
+        payment.setWebhookPayload(rawPayload);
+        payment.setFailureMessage("Stripe payment_intent.payment_failed");
         paymentRepository.save(payment);
     }
 
-    /**
-     * Chuyển đổi amount sang đơn vị nhỏ nhất của currency.
-     *
-     * Stripe quy ước:
-     *  USD / EUR / ... (2 decimal places): nhân × 100  ($1.00 = 100 cents)
-     *  VND / JPY / KRW (0 decimal places): giữ nguyên  (₫100,000 = 100000)
-     */
-    private long toSmallestUnit(BigDecimal amount, String currency) {
-        return switch (currency.toLowerCase()) {
-            case "vnd", "jpy", "krw", "bif", "gnf", "mga", "pyg", "rwf", "ugx", "xaf", "xof" ->
-                    amount.longValue();
-            default ->
-                    amount.multiply(BigDecimal.valueOf(100)).longValue();
-        };
+    private void handlePaymentCancelled(PaymentIntent paymentIntent, String eventId, String rawPayload) {
+        Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
+                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+        payment.setStatus(PaymentStatus.CANCELLED);
+        payment.setStripeEventId(eventId);
+        payment.setWebhookPayload(rawPayload);
+        paymentRepository.save(payment);
+    }
+
+    private boolean registerWebhookEvent(String type, String paymentIntentId, String eventId, String payload) {
+        if (webhookEventRepository.existsById(eventId)) {
+            log.info("Duplicate Stripe webhook event skipped: {}", eventId);
+            return false;
+        }
+        try {
+            webhookEventRepository.saveAndFlush(StripeWebhookEvent.builder()
+                    .eventId(eventId)
+                    .eventType(type)
+                    .paymentIntentId(paymentIntentId)
+                    .payload(payload)
+                    .status(WebhookEventStatus.RECEIVED)
+                    .receivedAt(LocalDateTime.now())
+                    .build());
+            return true;
+        } catch (DataIntegrityViolationException ex) {
+            log.info("Duplicate Stripe webhook event skipped: {}", eventId);
+            return false;
+        }
+    }
+
+    private void markWebhookProcessed(String eventId) {
+        webhookEventRepository.findById(eventId).ifPresent(event -> {
+            event.setStatus(WebhookEventStatus.PROCESSED);
+            event.setProcessedAt(LocalDateTime.now());
+            webhookEventRepository.save(event);
+        });
+    }
+
+    private void markWebhookFailed(String eventId, String reason) {
+        webhookEventRepository.findById(eventId).ifPresent(event -> {
+            event.setStatus(WebhookEventStatus.FAILED);
+            event.setFailureReason(reason);
+            webhookEventRepository.save(event);
+        });
+    }
+
+    private void audit(String action, Transaction transaction, String status, Map<String, Object> responseData) {
+        auditLogRepository.save(PaymentAuditLog.builder()
+                .transaction(transaction)
+                .action(action)
+                .status(status)
+                .responseData(responseData)
+                .build());
+    }
+
+    private String resolveStripeIdempotencyKey(String idempotencyKey, UUID bookingId) {
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            return "checkout_" + idempotencyKey;
+        }
+        return "checkout_booking_" + bookingId;
+    }
+
+    private Jwt currentJwt() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return (Jwt) authentication.getPrincipal();
     }
 }

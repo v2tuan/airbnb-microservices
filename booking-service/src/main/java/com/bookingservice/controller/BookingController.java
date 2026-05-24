@@ -56,6 +56,11 @@ public class BookingController {
         return bookingService.getBookingsByUserAndStatuses(statuses);
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<BookingResponse> getBooking(@PathVariable UUID id) {
+        return ResponseEntity.ok(bookingService.getBooking(id));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<List<BookingTripResponse>>> getMyBookings(
             @RequestParam(defaultValue = "ALL") BookingFilterType type
@@ -85,5 +90,15 @@ public class BookingController {
 
         BookingResponse response = bookingService.updateBookingStatus(id, request);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/check-in")
+    public ResponseEntity<BookingResponse> checkIn(@PathVariable UUID id) {
+        return ResponseEntity.ok(bookingService.checkIn(id));
+    }
+
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<BookingResponse> complete(@PathVariable UUID id) {
+        return ResponseEntity.ok(bookingService.complete(id));
     }
 }

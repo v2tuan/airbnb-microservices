@@ -36,6 +36,12 @@ public class Payout {
     @Column(nullable = false)
     private UUID bookingId;
 
+    @Column(name = "payment_id")
+    private UUID paymentId;
+
+    @Column(name = "host_stripe_account_id")
+    private String hostStripeAccountId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "transaction_id")
     private Transaction transaction;
@@ -55,12 +61,27 @@ public class Payout {
     @Column(nullable = false, length = 50)
     private String payoutMethod; // BANK_TRANSFER, PAYPAL
 
+    @Column(name = "stripe_transfer_id", unique = true)
+    private String stripeTransferId;
+
+    @Column(name = "stripe_transfer_reversal_id")
+    private String stripeTransferReversalId;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> payoutDetails;
 
     @Column(nullable = false, length = 50)
     private String status; // PENDING, SCHEDULED, PROCESSING, COMPLETED, FAILED
+
+    @Column(columnDefinition = "TEXT")
+    private String failureReason;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Integer retryCount = 0;
+
+    private LocalDateTime nextRetryAt;
 
     @Column(nullable = false)
     private LocalDateTime scheduledAt;

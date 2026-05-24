@@ -1,42 +1,30 @@
-package com.bookingservice.config;
+package com.paymentservice.config;
 
-import org.apache.kafka.common.TopicPartition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.FixedBackOff;
+import org.apache.kafka.common.TopicPartition;
 
 @Configuration
 public class KafkaConfig {
-    // Cấu hình error handler cho Kafka consumer
-    // Thay vì để message bị stuck khi lỗi, retry có giới hạn rồi gửi vào Dead Letter Topic
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, Object>
-    kafkaListenerContainerFactory(ConsumerFactory<String, Object> consumerFactory,
-                                  KafkaOperations<String, Object> kafkaOperations) {
-
+    public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+            ConsumerFactory<String, Object> consumerFactory,
+            KafkaOperations<String, Object> kafkaOperations) {
         ConcurrentKafkaListenerContainerFactory<String, Object> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
-
-        // MANUAL_IMMEDIATE: Spring sẽ commit offset sau khi listener return (không throw)
-        // Nếu listener throw → không commit → Kafka sẽ re-deliver message sau
-        factory.getContainerProperties().setAckMode(
-                ContainerProperties.AckMode.MANUAL_IMMEDIATE
-        );
-
-        // Retry 3 lần, cách nhau 1 giây
-        // Sau 3 lần fail → gửi message vào Dead Letter Topic (.DLT suffix)
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 kafkaOperations,
                 (record, ex) -> new TopicPartition(record.topic() + ".DLT", record.partition()));
         factory.setCommonErrorHandler(new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 3)));
-
         return factory;
     }
 }

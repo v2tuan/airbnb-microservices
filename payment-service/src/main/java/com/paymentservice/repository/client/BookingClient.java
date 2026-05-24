@@ -12,10 +12,15 @@ import java.util.UUID;
 @FeignClient(name = "booking-client", url = "http://localhost:8086/bookings")
 public interface BookingClient {
     @PostMapping(value = "/")
-    CreateBookingResponse createBooking(@RequestBody CreateBookingRequest request);
+    CreateBookingResponse createBooking(@RequestHeader("authorization") String token,
+                                        @RequestBody CreateBookingRequest request);
 
     @PostMapping(value = "/{id}/status")
     BookingResponse updateBookingStatus (@RequestHeader("authorization") String token,
                                          @PathVariable UUID id,
                                          @RequestBody UpdateBookingStatusRequest request);
+
+    @GetMapping(value = "/{id}")
+    BookingResponse getBooking(@RequestHeader("authorization") String token,
+                               @PathVariable UUID id);
 }

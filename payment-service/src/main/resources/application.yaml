@@ -22,6 +22,28 @@ spring:
       ddl-auto: update
     show-sql: false
 
+  cache:
+    type: ${CACHE_TYPE:simple}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+    consumer:
+      group-id: payment-service-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
   security:
     oauth2:
       resourceserver:
@@ -51,3 +73,17 @@ stripe:
 
   # Publishable key - dùng ở Frontend (an toàn để expose)
   publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+
+kafka:
+  topics:
+    payment-succeeded: payment.succeeded
+    payout-completed: payout.completed
+    refund-completed: refund.completed
+
+payout:
+  scheduler-delay-ms: ${PAYOUT_SCHEDULER_DELAY_MS:60000}
+
+payment:
+  reconciliation:
+    enabled: ${PAYMENT_RECONCILIATION_ENABLED:false}
+    delay-ms: ${PAYMENT_RECONCILIATION_DELAY_MS:3600000}
