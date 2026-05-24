@@ -1,14 +1,11 @@
-import Header from "@/components/header";
-import RouteFooter from "@/components/footer/RouteFooter";
-import RouteContentOffset from "@/components/layout/RouteContentOffset";
+import type { Metadata } from "next";
+import { Figtree, Geist, Geist_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
 import ModalProvider from "@/providers/ModalProvider";
 import Providers from "@/providers/provider";
-import type { Metadata } from "next";
-import { Figtree, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const figtree = Figtree({subsets:['latin'],variable:'--font-sans'});
+const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans" });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,10 +33,8 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <Header/>
-          <ModalProvider/>
-          <RouteContentOffset>{children}</RouteContentOffset>
-          <RouteFooter />
+          <ModalProvider />
+          {children}
         </Providers>
       </body>
     </html>

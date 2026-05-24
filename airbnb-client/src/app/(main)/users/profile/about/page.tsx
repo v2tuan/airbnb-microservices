@@ -1,19 +1,29 @@
 "use client";
 
+import { Camera } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { toast } from "sonner";
 import authAPI, { type MeResponse } from "@/api/endpoints/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  selectCurrentUser,
+  selectIsAuthenticated,
+} from "@/features/auth/authSelectors";
 import { fetchMeThunk } from "@/features/auth/authSlice";
-import { selectCurrentUser, selectIsAuthenticated } from "@/features/auth/authSelectors";
 import type { AppDispatch, RootState } from "@/store";
-import { Camera } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { toast } from "sonner";
 
 type ProfileFormState = {
   firstName: string;
@@ -44,7 +54,27 @@ const extractApiMessage = (error: unknown, fallbackMessage: string) => {
   );
 };
 
+const extractResponseMessage = (response: unknown, fallbackMessage: string) => {
+  const maybeResponse = response as { data?: { message?: string } };
+
+  return maybeResponse.data?.message ?? fallbackMessage;
+};
+
 export default function AboutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-2xl border bg-white p-6">
+          Loading profile...
+        </div>
+      }
+    >
+      <AboutPageContent />
+    </Suspense>
+  );
+}
+
+function AboutPageContent() {
   const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -72,7 +102,7 @@ export default function AboutPage() {
 
   const avatarUrl = profile?.avatarUrl ?? user?.avatarUrl;
 
-  const syncForm = (nextProfile: MeResponse) => {
+  const syncForm = useCallback((nextProfile: MeResponse) => {
     setForm({
       firstName: nextProfile.firstName ?? "",
       lastName: nextProfile.lastName ?? "",
@@ -80,9 +110,9 @@ export default function AboutPage() {
       gender: nextProfile.gender ?? "",
       bio: nextProfile.bio ?? "",
     });
-  };
+  }, []);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     if (!token) {
       setLoading(false);
       return;
@@ -105,14 +135,16 @@ export default function AboutPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [syncForm, token]);
 
   useEffect(() => {
     void loadProfile();
-  }, [token]);
+  }, [loadProfile]);
 
   const toggleEditMode = (enabled: boolean) => {
-    router.push(enabled ? "/users/profile/about?editMode=true" : "/users/profile/about");
+    router.push(
+      enabled ? "/users/profile/about?editMode=true" : "/users/profile/about",
+    );
   };
 
   const onChangeField = (field: keyof ProfileFormState, value: string) => {
@@ -138,7 +170,9 @@ export default function AboutPage() {
         syncForm(nextProfile);
       }
       await dispatch(fetchMeThunk(token));
-      toast.success((response as any)?.data?.message ?? "Profile updated successfully.");
+      toast.success(
+        extractResponseMessage(response, "Profile updated successfully."),
+      );
       toggleEditMode(false);
     } catch (error) {
       const message = extractApiMessage(error, "Unable to update profile.");
@@ -162,7 +196,9 @@ export default function AboutPage() {
         syncForm(nextProfile);
       }
       await dispatch(fetchMeThunk(token));
-      toast.success((response as any)?.data?.message ?? "Avatar updated successfully.");
+      toast.success(
+        extractResponseMessage(response, "Avatar updated successfully."),
+      );
     } catch (error) {
       const message = extractApiMessage(error, "Unable to upload avatar.");
       setErrorMessage(message);
@@ -172,12 +208,17 @@ export default function AboutPage() {
     }
   };
 
-  const initials = `${form.firstName.slice(0, 1)}${form.lastName.slice(0, 1)}`
-    .trim()
-    .toUpperCase() || "U";
+  const initials =
+    `${form.firstName.slice(0, 1)}${form.lastName.slice(0, 1)}`
+      .trim()
+      .toUpperCase() || "U";
 
   if (!isAuthenticated) {
-    return <div className="rounded-2xl border bg-white p-6">Please login to view your profile.</div>;
+    return (
+      <div className="rounded-2xl border bg-white p-6">
+        Please login to view your profile.
+      </div>
+    );
   }
 
   return (
@@ -200,7 +241,9 @@ export default function AboutPage() {
 
               <div>
                 <h2 className="text-xl font-semibold">{displayName}</h2>
-                <p className="text-sm text-neutral-500">{profile?.isHost ? "Host" : "Guest"}</p>
+                <p className="text-sm text-neutral-500">
+                  {profile?.isHost ? "Host" : "Guest"}
+                </p>
               </div>
             </div>
 
@@ -239,7 +282,9 @@ export default function AboutPage() {
                 <Input
                   value={form.firstName}
                   readOnly={!isEditMode}
-                  onChange={(event) => onChangeField("firstName", event.target.value)}
+                  onChange={(event) =>
+                    onChangeField("firstName", event.target.value)
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -247,7 +292,9 @@ export default function AboutPage() {
                 <Input
                   value={form.lastName}
                   readOnly={!isEditMode}
-                  onChange={(event) => onChangeField("lastName", event.target.value)}
+                  onChange={(event) =>
+                    onChangeField("lastName", event.target.value)
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -256,7 +303,9 @@ export default function AboutPage() {
                   type="date"
                   value={form.dateOfBirth}
                   readOnly={!isEditMode}
-                  onChange={(event) => onChangeField("dateOfBirth", event.target.value)}
+                  onChange={(event) =>
+                    onChangeField("dateOfBirth", event.target.value)
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -264,7 +313,9 @@ export default function AboutPage() {
                 <Input
                   value={form.gender}
                   readOnly={!isEditMode}
-                  onChange={(event) => onChangeField("gender", event.target.value)}
+                  onChange={(event) =>
+                    onChangeField("gender", event.target.value)
+                  }
                   placeholder="Male, Female, Other"
                 />
               </div>
@@ -280,7 +331,9 @@ export default function AboutPage() {
             </div>
           )}
 
-          {errorMessage && <p className="text-sm text-red-500">{errorMessage}</p>}
+          {errorMessage && (
+            <p className="text-sm text-red-500">{errorMessage}</p>
+          )}
 
           {isEditMode && (
             <div className="flex justify-end">
@@ -292,8 +345,9 @@ export default function AboutPage() {
         </CardContent>
       </Card>
 
-      <div className="border-t pt-4 text-sm text-neutral-500">Reviews I have written</div>
+      <div className="border-t pt-4 text-sm text-neutral-500">
+        Reviews I have written
+      </div>
     </div>
   );
 }
-
