@@ -48,9 +48,9 @@ function LoginModal() {
 
   if (!loginModal.isOpen) return null
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-      <div className="relative bg-white p-6 rounded-2xl shadow-lg w-[400px] z-10">
-      
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="relative z-[60] bg-white p-6 rounded-2xl shadow-lg w-[400px]">
+
       <div className="flex items-center justify-between mb-4 border-b pb-4">
         <button 
           onClick={loginModal.onClose} 
