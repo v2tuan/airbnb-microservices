@@ -64,6 +64,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                     b.status = com.bookingservice.entity.BookingStatus.PENDING_PAYMENT
                     AND b.expiresAt < :now
                 )
+
+                OR (
+                    b.status = BookingStatus.EXPIRED
+                )
             )
         )
 
@@ -85,9 +89,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         OR (
             :type = 'COMPLETED'
             AND b.status IN (
-                com.bookingservice.entity.BookingStatus.PAID,
-                com.bookingservice.entity.BookingStatus.CHECKED_IN
-            )
+                com.bookingservice.entity.BookingStatus.PAID            )
             AND b.checkOutDate < CURRENT_DATE
         )
     )

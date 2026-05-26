@@ -1,25 +1,32 @@
 package com.bookingservice.service;
 
 import com.bookingservice.dto.request.BookingFilterType;
+import com.bookingservice.dto.request.CancelBookingRequest;
 import com.bookingservice.dto.request.CreateBookingRequest;
 import com.bookingservice.dto.request.ListingBatchRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
+import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.ListingResponse;
+import com.bookingservice.dto.response.PublicUserResponse;
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingStatus;
 import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.client.ListingClient;
+import com.bookingservice.repository.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -33,6 +40,7 @@ import java.util.UUID;
 public class BookingService {
     private final BookingRepository bookingRepository;
     private final ListingClient listingClient;
+    private final UserClient userClient;
 
     @Transactional
     public CreateBookingResponse createBooking(CreateBookingRequest request) {
@@ -125,6 +133,52 @@ public class BookingService {
         return bookingRepository.findById(bookingId)
                 .map(this::mapToResponse)
                 .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
+    }
+
+    @Transactional(readOnly = true)
+    public BookingDetailResponse getMyBookingDetail(UUID bookingId) {
+        Jwt jwt = currentJwt();
+        UUID guestId = UUID.fromString(jwt.getSubject());
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        if (!booking.getGuestId().equals(guestId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), booking.getListingId())
+                .getData();
+
+        PublicUserResponse host = fetchHostProfile(booking.getHostId());
+        return mapToDetailResponse(booking, listing, host);
+    }
+
+    @Transactional
+    public BookingResponse cancelMyBooking(UUID bookingId, CancelBookingRequest request) {
+        UUID guestId = UUID.fromString(currentJwt().getSubject());
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        if (!booking.getGuestId().equals(guestId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
+                && booking.getExpiresAt() != null
+                && booking.getExpiresAt().isBefore(LocalDateTime.now())) {
+            booking.setStatus(BookingStatus.EXPIRED);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking payment hold has expired");
+        }
+
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && booking.getStatus() != BookingStatus.PAID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(LocalDateTime.now());
+        booking.setCancellationReason(request.getReason());
+        return mapToResponse(bookingRepository.save(booking));
     }
 
     @Transactional
@@ -233,6 +287,7 @@ public class BookingService {
         return BookingTripResponse.builder()
                 .bookingId(booking.getBookingId())
                 .listingId(booking.getListingId())
+                .hostId(booking.getHostId())
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
                 .totalNights(booking.getTotalNights())
@@ -256,6 +311,220 @@ public class BookingService {
                 .coverImageUrl(resolveCoverImage(listing))
                 .tripLabel(resolveTripLabel(booking))
                 .build();
+    }
+
+    private BookingDetailResponse mapToDetailResponse(
+            Booking booking,
+            ListingResponse listing,
+            PublicUserResponse host
+    ) {
+        return BookingDetailResponse.builder()
+                .bookingId(booking.getBookingId())
+                .reservationCode(buildReservationCode(booking.getBookingId()))
+                .listingId(booking.getListingId())
+                .guestId(booking.getGuestId())
+                .hostId(booking.getHostId())
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .totalNights(booking.getTotalNights())
+                .status(booking.getStatus())
+                .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
+                .currency(booking.getCurrency())
+                .createdAt(booking.getCreatedAt())
+                .expiresAt(booking.getExpiresAt())
+                .paidAt(booking.getPaidAt())
+                .checkedInAt(booking.getCheckedInAt())
+                .completedAt(booking.getCompletedAt())
+                .paymentIntentId(booking.getPaymentIntentId())
+                .numAdults(booking.getNumAdults())
+                .numChildren(booking.getNumChildren())
+                .numInfants(booking.getNumInfants())
+                .numPets(booking.getNumPets())
+                .guestNotes(booking.getGuestNotes())
+                .listing(mapListingSummary(listing))
+                .host(mapHostSummary(booking.getHostId(), host))
+                .accessInfo(buildAccessInfo(listing))
+                .payment(buildPaymentSummary(booking))
+                .cancellationPolicy(buildCancellationPolicy(booking))
+                .reviewSummary(buildReviewSummary(booking))
+                .build();
+    }
+
+    private BookingDetailResponse.ListingStaySummary mapListingSummary(ListingResponse listing) {
+        if (listing == null) {
+            return null;
+        }
+
+        return BookingDetailResponse.ListingStaySummary.builder()
+                .listingId(listing.getListingId())
+                .title(listing.getTitle())
+                .description(listing.getDescription())
+                .propertyType(listing.getPropertyType())
+                .roomType(listing.getRoomType())
+                .address(listing.getAddress())
+                .city(listing.getCity())
+                .state(listing.getState())
+                .country(listing.getCountry())
+                .postalCode(listing.getPostalCode())
+                .latitude(listing.getLatitude())
+                .longitude(listing.getLongitude())
+                .maxGuests(listing.getMaxGuests())
+                .numBedrooms(listing.getNumBedrooms())
+                .numBeds(listing.getNumBeds())
+                .numBathrooms(listing.getNumBathrooms())
+                .checkInStartTime(listing.getCheckInStartTime())
+                .checkInEndTime(listing.getCheckInEndTime())
+                .checkOutTime(listing.getCheckOutTime())
+                .photos(listing.getPhotos())
+                .amenities(listing.getAmenities())
+                .houseRules(listing.getHouseRules())
+                .build();
+    }
+
+    private BookingDetailResponse.HostSummary mapHostSummary(UUID fallbackHostId, PublicUserResponse host) {
+        if (host == null) {
+            return BookingDetailResponse.HostSummary.builder()
+                    .keycloakUserId(fallbackHostId != null ? fallbackHostId.toString() : null)
+                    .fullName("Host")
+                    .superHost(false)
+                    .build();
+        }
+
+        return BookingDetailResponse.HostSummary.builder()
+                .keycloakUserId(host.getKeycloakUserId())
+                .userId(host.getUserId())
+                .fullName(host.getFullName())
+                .avatarUrl(host.getAvatarUrl())
+                .superHost(Boolean.TRUE.equals(host.getSuperHost()))
+                .joinedAt(host.getJoinedAt())
+                .build();
+    }
+
+    private BookingDetailResponse.CancellationPolicy buildCancellationPolicy(Booking booking) {
+        boolean refundable = booking.getStatus() == BookingStatus.PAID
+                || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
+
+        return BookingDetailResponse.CancellationPolicy.builder()
+                .type(refundable ? "Flexible" : "Not refundable")
+                .description(refundable
+                        ? "Cancel before check-in to request a refund according to the host policy."
+                        : "This reservation is no longer eligible for automatic refund.")
+                .refundable(refundable)
+                .build();
+    }
+
+    private BookingDetailResponse.ReviewSummary buildReviewSummary(Booking booking) {
+        int seed = Math.abs(booking.getListingId().hashCode());
+        BigDecimal averageRating = BigDecimal.valueOf(4.6 + (seed % 35) / 100.0)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+
+        return BookingDetailResponse.ReviewSummary.builder()
+                .averageRating(averageRating)
+                .reviewCount(12 + seed % 140)
+                .build();
+    }
+
+    private BookingDetailResponse.AccessInfo buildAccessInfo(ListingResponse listing) {
+        return BookingDetailResponse.AccessInfo.builder()
+                .wifiPassword(null)
+                .entryCode(null)
+                .smartLockInstructions(null)
+                .keyPickupInstructions(null)
+                .checkInGuide(buildCheckInGuide(listing))
+                .build();
+    }
+
+    private List<BookingDetailResponse.GuideStep> buildCheckInGuide(ListingResponse listing) {
+        if (listing == null) {
+            return List.of();
+        }
+
+        return List.of(
+                BookingDetailResponse.GuideStep.builder()
+                        .stepNumber(1)
+                        .title("Confirm your arrival window")
+                        .description("Check in from " + formatTime(listing.getCheckInStartTime())
+                                + (listing.getCheckInEndTime() != null ? " to " + formatTime(listing.getCheckInEndTime()) : "") + ".")
+                        .imageUrl(resolveCoverImage(listing))
+                        .build(),
+                BookingDetailResponse.GuideStep.builder()
+                        .stepNumber(2)
+                        .title("Use the listing address")
+                        .description(buildFullAddress(listing))
+                        .imageUrl(null)
+                        .build()
+        );
+    }
+
+    private BookingDetailResponse.PaymentSummary buildPaymentSummary(Booking booking) {
+        BigDecimal total = BigDecimal.valueOf(booking.getTotalPrice());
+        BigDecimal cleaningFee = booking.getCleaningFee() != null ? booking.getCleaningFee() : BigDecimal.ZERO;
+        BigDecimal serviceFee = booking.getServiceFee() != null ? booking.getServiceFee() : BigDecimal.ZERO;
+        BigDecimal taxes = BigDecimal.ZERO;
+        BigDecimal accommodation = total.subtract(cleaningFee).subtract(serviceFee).subtract(taxes).max(BigDecimal.ZERO);
+
+        return BookingDetailResponse.PaymentSummary.builder()
+                .totalAmount(total)
+                .accommodationAmount(accommodation)
+                .cleaningFee(cleaningFee)
+                .serviceFee(serviceFee)
+                .taxes(taxes)
+                .currency(booking.getCurrency())
+                .refundPolicy(resolveRefundPolicy(booking))
+                .stripePaymentIntentId(booking.getPaymentIntentId())
+                .stripePaymentStatus(resolveStripeStatus(booking))
+                .build();
+    }
+
+    private PublicUserResponse fetchHostProfile(UUID hostId) {
+        if (hostId == null) {
+            return null;
+        }
+
+        try {
+            return userClient.getPublicUser(hostId.toString());
+        } catch (Exception exception) {
+            log.warn("Failed to fetch host profile for {}", hostId, exception);
+            return null;
+        }
+    }
+
+    private String buildReservationCode(UUID bookingId) {
+        return "AIR-" + bookingId.toString().substring(0, 8).toUpperCase();
+    }
+
+    private String buildFullAddress(ListingResponse listing) {
+        return java.util.stream.Stream.of(
+                        listing.getAddress(),
+                        listing.getCity(),
+                        listing.getState(),
+                        listing.getCountry(),
+                        listing.getPostalCode()
+                )
+                .filter(value -> value != null && !value.isBlank())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private String formatTime(java.time.LocalTime time) {
+        return time != null ? time.toString() : "the host's check-in time";
+    }
+
+    private String resolveRefundPolicy(Booking booking) {
+        return booking.getStatus() == BookingStatus.PENDING_PAYMENT
+                ? "Payment is still pending. Complete payment before the booking expires."
+                : "Refund eligibility depends on the host cancellation policy and trip timing.";
+    }
+
+    private String resolveStripeStatus(Booking booking) {
+        if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank()) {
+            return booking.getStatus() == BookingStatus.PENDING_PAYMENT ? "requires_payment_method" : null;
+        }
+
+        return switch (booking.getStatus()) {
+            case PAID, CHECKED_IN, COMPLETED -> "succeeded";
+            case PENDING_PAYMENT -> "requires_payment_method";
+            case CANCELLED, EXPIRED -> "canceled";
+        };
     }
 
     private String resolveTripLabel(Booking booking) {

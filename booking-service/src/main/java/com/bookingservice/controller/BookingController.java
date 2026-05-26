@@ -2,8 +2,10 @@ package com.bookingservice.controller;
 
 import com.bookingservice.dto.ApiResponse;
 import com.bookingservice.dto.request.BookingFilterType;
+import com.bookingservice.dto.request.CancelBookingRequest;
 import com.bookingservice.dto.request.CreateBookingRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
+import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
@@ -15,9 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
@@ -59,6 +59,27 @@ public class BookingController {
     @GetMapping("/{id}")
     public ResponseEntity<BookingResponse> getBooking(@PathVariable UUID id) {
         return ResponseEntity.ok(bookingService.getBooking(id));
+    }
+
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<ApiResponse<BookingDetailResponse>> getBookingDetail(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.<BookingDetailResponse>builder()
+                .success(true)
+                .message("Get booking detail success")
+                .data(bookingService.getMyBookingDetail(id))
+                .build());
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<ApiResponse<BookingResponse>> cancelBooking(
+            @PathVariable UUID id,
+            @Valid @RequestBody CancelBookingRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.<BookingResponse>builder()
+                .success(true)
+                .message("Cancel booking success")
+                .data(bookingService.cancelMyBooking(id, request))
+                .build());
     }
 
     @GetMapping("/me")

@@ -82,4 +82,4 @@ stripe:
   # Webhook secret - lấy từ Stripe CLI hoặc Stripe Dashboard
   # Chạy: stripe listen --forward-to localhost:8080/webhook
   # CLI sẽ hiện: "webhook signing secret: whsec_..."
-  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_21d16feabfa118dd96ba5395e29b7113b6561c9e3d12f51b15b34fbdf624400a}
+#  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_21d16feabfa118dd96ba5395e29b7113b6561c9e3d12f51b15b34fbdf624400a}

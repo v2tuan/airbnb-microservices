@@ -1,79 +1,197 @@
 export type BookingStatus =
-    | "PENDING_PAYMENT"
-    | "PAID"
-    | "CANCELLED"
-    | "EXPIRED"
-    | "REFUNDED";
+  | "PENDING_PAYMENT"
+  | "PAID"
+  | "CHECKED_IN"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "EXPIRED";
 
 export interface BookingTripsResponse {
-    basePrice: number;
+  basePrice: number;
 
-    bookingId: string;
+  bookingId: string;
 
-    checkInDate: string;
-    checkOutDate: string;
+  checkInDate: string;
+  checkOutDate: string;
 
-    city: string;
-    country: string;
+  city: string;
+  country: string;
 
-    coverImageUrl: string;
+  coverImageUrl: string;
 
-    createdAt: string;
-    expiresAt: string;
-    paidAt: string | null;
+  createdAt: string;
+  expiresAt: string;
+  paidAt: string | null;
 
-    currency: string;
+  currency: string;
 
-    hostId: string | null;
-    listingId: string;
+  hostId: string | null;
+  listingId: string;
 
-    numAdults: number;
-    numChildren: number;
-    numInfants: number;
-    numPets: number;
+  numAdults: number;
+  numChildren: number;
+  numInfants: number;
+  numPets: number;
 
-    status: BookingStatus;
-    statusDisplayName: string;
+  status: BookingStatus;
+  statusDisplayName: string;
 
-    title: string;
+  title: string;
 
-    totalAmount: number;
-    totalNights: number;
+  totalAmount: number;
+  totalNights: number;
 
-    tripLabel: string;
+  tripLabel: string;
 }
 
-export type BookingFilterType =
-    | "UPCOMING"
-    | "COMPLETED"
-    | "CANCELLED"
-    | "ALL";
+export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 
 export interface CheckoutRequest {
-    roomId: string;
-    roomName?: string;
-    userId?: string;
-    checkInDate: string;   // "YYYY-MM-DD"
-    checkOutDate: string;  // "YYYY-MM-DD"
-    totalAmount?: number;
-    currency: string;      // "usd" hoặc "vnd"
-    guestCount?: number;
-    guestNotes?: string;
-    numberOfAdults?: number;
-    numberOfChildren?: number;
-    numberOfInfants?: number;
-    numberOfPets?: number;
+  roomId: string;
+  roomName?: string;
+  userId?: string;
+  checkInDate: string; // "YYYY-MM-DD"
+  checkOutDate: string; // "YYYY-MM-DD"
+  totalAmount?: number;
+  currency: string; // "usd" hoặc "vnd"
+  guestCount?: number;
+  guestNotes?: string;
+  numberOfAdults?: number;
+  numberOfChildren?: number;
+  numberOfInfants?: number;
+  numberOfPets?: number;
 }
 
 export interface CheckoutResponse {
-    bookingId: string;
-    paymentIntentId: string;
-    /** Stripe client secret — dùng để gọi stripe.confirmPayment() */
-    clientSecret: string;
-    /** Stripe publishable key — dùng để khởi tạo loadStripe() */
-    publishableKey: string;
-    totalAmount: number;
-    currency: string;
-    expiresAt: string;   // ISO datetime — booking hết hạn lúc này
-    message: string;
+  bookingId: string;
+  paymentIntentId: string;
+  /** Stripe client secret — dùng để gọi stripe.confirmPayment() */
+  clientSecret: string;
+  /** Stripe publishable key — dùng để khởi tạo loadStripe() */
+  publishableKey: string;
+  totalAmount: number;
+  currency: string;
+  expiresAt: string; // ISO datetime — booking hết hạn lúc này
+  message: string;
+}
+
+export interface BookingDetailResponse {
+  bookingId: string;
+  reservationCode: string;
+  listingId: string;
+  guestId: string;
+  hostId: string | null;
+  checkInDate: string;
+  checkOutDate: string;
+  totalNights: number;
+  status: BookingStatus;
+  statusDisplayName: string;
+  currency: string;
+  createdAt: string;
+  expiresAt: string;
+  paidAt: string | null;
+  checkedInAt: string | null;
+  completedAt: string | null;
+  paymentIntentId: string | null;
+  numAdults: number;
+  numChildren: number;
+  numInfants: number;
+  numPets: number;
+  guestNotes?: string | null;
+  listing: BookingDetailListing | null;
+  host: BookingDetailHost | null;
+  accessInfo: BookingAccessInfo | null;
+  payment: BookingPaymentSummary | null;
+  cancellationPolicy: BookingCancellationPolicy | null;
+  reviewSummary: BookingReviewSummary | null;
+}
+
+export interface BookingDetailListing {
+  listingId: string;
+  title: string;
+  description?: string | null;
+  propertyType?: string | null;
+  roomType?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  maxGuests?: number | null;
+  numBedrooms?: number | null;
+  numBeds?: number | null;
+  numBathrooms?: number | string | null;
+  checkInStartTime?: string | null;
+  checkInEndTime?: string | null;
+  checkOutTime?: string | null;
+  photos?: Array<{
+    photoId?: string;
+    photoUrl?: string;
+    caption?: string;
+    displayOrder?: number;
+    isCover?: boolean;
+  }>;
+  amenities?: Array<{
+    amenityId?: string;
+    name?: string;
+    category?: string;
+    iconUrl?: string;
+  }>;
+  houseRules?: {
+    checkInFrom?: string | null;
+    checkInTo?: string | null;
+    checkOutTime?: string | null;
+    smokingAllowed?: boolean | null;
+    petsAllowed?: boolean | null;
+    partiesAllowed?: boolean | null;
+    childrenAllowed?: boolean | null;
+    additionalRules?: string | null;
+  } | null;
+}
+
+export interface BookingDetailHost {
+  keycloakUserId?: string | null;
+  userId?: string | null;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+  superHost?: boolean;
+  joinedAt?: string | null;
+}
+
+export interface BookingAccessInfo {
+  wifiPassword?: string | null;
+  entryCode?: string | null;
+  smartLockInstructions?: string | null;
+  keyPickupInstructions?: string | null;
+  checkInGuide?: Array<{
+    stepNumber: number;
+    title: string;
+    description: string;
+    imageUrl?: string | null;
+  }>;
+}
+
+export interface BookingPaymentSummary {
+  totalAmount: number;
+  accommodationAmount: number;
+  cleaningFee: number;
+  serviceFee: number;
+  taxes: number;
+  currency: string;
+  refundPolicy?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripePaymentStatus?: string | null;
+}
+
+export interface BookingCancellationPolicy {
+  type: string;
+  description: string;
+  refundable: boolean;
+}
+
+export interface BookingReviewSummary {
+  averageRating: number | string;
+  reviewCount: number;
 }
