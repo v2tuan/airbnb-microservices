@@ -267,7 +267,7 @@ function MainHeader() {
 
                     {/* Right side */}
                     <div className="flex items-center space-x-6">
-                        {token && <Link
+                        <Link
                             href={
                                 !token
                                     ? "/login"
@@ -279,7 +279,6 @@ function MainHeader() {
                         >
                             {isHost ? "Welcoming guests" : "Become a host"}
                         </Link>
-                        }
 
                         {isAuthenticated && user?.avatarUrl ? (
                             <Image

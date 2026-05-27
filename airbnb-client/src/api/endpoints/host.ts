@@ -19,16 +19,31 @@ export interface HostStatusResponse {
 }
 
 export async function startOnboarding(token : string | null): Promise<ApiResponse<OnboardResponse>> {
-    const res = await apiClient.post(`${prefix}/users/stripe/onboard`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-    });
+    const headers: Record<string, string> = {};
+
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const res = await apiClient.post(`${prefix}/users/stripe/onboard`, {}, { headers });
     return res.data;
 }
 
-export async function checkStatus(token : string | null): Promise<ApiResponse<HostStatusResponse>> {
-    const res = await apiClient.get(`${prefix}/users/stripe/status`, {
-        headers: { Authorization: `Bearer ${token}` },
-    });
+export async function checkStatus(
+    token: string | null
+): Promise<ApiResponse<HostStatusResponse>> {
+
+    const headers: Record<string, string> = {};
+
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const res = await apiClient.get(
+        `${prefix}/users/stripe/status`,
+        { headers }
+    );
+
     return res.data;
 }
 

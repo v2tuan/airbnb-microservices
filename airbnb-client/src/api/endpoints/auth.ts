@@ -1,4 +1,5 @@
 import type { AxiosResponse } from "axios";
+import type { StoredAuthUser } from "@/lib/auth-storage";
 import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
@@ -21,8 +22,11 @@ export interface RegisterData {
 export interface AuthResponse {
   access_token?: string;
   accessToken?: string;
-  user?: any;
+  refresh_token?: string;
+  refreshToken?: string;
+  user?: StoredAuthUser | null;
   message?: string;
+  data?: AuthResponse;
 }
 
 export interface MeResponse {
@@ -51,6 +55,9 @@ export const authAPI = {
     credentials: LoginCredentials,
   ): Promise<AxiosResponse<AuthResponse>> => {
     return apiClient.post(`${prefix}/users/auth/login`, credentials, {
+      // Login set httpOnly refresh_token cookie. Nếu không bật credentials,
+      // browser có thể bỏ qua Set-Cookie và /refresh sau đó sẽ fail dù login
+      // trước đó trả 200.
       withCredentials: true,
     });
   },
@@ -60,6 +67,9 @@ export const authAPI = {
       `${prefix}/users/auth/refresh`,
       {},
       {
+        // Refresh token được gửi bằng cookie, không phải Authorization header.
+        // Nếu /refresh trả 401 và Network tab không có Cookie header, đây là
+        // chỗ đầu tiên cần kiểm tra.
         withCredentials: true,
       },
     );

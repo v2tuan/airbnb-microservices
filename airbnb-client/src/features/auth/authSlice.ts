@@ -1,20 +1,12 @@
-import {
-  createAsyncThunk,
-  createSlice,
-  type PayloadAction,
-} from "@reduxjs/toolkit";
+import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import authAPI from "@/api/endpoints/auth";
+import { authStorage, type StoredAuthUser } from "@/lib/auth-storage";
 import type { RootState } from "@/store";
 
-const TOKEN_KEY = "access_token";
-const USER_KEY = "auth_user";
-const isBrowser = typeof window !== "undefined";
-
-interface User {
+interface User extends StoredAuthUser {
   id?: string;
   email?: string;
   name?: string;
-  [key: string]: any;
 }
 
 interface AuthState {
@@ -41,16 +33,39 @@ interface RegisterData {
   name?: string;
 }
 
-const loadUserFromStorage = (): User | null => {
-  if (!isBrowser) return null;
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord => {
+  return typeof value === "object" && value !== null;
 };
 
+const getRecordValue = (source: UnknownRecord | null, key: string) => {
+  const value = source?.[key];
+  return isRecord(value) ? value : null;
+};
+
+const getStringValue = (source: UnknownRecord | null, key: string) => {
+  const value = source?.[key];
+  return typeof value === "string" ? value : null;
+};
+
+const getBooleanValue = (source: UnknownRecord | null, key: string) => {
+  const value = source?.[key];
+  return typeof value === "boolean" ? value : undefined;
+};
+
+const getUserValue = (source: UnknownRecord | null) => {
+  const user = source?.user;
+  return isRecord(user) ? (user as User) : null;
+};
+
+/**
+ * Chỉ persist những giá trị thật sự có trong response.
+ *
+ * Có endpoint chỉ trả token, có endpoint chỉ trả profile, có endpoint lại bọc
+ * trong { data }. Nếu helper này ghi null/undefined một cách mù quáng, response
+ * refresh không có user data có thể xóa mất cached user profile.
+ */
 const saveAuthToStorage = ({
   token,
   user,
@@ -58,61 +73,82 @@ const saveAuthToStorage = ({
   token?: string | null;
   user?: User | null;
 }) => {
-  if (!isBrowser) return;
-
   if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
+    authStorage.setAccessToken(token);
   }
 
   if (user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    authStorage.setUser(user);
   }
 };
 
-const clearAuthStorage = () => {
-  if (!isBrowser) return;
+const getErrorMessage = (error: unknown, fallbackMessage: string): string => {
+  if (!isRecord(error)) return fallbackMessage;
 
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-};
+  const response = getRecordValue(error, "response");
+  const data = getRecordValue(response, "data");
 
-const getErrorMessage = (error: any, fallbackMessage: string): string => {
   return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error_description ||
-    error?.response?.data?.error ||
-    error?.message ||
+    getStringValue(data, "message") ||
+    getStringValue(data, "error_description") ||
+    getStringValue(data, "error") ||
+    getStringValue(error, "message") ||
     fallbackMessage
   );
 };
 
-const normalizeAuthResponse = (payload: any) => {
-  const body = payload?.data ?? payload ?? {};
+/**
+ * Response backend chưa hoàn toàn thống nhất giữa các auth endpoint:
+ * - login/refresh có thể là { data: { access_token } }
+ * - một số caller có thể truyền thẳng payload bên trong
+ *
+ * Normalize ở đây giúp reducer/thunk tập trung vào auth behavior, thay vì lặp
+ * lại logic kiểm tra response shape ở nhiều nơi.
+ */
+const normalizeAuthResponse = (payload: unknown) => {
+  let body = isRecord(payload) ? payload : {};
+
+  const firstData = getRecordValue(body, "data");
+
+  if (
+    firstData &&
+    (getStringValue(firstData, "access_token") ||
+      getStringValue(firstData, "accessToken"))
+  ) {
+    body = firstData;
+  } else if (firstData) {
+    body = getRecordValue(firstData, "data") ?? firstData;
+  }
 
   return {
-    token: body.access_token ?? body.accessToken ?? null,
-    user: body.user ?? null,
-    message: body.message ?? payload?.message ?? null,
+    token:
+      getStringValue(body, "access_token") ??
+      getStringValue(body, "accessToken"),
+    user: getUserValue(body),
+    message:
+      getStringValue(body, "message") ??
+      (isRecord(payload) ? getStringValue(payload, "message") : null),
   };
 };
 
-// fetchMeThunk declared first so loginThunk can reference it
+// Khai báo fetchMeThunk trước để loginThunk/refreshThunk có thể dùng chung một
+// đường hydrate profile sau khi lấy được token.
 export const fetchMeThunk = createAsyncThunk<
-  any,
+  unknown,
   string,
   { rejectValue: string }
 >("auth/fetchMe", async (token, { rejectWithValue }) => {
   try {
     const response = await authAPI.getMe(token);
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     return rejectWithValue(
       getErrorMessage(error, "Không thể lấy thông tin người dùng"),
     );
   }
 });
 export const loginThunk = createAsyncThunk<
-  any,
+  unknown,
   LoginCredentials,
   { rejectValue: string }
 >("auth/login", async (credentials, { rejectWithValue, dispatch }) => {
@@ -120,6 +156,8 @@ export const loginThunk = createAsyncThunk<
     const response = await authAPI.login(credentials);
     const normalized = normalizeAuthResponse(response.data);
 
+    // Login là thời điểm session frontend mới bắt đầu. Persist token trước khi
+    // gọi /me giúp provider/interceptor khác nhìn thấy token ngay lập tức.
     if (normalized.token || normalized.user) {
       saveAuthToStorage(normalized);
     }
@@ -129,26 +167,26 @@ export const loginThunk = createAsyncThunk<
     }
 
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     return rejectWithValue(getErrorMessage(error, "Đăng nhập thất bại"));
   }
 });
 
 export const registerThunk = createAsyncThunk<
-  any,
+  unknown,
   RegisterData,
   { rejectValue: string }
 >("auth/register", async (userData, { rejectWithValue }) => {
   try {
     const response = await authAPI.register(userData);
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     return rejectWithValue(getErrorMessage(error, "Đăng ký thất bại"));
   }
 });
 
 export const refreshThunk = createAsyncThunk<
-  any,
+  unknown,
   void,
   { rejectValue: string }
 >("auth/refresh", async (_, { rejectWithValue, dispatch }) => {
@@ -156,16 +194,22 @@ export const refreshThunk = createAsyncThunk<
     const response = await authAPI.refresh();
     const normalized = normalizeAuthResponse(response.data);
 
+    // refreshThunk thủ công dùng cho các flow rõ ràng bên ngoài interceptor
+    // (ví dụ sau khi đổi role). Interceptor xử lý recover request transparent;
+    // thunk này dùng khi app chủ động muốn refresh auth state trong Redux/storage.
     if (normalized.token || normalized.user) {
       saveAuthToStorage(normalized);
     }
 
     if (normalized.token) {
+      // Đây là lý do Network tab có thể thấy /refresh xong gọi /me khi dùng
+      // refreshThunk. Việc này hữu ích sau các flow có thể đổi profile/role,
+      // nhưng không bắt buộc cho cơ chế retry của interceptor.
       dispatch(fetchMeThunk(normalized.token));
     }
 
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     return rejectWithValue(getErrorMessage(error, "Refresh token thất bại"));
   }
 });
@@ -184,10 +228,11 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     hydrateAuthFromStorage: (state) => {
-      if (!isBrowser) return;
-
-      const token = localStorage.getItem(TOKEN_KEY);
-      const user = loadUserFromStorage();
+      // Redux state chỉ nằm trong memory. Sau hard reload, localStorage có thể
+      // vẫn còn access token hợp lệ, nhưng component chưa thể phản ứng cho tới
+      // khi token được copy lại vào Redux.
+      const token = authStorage.getAccessToken();
+      const user = authStorage.getUser<User>();
 
       state.token = token;
       state.user = user;
@@ -200,7 +245,10 @@ const authSlice = createSlice({
     },
 
     logout: (state) => {
-      clearAuthStorage();
+      // Logout phải clear cả durable storage lẫn reactive UI state. Nếu chỉ
+      // clear Redux, reload sau đó sẽ restore token cũ; nếu chỉ clear
+      // localStorage, UI hiện tại vẫn render như đang authenticated.
+      authStorage.clearAuth();
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
@@ -218,9 +266,12 @@ const authSlice = createSlice({
         state.error = null;
         state.registerSuccessMessage = null;
       })
-      .addCase(loginThunk.fulfilled, (state, action: PayloadAction<any>) => {
+      .addCase(loginThunk.fulfilled, (state, action) => {
         const normalized = normalizeAuthResponse(action.payload);
 
+        // Giữ Redux và localStorage đồng bộ: storage sống qua reload, Redux điều
+        // khiển UI. Lệch state ở đây thường gây lỗi "Network đã có token nhưng
+        // header/menu vẫn hiện logged out".
         state.loading = false;
         state.error = null;
         state.user = normalized.user;
@@ -238,7 +289,7 @@ const authSlice = createSlice({
         state.error = null;
         state.registerSuccessMessage = null;
       })
-      .addCase(registerThunk.fulfilled, (state, action: PayloadAction<any>) => {
+      .addCase(registerThunk.fulfilled, (state, action) => {
         const normalized = normalizeAuthResponse(action.payload);
 
         state.loading = false;
@@ -263,14 +314,21 @@ const authSlice = createSlice({
         state.error = null;
         state.registerSuccessMessage = null;
       })
-      .addCase(refreshThunk.fulfilled, (state, action: PayloadAction<any>) => {
+      .addCase(refreshThunk.fulfilled, (state, action) => {
         const normalized = normalizeAuthResponse(action.payload);
 
         state.loading = false;
         state.error = null;
-        state.user = normalized.user;
-        state.token = normalized.token;
-        state.isAuthenticated = !!normalized.token;
+        // Response refresh thường chỉ có access token mới. Giữ user object cũ
+        // trừ khi backend trả user payload mới. Nếu không, silent refresh có thể
+        // làm header/profile tạm mất thông tin user.
+        if (normalized.user) {
+          state.user = normalized.user;
+        }
+        if (normalized.token) {
+          state.token = normalized.token;
+        }
+        state.isAuthenticated = !!state.token;
       })
       .addCase(refreshThunk.rejected, (state, action) => {
         state.loading = false;
@@ -278,26 +336,32 @@ const authSlice = createSlice({
       })
 
       // FETCH ME
-      .addCase(fetchMeThunk.fulfilled, (state, action: PayloadAction<any>) => {
-        const profile = action.payload?.data ?? action.payload ?? null;
+      .addCase(fetchMeThunk.fulfilled, (state, action) => {
+        const payload = isRecord(action.payload) ? action.payload : null;
+        const profile = getRecordValue(payload, "data") ?? payload;
         if (profile) {
-          const avatar = profile.avatarUrl ?? null;
+          // /me là nguồn profile detail không phải lúc nào cũng có trong token
+          // response. Persist merged user giúp behavior sau reload nhất quán với
+          // UI hiện tại trong memory.
+          const firstName = getStringValue(profile, "firstName") ?? "";
+          const lastName = getStringValue(profile, "lastName") ?? "";
+          const fullName = getStringValue(profile, "fullName");
+          const avatar = getStringValue(profile, "avatarUrl");
           state.user = {
             ...state.user,
-            id: profile.userId ?? state.user?.id,
-            email: profile.email ?? state.user?.email,
+            id: getStringValue(profile, "userId") ?? state.user?.id,
+            email: getStringValue(profile, "email") ?? state.user?.email,
             name:
-              (profile.fullName ??
-                `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim()) ||
+              (fullName ?? `${firstName} ${lastName}`.trim()) ||
               state.user?.name,
-            fullName: profile.fullName,
+            fullName: fullName ?? undefined,
             avatarUrl: avatar,
-            firstName: profile.firstName,
-            lastName: profile.lastName,
-            dateOfBirth: profile.dateOfBirth,
-            gender: profile.gender,
-            bio: profile.bio,
-            isHost: profile.isHost,
+            firstName,
+            lastName,
+            dateOfBirth: getStringValue(profile, "dateOfBirth") ?? undefined,
+            gender: getStringValue(profile, "gender") ?? undefined,
+            bio: getStringValue(profile, "bio") ?? undefined,
+            isHost: getBooleanValue(profile, "isHost"),
           };
           saveAuthToStorage({ user: state.user });
         }

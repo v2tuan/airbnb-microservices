@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import wishlistAPI from "@/api/endpoints/wishlist";
 import type {
   CreateWishlistCategoryRequest,
   WishlistCategoryResponse,
   WishlistItemResponse,
 } from "@/api/endpoints/wishlist";
+import wishlistAPI from "@/api/endpoints/wishlist";
 
 interface ListingWishlistEntry {
   itemId: string;
@@ -26,7 +26,9 @@ const toErrorMessage = (error: unknown) => {
   return message ?? "Wishlist request failed";
 };
 
-const buildListingMap = (items: WishlistItemsByCategory): WishlistMapByListingId => {
+const buildListingMap = (
+  items: WishlistItemsByCategory,
+): WishlistMapByListingId => {
   const listingMap: WishlistMapByListingId = {};
 
   Object.entries(items).forEach(([categoryId, categoryItems]) => {
@@ -42,7 +44,11 @@ const buildListingMap = (items: WishlistItemsByCategory): WishlistMapByListingId
 };
 
 const findTargetCollection = (collections: WishlistCategoryResponse[]) => {
-  return collections.find((collection) => collection.isDefault) ?? collections[0] ?? null;
+  return (
+    collections.find((collection) => collection.isDefault) ??
+    collections[0] ??
+    null
+  );
 };
 
 interface WishlistState {
@@ -57,7 +63,7 @@ interface WishlistState {
   fetchCollections: (token: string) => Promise<void>;
   createCollection: (
     token: string,
-    payload: CreateWishlistCategoryRequest
+    payload: CreateWishlistCategoryRequest,
   ) => Promise<WishlistCategoryResponse | null>;
   deleteCollection: (token: string, categoryId: string) => Promise<void>;
 
@@ -65,22 +71,26 @@ interface WishlistState {
   addItem: (
     token: string,
     categoryId: string,
-    payload: { listingId: string; note?: string }
+    payload: { listingId: string; note?: string },
   ) => Promise<void>;
   deleteItem: (token: string, itemId: string) => Promise<void>;
 
   hydrateWishlist: (token: string) => Promise<void>;
   toggleListing: (token: string, listingId: string) => Promise<boolean>;
+  reset: () => void;
 }
 
-export const useWishlistStore = create<WishlistState>((set, get) => ({
+const initialWishlistState = {
   collections: [],
   items: {},
   listingMap: {},
   pendingByListingId: {},
-
   loading: false,
   error: null,
+};
+
+export const useWishlistStore = create<WishlistState>((set, get) => ({
+  ...initialWishlistState,
 
   fetchCollections: async (token) => {
     set({ loading: true, error: null });
@@ -116,7 +126,7 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
 
       set({
         collections: get().collections.filter(
-          (c) => c.categoryId !== categoryId
+          (c) => c.categoryId !== categoryId,
         ),
         items: nextItems,
         listingMap: buildListingMap(nextItems),
@@ -173,7 +183,7 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
         Object.entries(get().items).map(([categoryId, categoryItems]) => [
           categoryId,
           categoryItems.filter((item) => item.itemId !== itemId),
-        ])
+        ]),
       );
 
       set({
@@ -194,12 +204,16 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
 
       const itemResults = await Promise.all(
         collections.map(async (collection) => {
-          const itemsRes = await wishlistAPI.getItems(token, collection.categoryId);
+          const itemsRes = await wishlistAPI.getItems(
+            token,
+            collection.categoryId,
+          );
           return [collection.categoryId, itemsRes.data.result] as const;
-        })
+        }),
       );
 
-      const nextItems: WishlistItemsByCategory = Object.fromEntries(itemResults);
+      const nextItems: WishlistItemsByCategory =
+        Object.fromEntries(itemResults);
 
       set({
         collections,
@@ -231,7 +245,10 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
 
       let targetCollection = findTargetCollection(get().collections);
       if (!targetCollection) {
-        const created = await get().createCollection(token, DEFAULT_COLLECTION_PAYLOAD);
+        const created = await get().createCollection(
+          token,
+          DEFAULT_COLLECTION_PAYLOAD,
+        );
         if (!created) {
           throw new Error("Cannot create wishlist collection");
         }
@@ -251,5 +268,12 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
         },
       });
     }
+  },
+
+  reset: () => {
+    // Auth hết hạn phải clear cả cache theo user, không chỉ token. Nếu thiếu
+    // reset này, user tiếp theo trên cùng browser session có thể tạm thấy
+    // wishlist data của user trước đó.
+    set(initialWishlistState);
   },
 }));

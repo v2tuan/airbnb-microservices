@@ -1,27 +1,27 @@
-"use client"
+"use client";
 
-import LoginModal from '@/components/modals/login'
-import RegisterModal from '@/components/modals/register'
-import { Toaster } from 'sonner'
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
+import LoginModal from "@/components/modals/login";
+import RegisterModal from "@/components/modals/register";
+import { Toaster } from "@/components/ui/sonner";
 
 function ModalProvider() {
   // dam bao render modal khi da mounted
-  const [isMounted, setIsMounted] = useState(false)
-  
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const [isMounted, setIsMounted] = useState(false);
 
-  if (!isMounted) return null
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) return null;
 
   return (
     <>
-      <LoginModal/>
-      <RegisterModal/>
+      <LoginModal />
+      <RegisterModal />
       <Toaster richColors position="top-right" />
     </>
-  )
+  );
 }
 
-export default ModalProvider
+export default ModalProvider;
