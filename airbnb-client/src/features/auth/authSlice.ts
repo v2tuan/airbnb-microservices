@@ -1,6 +1,10 @@
-import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
+import {
+  createAsyncThunk,
+  createSlice,
+  type PayloadAction,
+} from "@reduxjs/toolkit";
 import authAPI from "@/api/endpoints/auth";
-import { RootState } from "@/store";
+import type { RootState } from "@/store";
 
 const TOKEN_KEY = "access_token";
 const USER_KEY = "auth_user";
@@ -30,6 +34,10 @@ interface LoginCredentials {
 interface RegisterData {
   email: string;
   password: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
   name?: string;
 }
 
@@ -50,7 +58,7 @@ const saveAuthToStorage = ({
   token?: string | null;
   user?: User | null;
 }) => {
-  if (!isBrowser) return
+  if (!isBrowser) return;
 
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
@@ -98,7 +106,9 @@ export const fetchMeThunk = createAsyncThunk<
     const response = await authAPI.getMe(token);
     return response.data;
   } catch (error: any) {
-    return rejectWithValue(getErrorMessage(error, "Không thể lấy thông tin người dùng"));
+    return rejectWithValue(
+      getErrorMessage(error, "Không thể lấy thông tin người dùng"),
+    );
   }
 });
 export const loginThunk = createAsyncThunk<
@@ -106,7 +116,6 @@ export const loginThunk = createAsyncThunk<
   LoginCredentials,
   { rejectValue: string }
 >("auth/login", async (credentials, { rejectWithValue, dispatch }) => {
-
   try {
     const response = await authAPI.login(credentials);
     const normalized = normalizeAuthResponse(response.data);
@@ -139,11 +148,10 @@ export const registerThunk = createAsyncThunk<
 });
 
 export const refreshThunk = createAsyncThunk<
-    any,
-    void,
-    { rejectValue: string }
+  any,
+  void,
+  { rejectValue: string }
 >("auth/refresh", async (_, { rejectWithValue, dispatch }) => {
-
   try {
     const response = await authAPI.refresh();
     const normalized = normalizeAuthResponse(response.data);
@@ -249,25 +257,25 @@ const authSlice = createSlice({
         state.error = action.payload || "Đăng ký thất bại";
       })
 
-        // REFRESH
-        .addCase(refreshThunk.pending, (state) => {
-          state.loading = true;
-          state.error = null;
-          state.registerSuccessMessage = null;
-        })
-        .addCase(refreshThunk.fulfilled, (state, action: PayloadAction<any>) => {
-          const normalized = normalizeAuthResponse(action.payload);
+      // REFRESH
+      .addCase(refreshThunk.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.registerSuccessMessage = null;
+      })
+      .addCase(refreshThunk.fulfilled, (state, action: PayloadAction<any>) => {
+        const normalized = normalizeAuthResponse(action.payload);
 
-          state.loading = false;
-          state.error = null;
-          state.user = normalized.user;
-          state.token = normalized.token;
-          state.isAuthenticated = !!normalized.token;
-        })
-        .addCase(refreshThunk.rejected, (state, action) => {
-          state.loading = false;
-          state.error = action.payload || "Refresh token thất bại";
-        })
+        state.loading = false;
+        state.error = null;
+        state.user = normalized.user;
+        state.token = normalized.token;
+        state.isAuthenticated = !!normalized.token;
+      })
+      .addCase(refreshThunk.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || "Refresh token thất bại";
+      })
 
       // FETCH ME
       .addCase(fetchMeThunk.fulfilled, (state, action: PayloadAction<any>) => {
@@ -278,7 +286,10 @@ const authSlice = createSlice({
             ...state.user,
             id: profile.userId ?? state.user?.id,
             email: profile.email ?? state.user?.email,
-            name: (profile.fullName ?? `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim()) || state.user?.name,
+            name:
+              (profile.fullName ??
+                `${profile.firstName ?? ""} ${profile.lastName ?? ""}`.trim()) ||
+              state.user?.name,
             fullName: profile.fullName,
             avatarUrl: avatar,
             firstName: profile.firstName,
@@ -294,7 +305,8 @@ const authSlice = createSlice({
   },
 });
 
-export const { hydrateAuthFromStorage, clearAuthMessages, logout } = authSlice.actions;
+export const { hydrateAuthFromStorage, clearAuthMessages, logout } =
+  authSlice.actions;
 
 export const selectAuthState = (state: RootState) => state.auth;
 

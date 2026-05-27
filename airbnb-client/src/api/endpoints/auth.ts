@@ -1,5 +1,5 @@
-import apiClient from "../client";
 import type { AxiosResponse } from "axios";
+import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
 
@@ -11,6 +11,10 @@ export interface LoginCredentials {
 export interface RegisterData {
   email: string;
   password: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
   name?: string;
 }
 
@@ -44,22 +48,24 @@ export interface UpdateProfilePayload {
 
 export const authAPI = {
   login: (
-    credentials: LoginCredentials
+    credentials: LoginCredentials,
   ): Promise<AxiosResponse<AuthResponse>> => {
     return apiClient.post(`${prefix}/users/auth/login`, credentials, {
-      withCredentials: true
+      withCredentials: true,
     });
   },
 
   refresh: (): Promise<AxiosResponse<AuthResponse>> => {
-    return apiClient.post(`${prefix}/users/auth/refresh`, {}, {
-      withCredentials: true
-    })
+    return apiClient.post(
+      `${prefix}/users/auth/refresh`,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
   },
 
-  register: (
-    userData: RegisterData
-  ): Promise<AxiosResponse<AuthResponse>> => {
+  register: (userData: RegisterData): Promise<AxiosResponse<AuthResponse>> => {
     return apiClient.post(`${prefix}/users/auth/register`, userData);
   },
 
@@ -71,7 +77,7 @@ export const authAPI = {
 
   updateMe: (
     token: string,
-    payload: UpdateProfilePayload
+    payload: UpdateProfilePayload,
   ): Promise<AxiosResponse<{ data: MeResponse }>> => {
     return apiClient.put(`${prefix}/users/auth/me`, payload, {
       headers: { Authorization: `Bearer ${token}` },
@@ -80,7 +86,7 @@ export const authAPI = {
 
   uploadAvatar: (
     token: string,
-    file: File
+    file: File,
   ): Promise<AxiosResponse<{ data: MeResponse }>> => {
     const formData = new FormData();
     formData.append("file", file);
