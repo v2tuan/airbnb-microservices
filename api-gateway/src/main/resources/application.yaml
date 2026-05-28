@@ -46,12 +46,12 @@ spring:
 
           routes:
             - id: profile_service
-              uri: http://localhost:8888
+              uri: http://localhost:8082
               predicates:
                 - Path=${app.api-prefix}/profile/**
               filters:
-                - StripPrefix=3
-                - PrefixPath=/internal/profile
+                - StripPrefix=2
+                - PrefixPath=/users
             - id: user_service
               uri: http://localhost:8082
               predicates:
