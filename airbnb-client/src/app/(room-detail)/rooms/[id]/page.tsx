@@ -10,6 +10,7 @@ import { ListingRatingForm } from "@/components/listing/ListingRatingForm";
 import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
 import { CalendarDays, CheckCircle2, MessageSquare, Share, Sparkles, Star, Users } from "lucide-react";
+import Link from "next/link";
 import {notFound, useParams} from "next/navigation";
 import {useEffect, useState} from "react";
 
@@ -35,6 +36,7 @@ type RatingRecord = {
 };
 
 type HostPreview = {
+  id?: string;
   fullName?: string;
   avatarUrl?: string;
   isSuperhost?: boolean;
@@ -178,6 +180,7 @@ export default function RoomDetail () {
             const hostProfile = (hostResponse.data as PublicProfilePageData | undefined)?.host;
 
             setHost({
+              id: hostProfile?.id ?? hostId,
               fullName: hostProfile?.fullName,
               avatarUrl: hostProfile?.avatarUrl,
               isSuperhost: hostProfile?.isSuperhost,
@@ -209,6 +212,8 @@ export default function RoomDetail () {
   if (error || !listing) {
     return <div>Error loading room details. Please try again later.</div>;
   }
+
+  const hostProfileId = host?.id ?? listing?.hostId;
 
   return (
       <main className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_30%),linear-gradient(180deg,#fff_0%,#fff_60%,#f8fafc_100%)] px-4 py-6 sm:px-6 lg:px-10">
@@ -250,7 +255,16 @@ export default function RoomDetail () {
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Hosted by</p>
-                    <p className="mt-1 text-xl font-semibold text-zinc-950">{host?.fullName ?? "LocalHost"}</p>
+                    {hostProfileId ? (
+                      <Link
+                        href={`/users/profile/${hostProfileId}`}
+                        className="mt-1 inline-block text-xl font-semibold text-zinc-950 underline-offset-4 hover:underline"
+                      >
+                        {host?.fullName ?? "LocalHost"}
+                      </Link>
+                    ) : (
+                      <p className="mt-1 text-xl font-semibold text-zinc-950">{host?.fullName ?? "LocalHost"}</p>
+                    )}
                     <p className="mt-1 text-sm text-zinc-500">{host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}</p>
                   </div>
                 </div>
