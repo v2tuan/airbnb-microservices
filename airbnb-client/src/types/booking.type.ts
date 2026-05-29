@@ -6,54 +6,42 @@ export type BookingStatus =
   | "CANCELLED"
   | "EXPIRED";
 
+export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
+
 export interface BookingTripsResponse {
   basePrice: number;
-
   bookingId: string;
-
   checkInDate: string;
   checkOutDate: string;
-
   city: string;
   country: string;
-
   coverImageUrl: string;
-
   createdAt: string;
   expiresAt: string;
   paidAt: string | null;
-
   currency: string;
-
   hostId: string | null;
   listingId: string;
-
   numAdults: number;
   numChildren: number;
   numInfants: number;
   numPets: number;
-
   status: BookingStatus;
   statusDisplayName: string;
-
   title: string;
-
   totalAmount: number;
   totalNights: number;
-
   tripLabel: string;
 }
-
-export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 
 export interface CheckoutRequest {
   roomId: string;
   roomName?: string;
   userId?: string;
-  checkInDate: string; // "YYYY-MM-DD"
-  checkOutDate: string; // "YYYY-MM-DD"
+  checkInDate: string;
+  checkOutDate: string;
   totalAmount?: number;
-  currency: string; // "usd" hoặc "vnd"
+  currency: string;
   guestCount?: number;
   guestNotes?: string;
   numberOfAdults?: number;
@@ -65,13 +53,11 @@ export interface CheckoutRequest {
 export interface CheckoutResponse {
   bookingId: string;
   paymentIntentId: string;
-  /** Stripe client secret — dùng để gọi stripe.confirmPayment() */
   clientSecret: string;
-  /** Stripe publishable key — dùng để khởi tạo loadStripe() */
   publishableKey: string;
   totalAmount: number;
   currency: string;
-  expiresAt: string; // ISO datetime — booking hết hạn lúc này
+  expiresAt: string;
   message: string;
 }
 
@@ -194,4 +180,109 @@ export interface BookingCancellationPolicy {
 export interface BookingReviewSummary {
   averageRating: number | string;
   reviewCount: number;
+}
+
+export interface ReservationGuestSummary {
+  userId?: string | null;
+  keycloakUserId?: string | null;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+}
+
+export interface HostReservationResponse {
+  reservationId: string;
+  reservationCode: string;
+  listingId: string;
+  hostId: string | null;
+  guestId: string;
+  guest?: ReservationGuestSummary | null;
+  listingTitle?: string | null;
+  listingCity?: string | null;
+  listingCountry?: string | null;
+  listingCoverImageUrl?: string | null;
+  checkInDate: string;
+  checkOutDate: string;
+  totalNights: number;
+  totalAmount: number;
+  currency: string;
+  status: BookingStatus;
+  statusDisplayName: string;
+  createdAt: string;
+  expiresAt?: string | null;
+  paidAt?: string | null;
+  checkedInAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  numAdults: number;
+  numChildren: number;
+  numInfants: number;
+  numPets: number;
+  guestNotes?: string | null;
+}
+
+export interface HostReservationStats {
+  total: number;
+  pending: number;
+  arrivalsToday: number;
+  inHouse: number;
+  revenue: number;
+  currency: string;
+}
+
+export interface HostReservationsPageResponse {
+  content: HostReservationResponse[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  stats: HostReservationStats;
+  statusCounts: Record<string, number>;
+  occupiedDates: string[];
+  nextReservations: HostReservationResponse[];
+}
+
+export interface HostReservationsQuery {
+  listingId?: string;
+  statuses?: BookingStatus[];
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page: number;
+  size: number;
+}
+
+export interface HostReservationDetailResponse {
+  reservationId: string;
+  reservationCode: string;
+  listingId: string;
+  hostId: string | null;
+  guestId: string;
+  checkInDate: string;
+  checkOutDate: string;
+  totalNights: number;
+  status: BookingStatus;
+  statusDisplayName: string;
+  currency: string;
+  totalAmount: number;
+  paymentIntentId?: string | null;
+  createdAt: string;
+  expiresAt?: string | null;
+  paidAt?: string | null;
+  checkedInAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  numAdults: number;
+  numChildren: number;
+  numInfants: number;
+  numPets: number;
+  guestNotes?: string | null;
+  listing: BookingDetailListing | null;
+  guest?: ReservationGuestSummary | null;
+  payment?: Omit<BookingPaymentSummary, "refundPolicy"> | null;
+}
+
+export interface UpdateReservationStatusRequest {
+  status: BookingStatus;
+  reason?: string;
 }

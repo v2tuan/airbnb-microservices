@@ -49,6 +49,45 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByGuestId(UUID guestId);
 
+    /**
+     * Query list reservation theo một listing cho admin scope.
+     * Sắp xếp check-in mới nhất trước, sau đó createdAt để host/admin dễ đọc lịch sử đặt phòng.
+     */
+    List<Booking> findByListingIdOrderByCheckInDateDescCreatedAtDesc(UUID listingId);
+
+    /**
+     * Query list reservation theo listing + status filter cho dashboard tab/filter.
+     */
+    List<Booking> findByListingIdAndStatusInOrderByCheckInDateDescCreatedAtDesc(
+            UUID listingId,
+            List<BookingStatus> statuses
+    );
+
+    /**
+     * Query list reservation theo listing + hostId cho host scope.
+     * Điều kiện hostId là lớp bảo vệ bổ sung bên cạnh phần kiểm quyền trong service.
+     */
+    List<Booking> findByListingIdAndHostIdOrderByCheckInDateDescCreatedAtDesc(UUID listingId, UUID hostId);
+
+    /**
+     * Query list reservation theo listing + hostId + status filter cho host dashboard.
+     */
+    List<Booking> findByListingIdAndHostIdAndStatusInOrderByCheckInDateDescCreatedAtDesc(
+            UUID listingId,
+            UUID hostId,
+            List<BookingStatus> statuses
+    );
+
+    /**
+     * Query reservation theo host cho scope "All listings".
+     *
+     * Đây là phần thay thế cho Promise.all ở frontend. Thay vì client gọi từng listing rồi tự
+     * ghép kết quả, backend dùng hostId đã được xác thực để lấy đúng một tập reservation nhất quán.
+     * Nếu bỏ query theo host và quay lại aggregate phía client, pagination/search sẽ chỉ đúng trong
+     * từng listing riêng lẻ chứ không đúng trên toàn portfolio của host.
+     */
+    List<Booking> findByHostIdOrderByCheckInDateDescCreatedAtDesc(UUID hostId);
+
     @Query("""
     SELECT b FROM Booking b
     WHERE b.guestId = :guestId

@@ -9,8 +9,11 @@ import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
+import com.bookingservice.dto.response.HostReservationsPageResponse;
 import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.dto.response.PublicUserResponse;
+import com.bookingservice.dto.response.ReservationDetailResponse;
+import com.bookingservice.dto.response.ReservationResponse;
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingStatus;
 import com.bookingservice.repository.BookingRepository;
@@ -30,9 +33,16 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -115,14 +125,17 @@ public class BookingService {
         if (request.getStatus() == BookingStatus.PAID) {
             booking.setPaidAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.CHECKED_IN) {
+        if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
             booking.setCheckedInAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.COMPLETED) {
+        if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
             booking.setCompletedAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.CANCELLED) {
+        if (request.getStatus() == BookingStatus.CANCELLED && booking.getCancelledAt() == null) {
             booking.setCancelledAt(LocalDateTime.now());
+        }
+        if (request.getStatus() == BookingStatus.CANCELLED && request.getReason() != null) {
+            booking.setCancellationReason(request.getReason());
         }
 
         return mapToResponse(bookingRepository.save(booking));
@@ -252,6 +265,405 @@ public class BookingService {
                 .toList();
     }
 
+    /**
+     * Lấy danh sách reservation của một listing cho host/admin.
+     *
+     * Input: listingId và optional statuses từ dashboard.
+     * Xử lý:
+     * - Load listing từ Listing Service để biết host sở hữu listing.
+     * - Admin được xem tất cả, host chỉ được xem listing có hostId trùng JWT subject.
+     * - Query Booking theo listing/status, sau đó enrich guest profile để card có tên/avatar.
+     * Output: danh sách ReservationResponse đủ dữ liệu cho list, stats và calendar.
+     */
+    @Transactional(readOnly = true)
+    public List<ReservationResponse> getReservationsByListing(UUID listingId, List<BookingStatus> statuses) {
+        Jwt jwt = currentJwt();
+        boolean admin = isAdmin(jwt);
+
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), listingId)
+                .getData();
+
+        if (listing == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+        }
+
+        UUID hostId = UUID.fromString(listing.getHostId());
+        if (!admin && !hostId.toString().equals(jwt.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot manage reservations for this listing");
+        }
+
+        List<Booking> bookings = findReservationsForListing(listingId, admin ? null : hostId, statuses);
+        return bookings.stream()
+                .map(booking -> mapToReservationResponse(booking, listing, fetchGuestProfile(booking.getGuestId())))
+                .toList();
+    }
+
+    /**
+     * Endpoint production cho dashboard reservation của host.
+     *
+     * Vì sao cần method mới thay vì để frontend tự Promise.all từng listing:
+     * - Pagination phải xảy ra sau khi đã gom toàn bộ scope. Nếu client lấy từng listing rồi slice,
+     *   page 1/page 2 sẽ phụ thuộc vào số lượng listing và dễ thiếu reservation.
+     * - Search/filter phải chạy trên cùng một snapshot dữ liệu backend. Nếu search ở frontend,
+     *   host buộc phải tải toàn bộ booking trước, không scale khi portfolio lớn.
+     * - Metric/tab count/calendar vẫn cần dữ liệu aggregate ngoài page hiện tại. Response vì vậy trả
+     *   cả metadata đã tính sẵn để không downgrade UX cũ.
+     *
+     * Tradeoff hiện tại:
+     * Booking DB chỉ lưu listingId/guestId, còn title/city/guestName nằm ở service khác. Để giữ đúng
+     * behavior search cũ, backend phải enrich trước rồi match search. Khi traffic lớn hơn, nên denormalize
+     * các field searchable vào Booking read-model hoặc đẩy sang Search Service để pagination được thực hiện
+     * trực tiếp bằng DB/search index thay vì lọc trong memory sau bước enrich.
+     */
+    @Transactional(readOnly = true)
+    public HostReservationsPageResponse getHostReservations(
+            UUID listingId,
+            List<BookingStatus> statuses,
+            String search,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int page,
+            int size
+    ) {
+        Jwt jwt = currentJwt();
+        boolean admin = isAdmin(jwt);
+        UUID currentUserId = UUID.fromString(jwt.getSubject());
+        String bearerToken = "Bearer " + jwt.getTokenValue();
+
+        List<ListingResponse> scopeListings = resolveReservationScopeListings(bearerToken, listingId, currentUserId, admin);
+        Map<UUID, ListingResponse> listingMap = scopeListings.stream()
+                .collect(Collectors.toMap(ListingResponse::getListingId, Function.identity(), (left, right) -> left));
+
+        if (scopeListings.isEmpty()) {
+            return emptyHostReservationsPage(page, size);
+        }
+
+        List<Booking> scopeBookings = listingId != null
+                ? findReservationsForListing(listingId, admin ? null : currentUserId, null)
+                : bookingRepository.findByHostIdOrderByCheckInDateDescCreatedAtDesc(currentUserId);
+
+        Map<UUID, PublicUserResponse> guestMap = fetchGuestProfiles(scopeBookings);
+        List<ReservationResponse> scopedReservations = scopeBookings.stream()
+                .map(booking -> mapToReservationResponse(
+                        booking,
+                        listingMap.get(booking.getListingId()),
+                        guestMap.get(booking.getGuestId())
+                ))
+                .toList();
+
+        List<ReservationResponse> filteredReservations = sortReservationResponses(
+                scopedReservations.stream()
+                        .filter(reservation -> reservationMatchesQuery(reservation, statuses, search, dateFrom, dateTo))
+                        .toList()
+        );
+
+        int safeSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(0, page);
+        int fromIndex = Math.min(safePage * safeSize, filteredReservations.size());
+        int toIndex = Math.min(fromIndex + safeSize, filteredReservations.size());
+        List<ReservationResponse> content = filteredReservations.subList(fromIndex, toIndex);
+        int totalPages = filteredReservations.isEmpty()
+                ? 1
+                : (int) Math.ceil((double) filteredReservations.size() / safeSize);
+
+        return HostReservationsPageResponse.builder()
+                .content(content)
+                .page(safePage)
+                .size(safeSize)
+                .totalElements(filteredReservations.size())
+                .totalPages(totalPages)
+                .stats(buildReservationStats(scopedReservations))
+                .statusCounts(buildStatusCounts(scopedReservations))
+                .occupiedDates(buildOccupiedDates(filteredReservations))
+                .nextReservations(buildNextReservations(filteredReservations))
+                .build();
+    }
+
+    /**
+     * Lấy detail một reservation cho host/admin.
+     *
+     * Reservation dùng chung entity Booking nên bước quan trọng nhất là kiểm quyền quản lý
+     * trước khi enrich dữ liệu listing/guest/payment cho màn detail.
+     */
+    @Transactional(readOnly = true)
+    public ReservationDetailResponse getReservationDetail(UUID reservationId) {
+        Jwt jwt = currentJwt();
+        Booking booking = bookingRepository.findById(reservationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+
+        ensureCanManageReservation(jwt, booking);
+
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), booking.getListingId())
+                .getData();
+        return mapToReservationDetailResponse(booking, listing, fetchGuestProfile(booking.getGuestId()));
+    }
+
+    /**
+     * Cập nhật trạng thái reservation từ host/admin.
+     *
+     * Input: reservationId + status/reason.
+     * Xử lý: lock row Booking, kiểm quyền, chặn host set trạng thái thuộc payment flow,
+     * validate transition, set timestamp nghiệp vụ, lưu DB.
+     * Output: ReservationDetailResponse mới nhất để frontend thay thế optimistic state.
+     */
+    @Transactional
+    public ReservationDetailResponse updateReservationStatus(UUID reservationId, UpdateBookingStatusRequest request) {
+        Jwt jwt = currentJwt();
+        Booking booking = bookingRepository.findByIdForUpdate(reservationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+
+        ensureCanManageReservation(jwt, booking);
+        validateReservationManagementStatus(request.getStatus());
+
+        // Chỉ đổi status khi status mới khác status hiện tại; nếu trùng, vẫn cho phép cập nhật reason/timestamp liên quan.
+        if (booking.getStatus() != request.getStatus()) {
+            validateStatusTransition(booking.getStatus(), request.getStatus());
+            booking.setStatus(request.getStatus());
+        }
+
+        if (request.getPaymentIntentId() != null) {
+            booking.setPaymentIntentId(request.getPaymentIntentId());
+        }
+        if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
+            booking.setCheckedInAt(LocalDateTime.now());
+        }
+        if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
+            booking.setCompletedAt(LocalDateTime.now());
+        }
+        if (request.getStatus() == BookingStatus.CANCELLED && booking.getCancelledAt() == null) {
+            booking.setCancelledAt(LocalDateTime.now());
+        }
+        if (request.getStatus() == BookingStatus.CANCELLED && request.getReason() != null) {
+            booking.setCancellationReason(request.getReason());
+        }
+
+        Booking saved = bookingRepository.save(booking);
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), saved.getListingId())
+                .getData();
+        return mapToReservationDetailResponse(saved, listing, fetchGuestProfile(saved.getGuestId()));
+    }
+
+    private List<ListingResponse> resolveReservationScopeListings(
+            String bearerToken,
+            UUID listingId,
+            UUID currentUserId,
+            boolean admin
+    ) {
+        if (listingId != null) {
+            ListingResponse listing = listingClient.getListingById(bearerToken, listingId).getData();
+            if (listing == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+            }
+
+            UUID listingHostId = UUID.fromString(listing.getHostId());
+            if (!admin && !listingHostId.equals(currentUserId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot manage reservations for this listing");
+            }
+
+            return List.of(listing);
+        }
+
+        /*
+         * Scope "All listings" phải được resolve ở backend.
+         *
+         * Nếu để frontend tự lấy listing rồi gọi reservations theo từng listing, request A của scope cũ
+         * có thể về sau request B của scope mới và ghi đè UI. Frontend vẫn có stale guard, nhưng backend
+         * aggregation giảm số request cạnh tranh và tạo một boundary rõ: một query dashboard = một response.
+         */
+        List<ListingResponse> listings = listingClient.getListingsByHost(bearerToken, currentUserId.toString()).getData();
+        return listings != null ? listings : List.of();
+    }
+
+    private HostReservationsPageResponse emptyHostReservationsPage(int page, int size) {
+        int safeSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(0, page);
+
+        return HostReservationsPageResponse.builder()
+                .content(List.of())
+                .page(safePage)
+                .size(safeSize)
+                .totalElements(0)
+                .totalPages(1)
+                .stats(HostReservationsPageResponse.ReservationStats.builder()
+                        .total(0)
+                        .pending(0)
+                        .arrivalsToday(0)
+                        .inHouse(0)
+                        .revenue(0)
+                        .currency("USD")
+                        .build())
+                .statusCounts(Map.of(
+                        "ALL", 0L,
+                        "NEEDS_ATTENTION", 0L,
+                        "CONFIRMED", 0L,
+                        "IN_HOUSE", 0L,
+                        "COMPLETED", 0L,
+                        "CANCELLED", 0L
+                ))
+                .occupiedDates(List.of())
+                .nextReservations(List.of())
+                .build();
+    }
+
+    private Map<UUID, PublicUserResponse> fetchGuestProfiles(List<Booking> bookings) {
+        /*
+         * Tách loading guest profile khỏi mapping để tránh gọi User Service lặp lại nhiều lần cho cùng
+         * một guest trong cùng response. Đây không phải batch API thật, nhưng vẫn giảm N+1 rõ rệt so với
+         * cách map từng booking rồi fetch ngay trong lambda.
+         */
+        Set<UUID> guestIds = bookings.stream()
+                .map(Booking::getGuestId)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        Map<UUID, PublicUserResponse> guestMap = new java.util.HashMap<>();
+        guestIds.forEach(guestId -> guestMap.put(guestId, fetchGuestProfile(guestId)));
+        return guestMap;
+    }
+
+    private boolean reservationMatchesQuery(
+            ReservationResponse reservation,
+            List<BookingStatus> statuses,
+            String search,
+            LocalDate dateFrom,
+            LocalDate dateTo
+    ) {
+        if (statuses != null && !statuses.isEmpty() && !statuses.contains(reservation.getStatus())) {
+            return false;
+        }
+
+        // Date range dùng rule "stay overlap" giống frontend cũ:
+        // checkout trước from hoặc checkin sau to thì nằm ngoài range.
+        if (dateFrom != null && reservation.getCheckOutDate().isBefore(dateFrom)) {
+            return false;
+        }
+        if (dateTo != null && reservation.getCheckInDate().isAfter(dateTo)) {
+            return false;
+        }
+
+        String normalizedSearch = search == null ? "" : search.trim().toLowerCase();
+        if (normalizedSearch.isBlank()) {
+            return true;
+        }
+
+        String searchable = java.util.stream.Stream.of(
+                        reservation.getReservationCode(),
+                        reservation.getListingTitle(),
+                        reservation.getListingCity(),
+                        reservation.getListingCountry(),
+                        reservation.getGuest() != null ? reservation.getGuest().getFullName() : null,
+                        reservation.getStatusDisplayName()
+                )
+                .filter(value -> value != null && !value.isBlank())
+                .collect(Collectors.joining(" "))
+                .toLowerCase();
+
+        return searchable.contains(normalizedSearch);
+    }
+
+    private List<ReservationResponse> sortReservationResponses(List<ReservationResponse> reservations) {
+        return reservations.stream()
+                .sorted(Comparator
+                        .comparingInt(this::reservationPriority)
+                        .thenComparing(ReservationResponse::getCheckInDate)
+                        .thenComparing(ReservationResponse::getCreatedAt, Comparator.reverseOrder()))
+                .toList();
+    }
+
+    private int reservationPriority(ReservationResponse reservation) {
+        LocalDate today = LocalDate.now();
+
+        if (reservation.getStatus() == BookingStatus.PENDING_PAYMENT) return 0;
+        if (reservation.getStatus() == BookingStatus.CHECKED_IN) return 1;
+        if (reservation.getStatus() == BookingStatus.PAID && reservation.getCheckInDate().isEqual(today)) return 2;
+        if (reservation.getStatus() == BookingStatus.PAID) return 3;
+        if (reservation.getStatus() == BookingStatus.COMPLETED) return 4;
+        return 5;
+    }
+
+    private HostReservationsPageResponse.ReservationStats buildReservationStats(List<ReservationResponse> scopedReservations) {
+        LocalDate today = LocalDate.now();
+        long revenue = scopedReservations.stream()
+                .filter(reservation -> reservation.getStatus() == BookingStatus.PAID
+                        || reservation.getStatus() == BookingStatus.CHECKED_IN
+                        || reservation.getStatus() == BookingStatus.COMPLETED)
+                .mapToLong(ReservationResponse::getTotalAmount)
+                .sum();
+
+        return HostReservationsPageResponse.ReservationStats.builder()
+                .total(scopedReservations.size())
+                .pending(scopedReservations.stream()
+                        .filter(reservation -> reservation.getStatus() == BookingStatus.PENDING_PAYMENT)
+                        .count())
+                .arrivalsToday(scopedReservations.stream()
+                        .filter(reservation -> reservation.getCheckInDate().isEqual(today)
+                                && (reservation.getStatus() == BookingStatus.PAID
+                                || reservation.getStatus() == BookingStatus.CHECKED_IN))
+                        .count())
+                .inHouse(scopedReservations.stream()
+                        .filter(reservation -> reservation.getStatus() == BookingStatus.CHECKED_IN)
+                        .count())
+                .revenue(revenue)
+                .currency(scopedReservations.isEmpty() ? "USD" : scopedReservations.getFirst().getCurrency())
+                .build();
+    }
+
+    private Map<String, Long> buildStatusCounts(List<ReservationResponse> scopedReservations) {
+        /*
+         * Count theo tab không bị ảnh hưởng bởi search/date hiện tại để giữ đúng behavior cũ.
+         * Nếu count theo filtered result, user sẽ thấy số trên tab thay đổi khi gõ search và dễ hiểu
+         * nhầm là scope listing đã mất reservation.
+         */
+        return Map.of(
+                "ALL", (long) scopedReservations.size(),
+                "NEEDS_ATTENTION", countStatuses(scopedReservations, BookingStatus.PENDING_PAYMENT),
+                "CONFIRMED", countStatuses(scopedReservations, BookingStatus.PAID),
+                "IN_HOUSE", countStatuses(scopedReservations, BookingStatus.CHECKED_IN),
+                "COMPLETED", countStatuses(scopedReservations, BookingStatus.COMPLETED),
+                "CANCELLED", countStatuses(scopedReservations, BookingStatus.CANCELLED, BookingStatus.EXPIRED)
+        );
+    }
+
+    private long countStatuses(List<ReservationResponse> reservations, BookingStatus... statuses) {
+        Set<BookingStatus> acceptedStatuses = Set.of(statuses);
+        return reservations.stream()
+                .filter(reservation -> acceptedStatuses.contains(reservation.getStatus()))
+                .count();
+    }
+
+    private List<LocalDate> buildOccupiedDates(List<ReservationResponse> filteredReservations) {
+        List<LocalDate> dates = new ArrayList<>();
+
+        filteredReservations.stream()
+                .filter(reservation -> reservation.getStatus() != BookingStatus.CANCELLED
+                        && reservation.getStatus() != BookingStatus.EXPIRED)
+                .forEach(reservation -> {
+                    LocalDate cursor = reservation.getCheckInDate();
+                    int guard = 0;
+                    while (cursor.isBefore(reservation.getCheckOutDate()) && guard < 60) {
+                        dates.add(cursor);
+                        cursor = cursor.plusDays(1);
+                        guard += 1;
+                    }
+                });
+
+        return dates;
+    }
+
+    private List<ReservationResponse> buildNextReservations(List<ReservationResponse> filteredReservations) {
+        LocalDate today = LocalDate.now();
+
+        return filteredReservations.stream()
+                .filter(reservation -> reservation.getStatus() != BookingStatus.CANCELLED
+                        && reservation.getStatus() != BookingStatus.EXPIRED
+                        && reservation.getStatus() != BookingStatus.COMPLETED
+                        && !reservation.getCheckOutDate().isBefore(today))
+                .limit(4)
+                .toList();
+    }
+
     private BookingResponse mapToResponse(Booking booking) {
         long secondsUntilExpiry = 0;
         if (booking.getStatus() == BookingStatus.PENDING_PAYMENT && booking.getExpiresAt() != null) {
@@ -310,6 +722,151 @@ public class BookingService {
                         : null)
                 .coverImageUrl(resolveCoverImage(listing))
                 .tripLabel(resolveTripLabel(booking))
+                .build();
+    }
+
+    private ReservationResponse mapToReservationResponse(
+            Booking booking,
+            ListingResponse listing,
+            PublicUserResponse guest
+    ) {
+        // Mapping list card: kết hợp dữ liệu Booking với listing/guest summary để frontend không cần gọi detail cho từng row.
+        return ReservationResponse.builder()
+                .reservationId(booking.getBookingId())
+                .reservationCode(buildReservationCode(booking.getBookingId()))
+                .listingId(booking.getListingId())
+                .hostId(booking.getHostId())
+                .guestId(booking.getGuestId())
+                .guest(mapGuestSummary(booking.getGuestId(), guest))
+                .listingTitle(listing != null ? listing.getTitle() : null)
+                .listingCity(listing != null ? listing.getCity() : null)
+                .listingCountry(listing != null ? listing.getCountry() : null)
+                .listingCoverImageUrl(resolveCoverImage(listing))
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .totalNights(booking.getTotalNights())
+                .totalAmount(booking.getTotalPrice())
+                .currency(booking.getCurrency())
+                .status(booking.getStatus())
+                .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
+                .createdAt(booking.getCreatedAt())
+                .expiresAt(booking.getExpiresAt())
+                .paidAt(booking.getPaidAt())
+                .checkedInAt(booking.getCheckedInAt())
+                .completedAt(booking.getCompletedAt())
+                .cancelledAt(booking.getCancelledAt())
+                .numAdults(booking.getNumAdults())
+                .numChildren(booking.getNumChildren())
+                .numInfants(booking.getNumInfants())
+                .numPets(booking.getNumPets())
+                .guestNotes(booking.getGuestNotes())
+                .build();
+    }
+
+    private ReservationDetailResponse mapToReservationDetailResponse(
+            Booking booking,
+            ListingResponse listing,
+            PublicUserResponse guest
+    ) {
+        // Mapping detail: dữ liệu Booking là nguồn truth, còn listing/guest/payment là enrichment phục vụ UI host dashboard.
+        return ReservationDetailResponse.builder()
+                .reservationId(booking.getBookingId())
+                .reservationCode(buildReservationCode(booking.getBookingId()))
+                .listingId(booking.getListingId())
+                .hostId(booking.getHostId())
+                .guestId(booking.getGuestId())
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .totalNights(booking.getTotalNights())
+                .status(booking.getStatus())
+                .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
+                .currency(booking.getCurrency())
+                .totalAmount(booking.getTotalPrice())
+                .paymentIntentId(booking.getPaymentIntentId())
+                .createdAt(booking.getCreatedAt())
+                .expiresAt(booking.getExpiresAt())
+                .paidAt(booking.getPaidAt())
+                .checkedInAt(booking.getCheckedInAt())
+                .completedAt(booking.getCompletedAt())
+                .cancelledAt(booking.getCancelledAt())
+                .cancellationReason(booking.getCancellationReason())
+                .numAdults(booking.getNumAdults())
+                .numChildren(booking.getNumChildren())
+                .numInfants(booking.getNumInfants())
+                .numPets(booking.getNumPets())
+                .guestNotes(booking.getGuestNotes())
+                .listing(mapReservationListingSummary(listing))
+                .guest(mapGuestSummary(booking.getGuestId(), guest))
+                .payment(mapReservationPaymentSummary(booking))
+                .build();
+    }
+
+    private ReservationResponse.GuestSummary mapGuestSummary(UUID fallbackGuestId, PublicUserResponse guest) {
+        // User Service có thể lỗi hoặc thiếu profile; fallback vẫn giúp UI render được reservation thay vì fail toàn bộ response.
+        if (guest == null) {
+            return ReservationResponse.GuestSummary.builder()
+                    .keycloakUserId(fallbackGuestId != null ? fallbackGuestId.toString() : null)
+                    .fullName("Guest")
+                    .build();
+        }
+
+        return ReservationResponse.GuestSummary.builder()
+                .userId(guest.getUserId())
+                .keycloakUserId(guest.getKeycloakUserId())
+                .fullName(guest.getFullName())
+                .avatarUrl(guest.getAvatarUrl())
+                .build();
+    }
+
+    private ReservationDetailResponse.ListingSummary mapReservationListingSummary(ListingResponse listing) {
+        if (listing == null) {
+            return null;
+        }
+
+        return ReservationDetailResponse.ListingSummary.builder()
+                .listingId(listing.getListingId())
+                .title(listing.getTitle())
+                .description(listing.getDescription())
+                .propertyType(listing.getPropertyType())
+                .roomType(listing.getRoomType())
+                .address(listing.getAddress())
+                .city(listing.getCity())
+                .state(listing.getState())
+                .country(listing.getCountry())
+                .postalCode(listing.getPostalCode())
+                .latitude(listing.getLatitude())
+                .longitude(listing.getLongitude())
+                .maxGuests(listing.getMaxGuests())
+                .numBedrooms(listing.getNumBedrooms())
+                .numBeds(listing.getNumBeds())
+                .numBathrooms(listing.getNumBathrooms())
+                .checkInStartTime(listing.getCheckInStartTime())
+                .checkInEndTime(listing.getCheckInEndTime())
+                .checkOutTime(listing.getCheckOutTime())
+                .photos(listing.getPhotos())
+                .amenities(listing.getAmenities())
+                .houseRules(listing.getHouseRules())
+                .build();
+    }
+
+    private ReservationDetailResponse.PaymentSummary mapReservationPaymentSummary(Booking booking) {
+        // Booking hiện lưu tổng tiền và một số fee; phần taxes chưa có model riêng nên tạm để 0.
+        // Output giữ cùng contract với user booking detail để frontend dùng chung cách render pricing.
+        BigDecimal total = BigDecimal.valueOf(booking.getTotalPrice());
+        BigDecimal cleaningFee = booking.getCleaningFee() != null ? booking.getCleaningFee() : BigDecimal.ZERO;
+        BigDecimal serviceFee = booking.getServiceFee() != null ? booking.getServiceFee() : BigDecimal.ZERO;
+        BigDecimal taxes = BigDecimal.ZERO;
+        BigDecimal accommodation = total.subtract(cleaningFee).subtract(serviceFee).subtract(taxes).max(BigDecimal.ZERO);
+
+        return ReservationDetailResponse.PaymentSummary.builder()
+                .totalAmount(total)
+                .accommodationAmount(accommodation)
+                .cleaningFee(cleaningFee)
+                .serviceFee(serviceFee)
+                .taxes(taxes)
+                .currency(booking.getCurrency())
+                .stripePaymentIntentId(booking.getPaymentIntentId())
+                .stripePaymentStatus(resolveStripeStatus(booking))
                 .build();
     }
 
@@ -489,7 +1046,77 @@ public class BookingService {
         }
     }
 
+    private PublicUserResponse fetchGuestProfile(UUID guestId) {
+        if (guestId == null) {
+            return null;
+        }
+
+        try {
+            return userClient.getPublicUser(guestId.toString());
+        } catch (Exception exception) {
+            log.warn("Failed to fetch guest profile for {}", guestId, exception);
+            return null;
+        }
+    }
+
+    private List<Booking> findReservationsForListing(
+            UUID listingId,
+            UUID hostId,
+            List<BookingStatus> statuses
+    ) {
+        // hostId null nghĩa là admin scope: query chỉ theo listing/status.
+        // host scope phải thêm hostId để không lộ reservation của listing khác.
+        boolean hasStatuses = statuses != null && !statuses.isEmpty();
+        if (hostId == null) {
+            return hasStatuses
+                    ? bookingRepository.findByListingIdAndStatusInOrderByCheckInDateDescCreatedAtDesc(listingId, statuses)
+                    : bookingRepository.findByListingIdOrderByCheckInDateDescCreatedAtDesc(listingId);
+        }
+
+        return hasStatuses
+                ? bookingRepository.findByListingIdAndHostIdAndStatusInOrderByCheckInDateDescCreatedAtDesc(listingId, hostId, statuses)
+                : bookingRepository.findByListingIdAndHostIdOrderByCheckInDateDescCreatedAtDesc(listingId, hostId);
+    }
+
+    private void ensureCanManageReservation(Jwt jwt, Booking booking) {
+        // Quyền quản lý reservation: admin được phép toàn cục, host chỉ được phép với booking có hostId trùng subject JWT.
+        if (isAdmin(jwt)) {
+            return;
+        }
+
+        if (booking.getHostId() == null || !booking.getHostId().toString().equals(jwt.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot manage this reservation");
+        }
+    }
+
+    private void validateReservationManagementStatus(BookingStatus status) {
+        // PAID/EXPIRED thuộc payment/expiry flow, không cho host tự set từ dashboard để tránh lệch với Stripe/webhook.
+        if (status == BookingStatus.PAID || status == BookingStatus.EXPIRED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Reservation management cannot set payment-owned status: " + status
+            );
+        }
+    }
+
+    private boolean isAdmin(Jwt jwt) {
+        // Realm role có thể được cấu hình dạng ADMIN hoặc ROLE_ADMIN tùy Keycloak/client.
+        Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+        Object rolesClaim = realmAccess != null ? realmAccess.get("roles") : List.of();
+
+        if (!(rolesClaim instanceof Collection<?> roles)) {
+            return false;
+        }
+
+        return roles.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .map(String::toUpperCase)
+                .anyMatch(role -> role.equals("ADMIN") || role.equals("ROLE_ADMIN"));
+    }
+
     private String buildReservationCode(UUID bookingId) {
+        // Mã ngắn phục vụ UI và trao đổi với guest/host; bookingId vẫn là khóa thật trong database.
         return "AIR-" + bookingId.toString().substring(0, 8).toUpperCase();
     }
 

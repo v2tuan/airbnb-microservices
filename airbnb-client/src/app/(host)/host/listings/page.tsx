@@ -1,29 +1,56 @@
 "use client";
 
+import { CalendarCheck, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { Plus, Pencil, Power, Trash2 } from "lucide-react";
-import { listingAPI, type ListingItemResponse, type ListingResponse, type ListingStatus, unwrapApiData } from "@/api/endpoints/listing";
+import {
+  type ApiResponse as ListingApiResponse,
+  type ListingItemResponse,
+  type ListingResponse,
+  type ListingStatus,
+  listingAPI,
+  type PageResponse,
+  unwrapApiData,
+} from "@/api/endpoints/listing";
 import { hasRealmRole, parseJwt } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
-const statusOptions: Array<"ALL" | ListingStatus> = ["ALL", "ACTIVE", "DRAFT", "INACTIVE", "PENDING_APPROVAL"];
+const statusOptions: Array<"ALL" | ListingStatus> = [
+  "ALL",
+  "ACTIVE",
+  "DRAFT",
+  "INACTIVE",
+  "PENDING_APPROVAL",
+];
 
 function normalizeItems(payload: unknown): ListingItemResponse[] {
-  const source = unwrapApiData(payload as any) as unknown;
+  type HostListingsPayload =
+    | ListingApiResponse<ListingResponse[]>
+    | ListingResponse[]
+    | PageResponse<ListingItemResponse>;
+
+  const source = unwrapApiData(payload as HostListingsPayload) as
+    | ListingResponse[]
+    | PageResponse<ListingItemResponse>;
 
   if (Array.isArray(source)) {
     return source.map((listing: ListingResponse) => ({
       id: listing.listingId,
       title: listing.title,
-      thumbnailUrl: listing.photos?.find((photo) => photo.isCover)?.photoUrl ?? listing.photos?.[0]?.photoUrl,
+      thumbnailUrl:
+        listing.photos?.find((photo) => photo.isCover)?.photoUrl ??
+        listing.photos?.[0]?.photoUrl,
       city: listing.city,
       shortFeatures: `${listing.numBeds} beds · ${listing.maxGuests} guests`,
     }));
   }
 
-  const page = source as { content?: ListingItemResponse[]; items?: ListingItemResponse[] };
+  const page = source as {
+    content?: ListingItemResponse[];
+    items?: ListingItemResponse[];
+  };
   return page.content ?? page.items ?? [];
 }
 
@@ -35,9 +62,12 @@ export default function HostListingsPage() {
   const [error, setError] = useState("");
 
   const isHost = useMemo(() => !!token && hasRealmRole(token, "HOST"), [token]);
-  const hostId = useMemo(() => (token ? parseJwt(token)?.sub : undefined), [token]);
+  const hostId = useMemo(
+    () => (token ? parseJwt(token)?.sub : undefined),
+    [token],
+  );
 
-  const loadListings = async () => {
+  const loadListings = useCallback(async () => {
     if (!isHost || !hostId) {
       setLoading(false);
       return;
@@ -57,11 +87,11 @@ export default function HostListingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [hostId, isHost, status]);
 
   useEffect(() => {
     void loadListings();
-  }, [hostId, isHost, status]);
+  }, [loadListings]);
 
   const handleDelete = async (listingId: string) => {
     if (!token) return;
@@ -79,7 +109,9 @@ export default function HostListingsPage() {
   if (!token) {
     return (
       <main className="mx-auto max-w-5xl px-6 pb-12">
-        <div className="rounded-2xl border bg-white p-8">Please log in to manage listings.</div>
+        <div className="rounded-2xl border bg-white p-8">
+          Please log in to manage listings.
+        </div>
       </main>
     );
   }
@@ -88,8 +120,12 @@ export default function HostListingsPage() {
     return (
       <main className="mx-auto max-w-5xl px-6 pb-12">
         <div className="rounded-2xl border border-neutral-200 bg-white p-8">
-          <p className="text-xl font-semibold text-neutral-950">Only hosts can manage listings</p>
-          <p className="mt-2 text-neutral-500">Finish host onboarding to create and edit places.</p>
+          <p className="text-xl font-semibold text-neutral-950">
+            Only hosts can manage listings
+          </p>
+          <p className="mt-2 text-neutral-500">
+            Finish host onboarding to create and edit places.
+          </p>
           <Link
             href="/host/become"
             className="mt-6 inline-flex h-11 items-center justify-center rounded-full bg-neutral-950 px-5 text-sm font-semibold text-white"
@@ -105,9 +141,15 @@ export default function HostListingsPage() {
     <main className="mx-auto w-full max-w-7xl px-4 pb-12 sm:px-8">
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-rose-500">Hosting</p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-neutral-950">Listings</h1>
-          <p className="mt-2 text-neutral-500">Create, review, and keep your places bookable.</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-rose-500">
+            Hosting
+          </p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight text-neutral-950">
+            Listings
+          </h1>
+          <p className="mt-2 text-neutral-500">
+            Create, review, and keep your places bookable.
+          </p>
         </div>
 
         <Link
@@ -126,7 +168,9 @@ export default function HostListingsPage() {
             type="button"
             onClick={() => setStatus(option)}
             className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-              status === option ? "border-neutral-950 bg-neutral-950 text-white" : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-950"
+              status === option
+                ? "border-neutral-950 bg-neutral-950 text-white"
+                : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-950"
             }`}
           >
             {option.replace("_", " ")}
@@ -137,36 +181,67 @@ export default function HostListingsPage() {
       {loading ? (
         <p className="text-neutral-500">Loading listings...</p>
       ) : error ? (
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-red-600">{error}</div>
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-red-600">
+          {error}
+        </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-8">
-          <p className="text-lg font-semibold text-neutral-950">No listings yet</p>
-          <p className="mt-1 text-neutral-500">Start with the basics, then add pricing, photos, and rules.</p>
+          <p className="text-lg font-semibold text-neutral-950">
+            No listings yet
+          </p>
+          <p className="mt-1 text-neutral-500">
+            Start with the basics, then add pricing, photos, and rules.
+          </p>
         </div>
       ) : (
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <article key={item.id} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-              <div className="aspect-[16/10] bg-neutral-100">
+            <article
+              key={item.id}
+              className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm"
+            >
+              <div className="relative aspect-[16/10] bg-neutral-100">
                 {item.thumbnailUrl ? (
-                  <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+                  <Image
+                    src={item.thumbnailUrl}
+                    alt={item.title}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                  />
                 ) : null}
               </div>
               <div className="space-y-4 p-5">
                 <div>
-                  <h2 className="line-clamp-1 text-lg font-semibold text-neutral-950">{item.title}</h2>
-                  <p className="mt-1 text-sm text-neutral-500">{item.city || "Location not set"}</p>
-                  <p className="mt-1 text-sm text-neutral-500">{item.shortFeatures || "Details can be edited anytime."}</p>
+                  <h2 className="line-clamp-1 text-lg font-semibold text-neutral-950">
+                    {item.title}
+                  </h2>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    {item.city || "Location not set"}
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    {item.shortFeatures || "Details can be edited anytime."}
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between gap-2">
-                  <Link
-                    href={`/host/listings/${item.id}`}
-                    className="inline-flex h-10 items-center gap-2 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:border-neutral-950"
-                  >
-                    <Pencil className="size-4" />
-                    Edit
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/host/listings/${item.id}`}
+                      className="inline-flex h-10 items-center gap-2 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:border-neutral-950"
+                    >
+                      <Pencil className="size-4" />
+                      Edit
+                    </Link>
+                    <Link
+                      href={`/host/reservations?listingId=${item.id}`}
+                      className="inline-flex h-10 items-center gap-2 rounded-full border border-neutral-300 px-4 text-sm font-semibold hover:border-neutral-950"
+                    >
+                      {/* Truyền listingId qua query để dashboard mở đúng scope reservation của listing này. */}
+                      <CalendarCheck className="size-4" />
+                      Reservations
+                    </Link>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       type="button"

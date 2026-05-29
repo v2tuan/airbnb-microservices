@@ -12,22 +12,26 @@ import java.util.UUID;
         name = "bookings",
         indexes = {
                 // Index phục vụ query theo listing (check availability)
-//                @Index(name = "idx_bookings_listing", columnList = "listing_id"),
+                @Index(name = "idx_bookings_listing", columnList = "listing_id"),
 
                 // Index phục vụ query lịch sử booking của guest
                 @Index(name = "idx_bookings_guest", columnList = "guest_id"),
 
                 // Index phục vụ host xem booking của mình
-//                @Index(name = "idx_bookings_host", columnList = "host_id"),
+                @Index(name = "idx_bookings_host", columnList = "host_id"),
 
                 // Index theo status (filter booking)
                 @Index(name = "idx_bookings_status", columnList = "status"),
 
                 // Index quan trọng cho check availability
-//                @Index(
-//                        name = "idx_bookings_dates",
-//                        columnList = "listing_id, check_in_date, check_out_date"
-//                )
+                @Index(
+                        name = "idx_bookings_dates",
+                        columnList = "listing_id, check_in_date, check_out_date"
+                ),
+                @Index(
+                        name = "idx_bookings_host_listing_status",
+                        columnList = "host_id, listing_id, status"
+                )
         }
 )
 @Getter
@@ -121,6 +125,10 @@ public class Booking {
     @Column(name = "num_infants")
     private Integer numInfants = 0;
 
+    /**
+     * Số thú cưng đi cùng reservation.
+     * Field này giúp host nhìn nhanh nhu cầu lưu trú của guest trên dashboard.
+     */
     @Column(name = "num_pets")
     private Integer numPets = 0;
 
@@ -205,15 +213,31 @@ public class Booking {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
+    /**
+     * Thời điểm host đánh dấu guest đã check-in.
+     * Được set khi status chuyển sang CHECKED_IN hoặc giữ nguyên nếu booking đã từng check-in.
+     */
     @Column(name = "checked_in_at")
     private LocalDateTime checkedInAt;
 
+    /**
+     * Thời điểm host hoàn tất reservation sau checkout.
+     * Dùng để dựng timeline và phân loại reservation đã hoàn thành.
+     */
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    /**
+     * Thời điểm reservation bị hủy bởi guest hoặc host.
+     * Status CANCELLED là trạng thái chính, timestamp này phục vụ audit/timeline.
+     */
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    /**
+     * Lý do hủy reservation, tối đa 500 ký tự.
+     * Frontend gửi field này từ cancel dialog để host/guest có ngữ cảnh khi xem lại.
+     */
     @Column(name = "cancellation_reason", length = 500)
     private String cancellationReason;
 

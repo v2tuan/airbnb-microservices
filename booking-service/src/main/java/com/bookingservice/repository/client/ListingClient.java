@@ -22,4 +22,17 @@ public interface ListingClient {
             @RequestHeader("Authorization") String token,
             @RequestBody ListingBatchRequest request
     );
+
+    /**
+     * Lấy toàn bộ listing của một host để Booking Service tự aggregate scope "All listings".
+     *
+     * Nếu frontend tự gọi từng listing rồi Promise.all reservations, client sẽ phải tải nhiều
+     * request, dễ gặp partial failure và không thể pagination đúng ở backend. Đưa bước này vào
+     * backend giúp một request reservation có cùng một transaction/query scope rõ ràng.
+     */
+    @GetMapping("/host/{hostId}")
+    ApiResponse<List<ListingResponse>> getListingsByHost(
+            @RequestHeader("Authorization") String token,
+            @PathVariable("hostId") String hostId
+    );
 }
