@@ -24,4 +24,9 @@ public interface RatingService {
    * Get rating summary (count and overall rating) for a host
    */
   Map<String, Object> getHostRatingSummary(String hostId);
+
+  /**
+   * Get rating summary (count and overall rating) for a listing
+   */
+  Map<String, Object> getListingRatingSummary(String listingId);
 }

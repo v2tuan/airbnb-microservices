@@ -181,6 +181,22 @@ public class RatingServiceImpl implements RatingService {
     return result;
   }
 
+  @Override
+  public Map<String, Object> getListingRatingSummary(String listingId) {
+    Object[] summary = ratingRepository.getListingRatingSummary(listingId);
+    Map<String, Object> result = new HashMap<>();
+
+    if (summary != null && summary.length > 0) {
+      result.put("reviewCount", summary[0] != null ? ((Number) summary[0]).longValue() : 0L);
+      result.put("overallRating", summary[1] != null ? ((Number) summary[1]).doubleValue() : 0.0);
+    } else {
+      result.put("reviewCount", 0L);
+      result.put("overallRating", 0.0);
+    }
+
+    return result;
+  }
+
   private RatingDTO convertToDTO(Rating rating, Optional<UserProfileDTO> userProfile) {
     RatingDTO dto = new RatingDTO();
     dto.setId(rating.getId());

@@ -14,6 +14,7 @@ import com.listingservice.exception.ErrorCode;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
 import com.listingservice.service.IListingService;
+import com.listingservice.service.RatingClient;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -40,6 +41,7 @@ public class ListingService implements IListingService {
 
     ListingRepository listingRepository;
     IListingMapper listingMapper;
+    RatingClient ratingClient;
 
     @Override
     @Transactional
@@ -275,14 +277,16 @@ public class ListingService implements IListingService {
     }
 
     private ListingItemResponse toListingItemResponse(Listing listing) {
+        RatingClient.ListingRatingSummary ratingSummary = ratingClient.getListingRatingSummary(listing.getListingId());
+
         return ListingItemResponse.builder()
                 .id(listing.getListingId().toString())
                 .title(listing.getTitle())
                 .thumbnailUrl(resolveCoverImageUrl(listing))
                 .city(listing.getCity())
                 .shortFeatures(buildShortFeatures(listing))
-                .avgRating(resolveBasicRating(listing).doubleValue())
-                .reviewCount(0L) // TODO: Fetch từ rating-service khi cần
+            .avgRating(ratingSummary.getOverallRating().doubleValue())
+            .reviewCount(ratingSummary.getReviewCount())
                 .build();
     }
 

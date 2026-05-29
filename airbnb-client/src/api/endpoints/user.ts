@@ -25,6 +25,7 @@ export interface HostStatsDTO {
 export interface HostReviewItemDTO {
   id?: string;
   listingId?: string;
+  listingTitle?: string;
   reviewerName?: string;
   reviewerAvatarUrl?: string;
   reviewerLocation?: string;

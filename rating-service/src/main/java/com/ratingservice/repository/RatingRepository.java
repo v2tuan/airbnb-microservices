@@ -23,4 +23,10 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
    */
   @Query("SELECT COUNT(r) as reviewCount, AVG(r.overallRating) as avgRating FROM Rating r WHERE r.hostId = :hostId")
   Object[] getHostRatingSummary(@Param("hostId") String hostId);
+
+  /**
+   * Get rating summary for a listing
+   */
+  @Query("SELECT COUNT(r) as reviewCount, AVG(r.overallRating) as avgRating FROM Rating r WHERE r.listingId = :listingId")
+  Object[] getListingRatingSummary(@Param("listingId") String listingId);
 }
