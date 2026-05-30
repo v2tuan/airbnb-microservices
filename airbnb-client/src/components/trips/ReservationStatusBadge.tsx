@@ -21,7 +21,7 @@ const statusConfig: Record<
     className: "bg-amber-50 text-amber-700 border border-amber-200",
   },
 
-  PAID: {
+  CONFIRMED: {
     label: "Confirmed",
     className: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   },
@@ -31,13 +31,28 @@ const statusConfig: Record<
     className: "bg-cyan-50 text-cyan-700 border border-cyan-200",
   },
 
+  CHECKED_OUT: {
+    label: "Checked out",
+    className: "bg-blue-50 text-blue-700 border border-blue-200",
+  },
+
   COMPLETED: {
     label: "Completed",
     className: "bg-zinc-100 text-zinc-700 border border-zinc-200",
   },
 
-  CANCELLED: {
-    label: "Cancelled",
+  CANCELLED_BY_GUEST: {
+    label: "Cancelled by guest",
+    className: "bg-red-50 text-red-600 border border-red-200",
+  },
+
+  CANCELLED_BY_HOST: {
+    label: "Cancelled by host",
+    className: "bg-red-50 text-red-600 border border-red-200",
+  },
+
+  CANCELLED_BY_ADMIN: {
+    label: "Cancelled by admin",
     className: "bg-red-50 text-red-600 border border-red-200",
   },
 

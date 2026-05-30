@@ -1,10 +1,13 @@
 export type BookingStatus =
   | "PENDING_PAYMENT"
-  | "PAID"
+  | "EXPIRED"
+  | "CONFIRMED"
   | "CHECKED_IN"
+  | "CHECKED_OUT"
   | "COMPLETED"
-  | "CANCELLED"
-  | "EXPIRED";
+  | "CANCELLED_BY_GUEST"
+  | "CANCELLED_BY_HOST"
+  | "CANCELLED_BY_ADMIN";
 
 export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 

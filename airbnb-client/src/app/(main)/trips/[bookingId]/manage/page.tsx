@@ -35,7 +35,12 @@ const fallbackImage = "/header/home.png";
 
 function mapPaymentStatus(booking: BookingDetailResponse) {
   if (booking.status === "PENDING_PAYMENT") return "pending";
-  if (booking.status === "CANCELLED" || booking.status === "EXPIRED") {
+  if (
+    booking.status === "CANCELLED_BY_GUEST" ||
+    booking.status === "CANCELLED_BY_HOST" ||
+    booking.status === "CANCELLED_BY_ADMIN" ||
+    booking.status === "EXPIRED"
+  ) {
     return "cancelled";
   }
   return "paid";
@@ -138,8 +143,8 @@ export default function ManageReservationPage() {
         current
           ? {
               ...current,
-              status: "CANCELLED",
-              statusDisplayName: "Cancelled",
+              status: "CANCELLED_BY_GUEST",
+              statusDisplayName: "Cancelled by guest",
             }
           : current,
       );
@@ -507,7 +512,7 @@ export default function ManageReservationPage() {
           </div>
 
           {!isPaymentExpired &&
-          (booking.status === "PAID" ||
+          (booking.status === "CONFIRMED" ||
             booking.status === "PENDING_PAYMENT") ? (
             <div className="animate-fade-in-up-delay-3 rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center gap-3">

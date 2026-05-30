@@ -35,14 +35,16 @@ public class PayoutService {
     private void processSinglePayout(Payout payout, LocalDateTime now) {
         BookingResponse booking = bookingClient.getBooking(serviceTokenProvider.bearerToken(), payout.getBookingId());
 
-        if (booking.getStatus() == BookingStatus.CANCELLED) {
+        if (isCancelledStatus(booking.getStatus())) {
             payout.setStatus("CANCELLED");
             payout.setFailureReason("Booking was cancelled before payout");
             payoutRepository.save(payout);
             return;
         }
 
-        if (booking.getStatus() != BookingStatus.CHECKED_IN && booking.getStatus() != BookingStatus.COMPLETED) {
+        if (booking.getStatus() != BookingStatus.CHECKED_IN
+                && booking.getStatus() != BookingStatus.CHECKED_OUT
+                && booking.getStatus() != BookingStatus.COMPLETED) {
             payout.setStatus("PENDING_CHECKIN");
             payout.setScheduledAt(now.plusMinutes(30));
             payoutRepository.save(payout);
@@ -102,5 +104,11 @@ public class PayoutService {
         payout.setStatus(retryCount >= 5 ? "FAILED" : "RETRY");
         payout.setNextRetryAt(LocalDateTime.now().plusMinutes(Math.min(60, retryCount * 10L)));
         payoutRepository.save(payout);
+    }
+
+    private boolean isCancelledStatus(BookingStatus status) {
+        return status == BookingStatus.CANCELLED_BY_GUEST
+                || status == BookingStatus.CANCELLED_BY_HOST
+                || status == BookingStatus.CANCELLED_BY_ADMIN;
     }
 }

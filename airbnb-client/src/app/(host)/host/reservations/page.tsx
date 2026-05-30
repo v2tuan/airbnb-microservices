@@ -178,10 +178,19 @@ const statusViews: Array<{
     label: "Needs attention",
     statuses: ["PENDING_PAYMENT"],
   },
-  { key: "CONFIRMED", label: "Confirmed", statuses: ["PAID"] },
+  { key: "CONFIRMED", label: "Confirmed", statuses: ["CONFIRMED"] },
   { key: "IN_HOUSE", label: "In-house", statuses: ["CHECKED_IN"] },
   { key: "COMPLETED", label: "Completed", statuses: ["COMPLETED"] },
-  { key: "CANCELLED", label: "Cancelled", statuses: ["CANCELLED", "EXPIRED"] },
+  {
+    key: "CANCELLED",
+    label: "Cancelled",
+    statuses: [
+      "CANCELLED_BY_GUEST",
+      "CANCELLED_BY_HOST",
+      "CANCELLED_BY_ADMIN",
+      "EXPIRED",
+    ],
+  },
 ];
 
 /**
@@ -380,14 +389,22 @@ function paymentStatusMeta(reservation: HostReservationResponse) {
     };
   }
 
-  if (["PAID", "CHECKED_IN", "COMPLETED"].includes(reservation.status)) {
+  if (
+    ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
+      reservation.status,
+    )
+  ) {
     return {
       label: "Paid",
       className: "border-[#dddddd] bg-white text-[#222222]",
     };
   }
 
-  if (reservation.status === "CANCELLED") {
+  if (
+    reservation.status === "CANCELLED_BY_GUEST" ||
+    reservation.status === "CANCELLED_BY_HOST" ||
+    reservation.status === "CANCELLED_BY_ADMIN"
+  ) {
     return {
       label: reservation.paidAt ? "Refund review" : "Not charged",
       className: "border-[#dddddd] bg-[#f7f7f7] text-[#6a6a6a]",
@@ -602,7 +619,7 @@ function ReservationCard({
           className="object-cover transition duration-300 group-hover:scale-105"
           sizes="(max-width: 768px) 100vw, 168px"
         />
-        {reservation.status === "PAID" ? (
+        {reservation.status === "CONFIRMED" ? (
           <span className="absolute left-3 top-3 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#222222] shadow-[rgba(0,0,0,0.02)_0_0_0_1px,rgba(0,0,0,0.04)_0_2px_6px_0,rgba(0,0,0,0.1)_0_4px_8px_0]">
             Confirmed
           </span>

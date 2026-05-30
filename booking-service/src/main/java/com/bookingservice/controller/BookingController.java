@@ -162,6 +162,11 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.checkIn(id));
     }
 
+    @PostMapping("/{id}/check-out")
+    public ResponseEntity<BookingResponse> checkOut(@PathVariable UUID id) {
+        return ResponseEntity.ok(bookingService.checkOut(id));
+    }
+
     @PostMapping("/{id}/complete")
     public ResponseEntity<BookingResponse> complete(@PathVariable UUID id) {
         return ResponseEntity.ok(bookingService.complete(id));

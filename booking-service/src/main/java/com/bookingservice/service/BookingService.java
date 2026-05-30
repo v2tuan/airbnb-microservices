@@ -122,7 +122,7 @@ public class BookingService {
         if (request.getPaymentIntentId() != null) {
             booking.setPaymentIntentId(request.getPaymentIntentId());
         }
-        if (request.getStatus() == BookingStatus.PAID) {
+        if (request.getStatus() == BookingStatus.CONFIRMED) {
             booking.setPaidAt(LocalDateTime.now());
         }
         if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
@@ -131,10 +131,10 @@ public class BookingService {
         if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
             booking.setCompletedAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.CANCELLED && booking.getCancelledAt() == null) {
+        if (isCancelledStatus(request.getStatus()) && booking.getCancelledAt() == null) {
             booking.setCancelledAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.CANCELLED && request.getReason() != null) {
+        if (isCancelledStatus(request.getStatus()) && request.getReason() != null) {
             booking.setCancellationReason(request.getReason());
         }
 
@@ -184,13 +184,17 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking payment hold has expired");
         }
 
-        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && booking.getStatus() != BookingStatus.PAID) {
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && booking.getStatus() != BookingStatus.CONFIRMED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled");
         }
 
-        booking.setStatus(BookingStatus.CANCELLED);
-        booking.setCancelledAt(LocalDateTime.now());
-        booking.setCancellationReason(request.getReason());
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+            booking.setStatus(BookingStatus.EXPIRED);
+        } else {
+            booking.setStatus(BookingStatus.CANCELLED_BY_GUEST);
+            booking.setCancelledAt(LocalDateTime.now());
+            booking.setCancellationReason(request.getReason());
+        }
         return mapToResponse(bookingRepository.save(booking));
     }
 
@@ -198,6 +202,13 @@ public class BookingService {
     public BookingResponse checkIn(UUID bookingId) {
         return updateBookingStatus(bookingId, UpdateBookingStatusRequest.builder()
                 .status(BookingStatus.CHECKED_IN)
+                .build());
+    }
+
+    @Transactional
+    public BookingResponse checkOut(UUID bookingId) {
+        return updateBookingStatus(bookingId, UpdateBookingStatusRequest.builder()
+                .status(BookingStatus.CHECKED_OUT)
                 .build());
     }
 
@@ -218,19 +229,25 @@ public class BookingService {
 
     private void validateStatusTransition(BookingStatus currentStatus, BookingStatus newStatus) {
         boolean isValid = switch (currentStatus) {
-            case PENDING_PAYMENT -> newStatus == BookingStatus.PAID
-                    || newStatus == BookingStatus.EXPIRED
-                    || newStatus == BookingStatus.CANCELLED;
-            case PAID -> newStatus == BookingStatus.CHECKED_IN
-                    || newStatus == BookingStatus.CANCELLED;
-            case CHECKED_IN -> newStatus == BookingStatus.COMPLETED
-                    || newStatus == BookingStatus.CANCELLED;
-            case EXPIRED, CANCELLED, COMPLETED -> false;
+            case PENDING_PAYMENT -> newStatus == BookingStatus.CONFIRMED
+                    || newStatus == BookingStatus.EXPIRED;
+            case CONFIRMED -> newStatus == BookingStatus.CHECKED_IN
+                    || isCancelledStatus(newStatus);
+            case CHECKED_IN -> newStatus == BookingStatus.CHECKED_OUT
+                    || newStatus == BookingStatus.CANCELLED_BY_ADMIN;
+            case CHECKED_OUT -> newStatus == BookingStatus.COMPLETED;
+            case EXPIRED, COMPLETED, CANCELLED_BY_GUEST, CANCELLED_BY_HOST, CANCELLED_BY_ADMIN -> false;
         };
 
         if (!isValid) {
             throw new IllegalStateException("Invalid booking transition from " + currentStatus + " to " + newStatus);
         }
+    }
+
+    private boolean isCancelledStatus(BookingStatus status) {
+        return status == BookingStatus.CANCELLED_BY_GUEST
+                || status == BookingStatus.CANCELLED_BY_HOST
+                || status == BookingStatus.CANCELLED_BY_ADMIN;
     }
 
     @Transactional(readOnly = true)
@@ -432,10 +449,10 @@ public class BookingService {
         if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
             booking.setCompletedAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.CANCELLED && booking.getCancelledAt() == null) {
+        if (isCancelledStatus(request.getStatus()) && booking.getCancelledAt() == null) {
             booking.setCancelledAt(LocalDateTime.now());
         }
-        if (request.getStatus() == BookingStatus.CANCELLED && request.getReason() != null) {
+        if (isCancelledStatus(request.getStatus()) && request.getReason() != null) {
             booking.setCancellationReason(request.getReason());
         }
 
@@ -577,8 +594,8 @@ public class BookingService {
 
         if (reservation.getStatus() == BookingStatus.PENDING_PAYMENT) return 0;
         if (reservation.getStatus() == BookingStatus.CHECKED_IN) return 1;
-        if (reservation.getStatus() == BookingStatus.PAID && reservation.getCheckInDate().isEqual(today)) return 2;
-        if (reservation.getStatus() == BookingStatus.PAID) return 3;
+        if (reservation.getStatus() == BookingStatus.CONFIRMED && reservation.getCheckInDate().isEqual(today)) return 2;
+        if (reservation.getStatus() == BookingStatus.CONFIRMED) return 3;
         if (reservation.getStatus() == BookingStatus.COMPLETED) return 4;
         return 5;
     }
@@ -586,8 +603,9 @@ public class BookingService {
     private HostReservationsPageResponse.ReservationStats buildReservationStats(List<ReservationResponse> scopedReservations) {
         LocalDate today = LocalDate.now();
         long revenue = scopedReservations.stream()
-                .filter(reservation -> reservation.getStatus() == BookingStatus.PAID
+                .filter(reservation -> reservation.getStatus() == BookingStatus.CONFIRMED
                         || reservation.getStatus() == BookingStatus.CHECKED_IN
+                        || reservation.getStatus() == BookingStatus.CHECKED_OUT
                         || reservation.getStatus() == BookingStatus.COMPLETED)
                 .mapToLong(ReservationResponse::getTotalAmount)
                 .sum();
@@ -599,7 +617,7 @@ public class BookingService {
                         .count())
                 .arrivalsToday(scopedReservations.stream()
                         .filter(reservation -> reservation.getCheckInDate().isEqual(today)
-                                && (reservation.getStatus() == BookingStatus.PAID
+                                && (reservation.getStatus() == BookingStatus.CONFIRMED
                                 || reservation.getStatus() == BookingStatus.CHECKED_IN))
                         .count())
                 .inHouse(scopedReservations.stream()
@@ -619,10 +637,16 @@ public class BookingService {
         return Map.of(
                 "ALL", (long) scopedReservations.size(),
                 "NEEDS_ATTENTION", countStatuses(scopedReservations, BookingStatus.PENDING_PAYMENT),
-                "CONFIRMED", countStatuses(scopedReservations, BookingStatus.PAID),
+                "CONFIRMED", countStatuses(scopedReservations, BookingStatus.CONFIRMED),
                 "IN_HOUSE", countStatuses(scopedReservations, BookingStatus.CHECKED_IN),
                 "COMPLETED", countStatuses(scopedReservations, BookingStatus.COMPLETED),
-                "CANCELLED", countStatuses(scopedReservations, BookingStatus.CANCELLED, BookingStatus.EXPIRED)
+                "CANCELLED", countStatuses(
+                        scopedReservations,
+                        BookingStatus.CANCELLED_BY_GUEST,
+                        BookingStatus.CANCELLED_BY_HOST,
+                        BookingStatus.CANCELLED_BY_ADMIN,
+                        BookingStatus.EXPIRED
+                )
         );
     }
 
@@ -637,7 +661,7 @@ public class BookingService {
         List<LocalDate> dates = new ArrayList<>();
 
         filteredReservations.stream()
-                .filter(reservation -> reservation.getStatus() != BookingStatus.CANCELLED
+                .filter(reservation -> !isCancelledStatus(reservation.getStatus())
                         && reservation.getStatus() != BookingStatus.EXPIRED)
                 .forEach(reservation -> {
                     LocalDate cursor = reservation.getCheckInDate();
@@ -656,7 +680,7 @@ public class BookingService {
         LocalDate today = LocalDate.now();
 
         return filteredReservations.stream()
-                .filter(reservation -> reservation.getStatus() != BookingStatus.CANCELLED
+                .filter(reservation -> !isCancelledStatus(reservation.getStatus())
                         && reservation.getStatus() != BookingStatus.EXPIRED
                         && reservation.getStatus() != BookingStatus.COMPLETED
                         && !reservation.getCheckOutDate().isBefore(today))
@@ -958,7 +982,7 @@ public class BookingService {
     }
 
     private BookingDetailResponse.CancellationPolicy buildCancellationPolicy(Booking booking) {
-        boolean refundable = booking.getStatus() == BookingStatus.PAID
+        boolean refundable = booking.getStatus() == BookingStatus.CONFIRMED
                 || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
 
         return BookingDetailResponse.CancellationPolicy.builder()
@@ -1090,8 +1114,8 @@ public class BookingService {
     }
 
     private void validateReservationManagementStatus(BookingStatus status) {
-        // PAID/EXPIRED thuộc payment/expiry flow, không cho host tự set từ dashboard để tránh lệch với Stripe/webhook.
-        if (status == BookingStatus.PAID || status == BookingStatus.EXPIRED) {
+        // CONFIRMED/EXPIRED thuộc payment/expiry flow, không cho host tự set từ dashboard để tránh lệch với Stripe/webhook.
+        if (status == BookingStatus.CONFIRMED || status == BookingStatus.EXPIRED) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Reservation management cannot set payment-owned status: " + status
@@ -1148,18 +1172,19 @@ public class BookingService {
         }
 
         return switch (booking.getStatus()) {
-            case PAID, CHECKED_IN, COMPLETED -> "succeeded";
+            case CONFIRMED, CHECKED_IN, CHECKED_OUT, COMPLETED -> "succeeded";
             case PENDING_PAYMENT -> "requires_payment_method";
-            case CANCELLED, EXPIRED -> "canceled";
+            case EXPIRED, CANCELLED_BY_GUEST, CANCELLED_BY_HOST, CANCELLED_BY_ADMIN -> "canceled";
         };
     }
 
     private String resolveTripLabel(Booking booking) {
         LocalDate today = LocalDate.now();
-        if (booking.getStatus() == BookingStatus.CANCELLED) return "Cancelled trip";
+        if (isCancelledStatus(booking.getStatus())) return "Cancelled trip";
         if (booking.getStatus() == BookingStatus.CHECKED_IN) return "Ongoing trip";
+        if (booking.getStatus() == BookingStatus.CHECKED_OUT) return "Checked-out trip";
         if (booking.getStatus() == BookingStatus.COMPLETED) return "Past trip";
-        if (booking.getStatus() == BookingStatus.PAID) {
+        if (booking.getStatus() == BookingStatus.CONFIRMED) {
             return booking.getCheckInDate().isAfter(today) ? "Upcoming trip" : "Ongoing trip";
         }
         if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) return "Waiting for payment";

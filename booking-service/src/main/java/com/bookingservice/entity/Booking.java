@@ -229,7 +229,7 @@ public class Booking {
 
     /**
      * Thời điểm reservation bị hủy bởi guest hoặc host.
-     * Status CANCELLED là trạng thái chính, timestamp này phục vụ audit/timeline.
+     * Actor-specific cancellation status is the main state; this timestamp serves audit/timeline views.
      */
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;

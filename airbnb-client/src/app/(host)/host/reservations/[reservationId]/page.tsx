@@ -191,11 +191,11 @@ function coverImage(reservation: HostReservationDetailResponse) {
 
 /**
  * Xác định CTA chính theo state machine của reservation.
- * PAID -> host có thể check-in guest; CHECKED_IN -> host có thể complete sau checkout.
+ * CONFIRMED -> host có thể check-in guest; CHECKED_IN -> host có thể mark checkout; CHECKED_OUT -> complete.
  * Các trạng thái terminal không có primary action để tránh update sai flow nghiệp vụ.
  */
 function nextPrimaryAction(status: BookingStatus) {
-  if (status === "PAID") {
+  if (status === "CONFIRMED") {
     return {
       status: "CHECKED_IN" as BookingStatus,
       label: "Mark checked in",
@@ -205,9 +205,17 @@ function nextPrimaryAction(status: BookingStatus) {
 
   if (status === "CHECKED_IN") {
     return {
+      status: "CHECKED_OUT" as BookingStatus,
+      label: "Mark checked out",
+      description: "Use this when the guest has left.",
+    };
+  }
+
+  if (status === "CHECKED_OUT") {
+    return {
       status: "COMPLETED" as BookingStatus,
       label: "Mark completed",
-      description: "Use this after checkout is finished.",
+      description: "Use this after checkout has been finalized.",
     };
   }
 
@@ -215,19 +223,20 @@ function nextPrimaryAction(status: BookingStatus) {
 }
 
 function canCancel(status: BookingStatus) {
-  return (
-    status === "PENDING_PAYMENT" || status === "PAID" || status === "CHECKED_IN"
-  );
+  return status === "CONFIRMED";
 }
 
 function statusDisplayName(status: BookingStatus) {
   const labels: Record<BookingStatus, string> = {
     PENDING_PAYMENT: "Pending payment",
-    PAID: "Confirmed",
-    CHECKED_IN: "Checked in",
-    COMPLETED: "Completed",
-    CANCELLED: "Cancelled",
     EXPIRED: "Expired",
+    CONFIRMED: "Confirmed",
+    CHECKED_IN: "Checked in",
+    CHECKED_OUT: "Checked out",
+    COMPLETED: "Completed",
+    CANCELLED_BY_GUEST: "Cancelled by guest",
+    CANCELLED_BY_HOST: "Cancelled by host",
+    CANCELLED_BY_ADMIN: "Cancelled by admin",
   };
 
   return labels[status];
@@ -252,7 +261,7 @@ function buildOptimisticReservation(
     status,
     statusDisplayName: statusDisplayName(status),
     checkedInAt:
-      status === "CHECKED_IN" || status === "COMPLETED"
+      status === "CHECKED_IN" || status === "CHECKED_OUT" || status === "COMPLETED"
         ? (reservation.checkedInAt ?? now)
         : reservation.checkedInAt,
     completedAt:
@@ -260,11 +269,11 @@ function buildOptimisticReservation(
         ? (reservation.completedAt ?? now)
         : reservation.completedAt,
     cancelledAt:
-      status === "CANCELLED"
+      status === "CANCELLED_BY_HOST"
         ? (reservation.cancelledAt ?? now)
         : reservation.cancelledAt,
     cancellationReason:
-      status === "CANCELLED"
+      status === "CANCELLED_BY_HOST"
         ? (trimmedReason ??
           reservation.cancellationReason ??
           "Cancelled by host")
@@ -284,7 +293,11 @@ function paymentStatusMeta(reservation: HostReservationDetailResponse) {
     };
   }
 
-  if (["PAID", "CHECKED_IN", "COMPLETED"].includes(reservation.status)) {
+  if (
+    ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
+      reservation.status,
+    )
+  ) {
     return {
       label:
         reservation.payment?.stripePaymentStatus?.replaceAll("_", " ") ||
@@ -293,7 +306,11 @@ function paymentStatusMeta(reservation: HostReservationDetailResponse) {
     };
   }
 
-  if (reservation.status === "CANCELLED") {
+  if (
+    reservation.status === "CANCELLED_BY_GUEST" ||
+    reservation.status === "CANCELLED_BY_HOST" ||
+    reservation.status === "CANCELLED_BY_ADMIN"
+  ) {
     return {
       label: reservation.paidAt ? "Refund review" : "Not charged",
       className: "border-[#dddddd] bg-[#f7f7f7] text-[#6a6a6a]",
@@ -313,7 +330,10 @@ function paymentStatusMeta(reservation: HostReservationDetailResponse) {
  * Output: danh sách step để render timeline vận hành cho host.
  */
 function timelineSteps(reservation: HostReservationDetailResponse) {
-  const cancelled = reservation.status === "CANCELLED";
+  const cancelled =
+    reservation.status === "CANCELLED_BY_GUEST" ||
+    reservation.status === "CANCELLED_BY_HOST" ||
+    reservation.status === "CANCELLED_BY_ADMIN";
 
   return [
     {
@@ -328,7 +348,9 @@ function timelineSteps(reservation: HostReservationDetailResponse) {
       value: formatDateTime(reservation.paidAt),
       done:
         !!reservation.paidAt ||
-        ["PAID", "CHECKED_IN", "COMPLETED"].includes(reservation.status),
+        ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
+          reservation.status,
+        ),
     },
     {
       key: "checked-in",
@@ -336,7 +358,9 @@ function timelineSteps(reservation: HostReservationDetailResponse) {
       value: formatDateTime(reservation.checkedInAt),
       done:
         !!reservation.checkedInAt ||
-        ["CHECKED_IN", "COMPLETED"].includes(reservation.status),
+        ["CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
+          reservation.status,
+        ),
     },
     {
       key: "final",
@@ -1137,7 +1161,7 @@ export default function HostReservationDetailPage() {
       <Dialog
         open={cancelOpen}
         onOpenChange={(open) => {
-          if (savingStatus !== "CANCELLED") setCancelOpen(open);
+          if (savingStatus !== "CANCELLED_BY_HOST") setCancelOpen(open);
         }}
       >
         <DialogContent className="max-w-lg rounded-[14px] bg-white">
@@ -1166,7 +1190,7 @@ export default function HostReservationDetailPage() {
             <DialogClose asChild>
               <button
                 type="button"
-                disabled={savingStatus === "CANCELLED"}
+                disabled={savingStatus === "CANCELLED_BY_HOST"}
                 className="h-12 rounded-lg border border-[#222222] bg-white px-6 text-base font-medium text-[#222222] transition hover:bg-[#f7f7f7] disabled:opacity-60"
               >
                 Keep reservation
@@ -1174,11 +1198,11 @@ export default function HostReservationDetailPage() {
             </DialogClose>
             <button
               type="button"
-              onClick={() => updateStatus("CANCELLED", cancelReason)}
-              disabled={savingStatus === "CANCELLED"}
+              onClick={() => updateStatus("CANCELLED_BY_HOST", cancelReason)}
+              disabled={savingStatus === "CANCELLED_BY_HOST"}
               className="inline-flex h-12 items-center justify-center rounded-lg bg-[#ff385c] px-6 text-base font-medium text-white transition active:bg-[#e00b41] disabled:bg-[#ffd1da]"
             >
-              {savingStatus === "CANCELLED" ? (
+              {savingStatus === "CANCELLED_BY_HOST" ? (
                 <Loader2 className="mr-2 size-4 animate-spin" />
               ) : null}
               Cancel reservation

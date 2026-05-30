@@ -14,11 +14,17 @@ export function TripTimeline({ checkIn, checkOut, status }: TripTimelineProps) {
   const checkOutDate = new Date(checkOut);
 
   const isPending = status === "PENDING_PAYMENT";
-  const isConfirmed = status === "PAID";
+  const isConfirmed = status === "CONFIRMED";
   const isCheckedIn = status === "CHECKED_IN";
+  const isCheckedOut = status === "CHECKED_OUT";
   const isCompleted = status === "COMPLETED";
-  const isCancelled = status === "CANCELLED" || status === "EXPIRED";
-  const isActiveReservation = isConfirmed || isCheckedIn || isCompleted;
+  const isCancelled =
+    status === "CANCELLED_BY_GUEST" ||
+    status === "CANCELLED_BY_HOST" ||
+    status === "CANCELLED_BY_ADMIN" ||
+    status === "EXPIRED";
+  const isActiveReservation =
+    isConfirmed || isCheckedIn || isCheckedOut || isCompleted;
 
   const isBeforeTrip = isActiveReservation && now < checkInDate;
   const isDuringTrip =

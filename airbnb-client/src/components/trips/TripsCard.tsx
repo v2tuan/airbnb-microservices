@@ -64,7 +64,9 @@ export function TripsCard({ trip }: TripsCardProps) {
             : trip.status;
 
     const isCancelled =
-        effectiveStatus === "CANCELLED" ||
+        effectiveStatus === "CANCELLED_BY_GUEST" ||
+        effectiveStatus === "CANCELLED_BY_HOST" ||
+        effectiveStatus === "CANCELLED_BY_ADMIN" ||
         effectiveStatus === "EXPIRED";
 
     const showCountdown =
@@ -77,7 +79,7 @@ export function TripsCard({ trip }: TripsCardProps) {
         !isPaymentExpired;
 
     const showUpcomingBadge =
-        effectiveStatus === "PAID" &&
+        effectiveStatus === "CONFIRMED" &&
         daysUntil > 0 &&
         daysUntil <= 30;
 

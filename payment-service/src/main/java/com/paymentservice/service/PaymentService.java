@@ -173,7 +173,7 @@ public class PaymentService {
                 bookingId,
                 UpdateBookingStatusRequest.builder()
                         .paymentIntentId(paymentIntent.getId())
-                        .status(BookingStatus.PAID)
+                        .status(BookingStatus.CONFIRMED)
                         .build());
 
         Transaction transaction = transactionRepository.findByGatewayTransactionId(paymentIntent.getId())

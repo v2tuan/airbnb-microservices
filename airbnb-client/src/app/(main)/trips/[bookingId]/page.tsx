@@ -131,7 +131,12 @@ function getAddress(booking: BookingDetailResponse) {
 
 function mapPaymentStatus(booking: BookingDetailResponse) {
   if (booking.status === "PENDING_PAYMENT") return "pending";
-  if (booking.status === "CANCELLED" || booking.status === "EXPIRED") {
+  if (
+    booking.status === "CANCELLED_BY_GUEST" ||
+    booking.status === "CANCELLED_BY_HOST" ||
+    booking.status === "CANCELLED_BY_ADMIN" ||
+    booking.status === "EXPIRED"
+  ) {
     return "cancelled";
   }
   return "paid";
@@ -285,7 +290,7 @@ export default function BookingDetailPage() {
     (booking.numInfants ?? 0);
   const showManage =
     !isPaymentExpired &&
-    (booking.status === "PAID" || booking.status === "PENDING_PAYMENT");
+    (booking.status === "CONFIRMED" || booking.status === "PENDING_PAYMENT");
   const directionsQuery = getDirectionsQuery(booking);
   const directionsUrl = `https://maps.google.com/?q=${encodeURIComponent(directionsQuery)}`;
   const checkInTime = formatTime(
@@ -375,8 +380,8 @@ export default function BookingDetailPage() {
         current
           ? {
               ...current,
-              status: "CANCELLED",
-              statusDisplayName: "Cancelled",
+              status: "CANCELLED_BY_GUEST",
+              statusDisplayName: "Cancelled by guest",
             }
           : current,
       );
@@ -583,7 +588,9 @@ export default function BookingDetailPage() {
             </div>
 
             {effectiveStatus !== "EXPIRED" &&
-            effectiveStatus !== "CANCELLED" ? (
+            effectiveStatus !== "CANCELLED_BY_GUEST" &&
+            effectiveStatus !== "CANCELLED_BY_HOST" &&
+            effectiveStatus !== "CANCELLED_BY_ADMIN" ? (
               <div className="animate-fade-in-up-delay-2 rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50 to-orange-50 p-6">
                 <div className="mb-3 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500">
@@ -807,7 +814,7 @@ export default function BookingDetailPage() {
                 </div>
               </div>
               {!isPaymentExpired &&
-              (booking.status === "PAID" ||
+              (booking.status === "CONFIRMED" ||
                 booking.status === "PENDING_PAYMENT") &&
               booking.cancellationPolicy?.refundable ? (
                 <button
