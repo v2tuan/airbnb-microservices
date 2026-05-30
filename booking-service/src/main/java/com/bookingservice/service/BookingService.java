@@ -14,6 +14,7 @@ import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.dto.response.PublicUserResponse;
 import com.bookingservice.dto.response.ReservationDetailResponse;
 import com.bookingservice.dto.response.ReservationResponse;
+import com.bookingservice.constant.ListingStatus;
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingStatus;
 import com.bookingservice.repository.BookingRepository;
@@ -30,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -48,9 +50,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class BookingService {
+    private static final String DEFAULT_CANCELLATION_POLICY_CODE = "FLEXIBLE";
+
     private final BookingRepository bookingRepository;
     private final ListingClient listingClient;
     private final UserClient userClient;
+
+    private record PricingSnapshot(
+            BigDecimal nightlyPrice,
+            BigDecimal accommodationSubtotal,
+            BigDecimal cleaningFee,
+            BigDecimal serviceFee,
+            BigDecimal taxes,
+            BigDecimal totalAmount,
+            String currency,
+            String cancellationPolicyCode
+    ) {
+    }
 
     @Transactional
     public CreateBookingResponse createBooking(CreateBookingRequest request) {
@@ -64,17 +80,19 @@ public class BookingService {
         // Lock listing ngăn double booking
         bookingRepository.acquireListingBookingLock(request.getRoomId().toString());
 
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId())
+                .getData();
+        validateListingApproval(listing, request);
+
         List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(
                 request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate());
         if (!conflictingBookings.isEmpty()) {
             throw new IllegalStateException("Listing is not available for the selected dates");
         }
 
-        ListingResponse listing = listingClient
-                .getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId())
-                .getData();
-
         int totalNights = (int) ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
+        PricingSnapshot pricing = buildPricingSnapshot(listing, request, totalNights);
         Booking booking = Booking.builder()
                 .listingId(request.getRoomId())
                 .hostId(UUID.fromString(listing.getHostId()))
@@ -82,12 +100,19 @@ public class BookingService {
                 .checkInDate(request.getCheckInDate())
                 .checkOutDate(request.getCheckOutDate())
                 .totalNights(totalNights)
-                .totalPrice(totalNights * listing.getPricing().getBasePrice().longValue())
-                .currency(request.getCurrency() != null ? request.getCurrency().toUpperCase() : "USD")
-                .numAdults(request.getNumberOfAdults())
-                .numChildren(request.getNumberOfChildren())
-                .numInfants(request.getNumberOfInfants())
-                .numPets(request.getNumberOfPets())
+                .nightlyPrice(pricing.nightlyPrice())
+                .accommodationSubtotal(pricing.accommodationSubtotal())
+                .cleaningFee(pricing.cleaningFee())
+                .serviceFee(pricing.serviceFee())
+                .taxes(pricing.taxes())
+                .totalPrice(toPaymentAmount(pricing.totalAmount()))
+                .currency(pricing.currency())
+                .cancellationPolicyCode(pricing.cancellationPolicyCode())
+                .hostPayoutEligible(resolveHostPayoutEligibility(listing))
+                .numAdults(adultCount(request.getNumberOfAdults()))
+                .numChildren(safeCount(request.getNumberOfChildren()))
+                .numInfants(safeCount(request.getNumberOfInfants()))
+                .numPets(safeCount(request.getNumberOfPets()))
                 .guestNotes(request.getGuestNotes())
                 .status(BookingStatus.PENDING_PAYMENT)
                 .build();
@@ -248,6 +273,121 @@ public class BookingService {
         return status == BookingStatus.CANCELLED_BY_GUEST
                 || status == BookingStatus.CANCELLED_BY_HOST
                 || status == BookingStatus.CANCELLED_BY_ADMIN;
+    }
+
+    private void validateListingApproval(ListingResponse listing, CreateBookingRequest request) {
+        if (listing == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+        }
+        if (listing.getStatus() == ListingStatus.SUSPENDED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing is suspended");
+        }
+        if (listing.getStatus() != ListingStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing is not active");
+        }
+        if (listing.getHostId() == null || listing.getHostId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing host is not payout eligible");
+        }
+        if (listing.getPricing() == null || listing.getPricing().getBasePrice() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing pricing is not configured");
+        }
+        if (listing.getMaxGuests() == null || listing.getMaxGuests() <= 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing capacity is not configured");
+        }
+
+        int stayingGuests = adultCount(request.getNumberOfAdults()) + safeCount(request.getNumberOfChildren());
+        if (stayingGuests <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one adult or child is required");
+        }
+        if (stayingGuests > listing.getMaxGuests()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Guest count exceeds listing capacity");
+        }
+
+        int pets = safeCount(request.getNumberOfPets());
+        boolean petsAllowed = listing.getHouseRules() != null && Boolean.TRUE.equals(listing.getHouseRules().getPetsAllowed());
+        if (pets > 0 && !petsAllowed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pets are not allowed for this listing");
+        }
+    }
+
+    private PricingSnapshot buildPricingSnapshot(
+            ListingResponse listing,
+            CreateBookingRequest request,
+            int totalNights
+    ) {
+        BigDecimal nightlyPrice = money(listing.getPricing().getBasePrice());
+        BigDecimal subtotal = money(nightlyPrice.multiply(BigDecimal.valueOf(totalNights)));
+        BigDecimal cleaningFee = money(listing.getPricing().getCleaningFee());
+        BigDecimal serviceFeePercentage = listing.getPricing().getServiceFeePercentage() != null
+                ? listing.getPricing().getServiceFeePercentage()
+                : BigDecimal.ZERO;
+        BigDecimal serviceFee = money(subtotal
+                .multiply(serviceFeePercentage)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+        BigDecimal taxes = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal total = money(subtotal.add(cleaningFee).add(serviceFee).add(taxes));
+        String currency = resolveSnapshotCurrency(listing, request);
+
+        return new PricingSnapshot(
+                nightlyPrice,
+                subtotal,
+                cleaningFee,
+                serviceFee,
+                taxes,
+                total,
+                currency,
+                resolveCancellationPolicyCode(listing)
+        );
+    }
+
+    private String resolveCancellationPolicyCode(ListingResponse listing) {
+        String code = listing.getCancellationPolicyCode();
+        return code == null || code.isBlank()
+                ? DEFAULT_CANCELLATION_POLICY_CODE
+                : code.trim().toUpperCase();
+    }
+
+    private String resolveSnapshotCurrency(ListingResponse listing, CreateBookingRequest request) {
+        String listingCurrency = listing.getPricing() != null ? normalizeCurrency(listing.getPricing().getCurrency()) : null;
+        String requestedCurrency = normalizeCurrency(request.getCurrency());
+        if (listingCurrency != null && requestedCurrency != null && !listingCurrency.equals(requestedCurrency)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Requested currency does not match listing pricing currency");
+        }
+        if (listingCurrency != null) {
+            return listingCurrency;
+        }
+        return requestedCurrency != null ? requestedCurrency : "USD";
+    }
+
+    private String normalizeCurrency(String currency) {
+        if (currency == null || currency.isBlank()) {
+            return null;
+        }
+        return currency.trim().toUpperCase();
+    }
+
+    private boolean resolveHostPayoutEligibility(ListingResponse listing) {
+        return listing.getHostId() != null && !listing.getHostId().isBlank();
+    }
+
+    private int safeCount(Integer value) {
+        return value != null ? value : 0;
+    }
+
+    private int adultCount(Integer value) {
+        return value != null ? value : 1;
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return (value != null ? value : BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal snapshotAmount(BigDecimal value) {
+        return money(value);
+    }
+
+    private long toPaymentAmount(BigDecimal amount) {
+        return amount.setScale(0, RoundingMode.HALF_UP).longValue();
     }
 
     @Transactional(readOnly = true)
@@ -874,20 +1014,12 @@ public class BookingService {
     }
 
     private ReservationDetailResponse.PaymentSummary mapReservationPaymentSummary(Booking booking) {
-        // Booking hiện lưu tổng tiền và một số fee; phần taxes chưa có model riêng nên tạm để 0.
-        // Output giữ cùng contract với user booking detail để frontend dùng chung cách render pricing.
-        BigDecimal total = BigDecimal.valueOf(booking.getTotalPrice());
-        BigDecimal cleaningFee = booking.getCleaningFee() != null ? booking.getCleaningFee() : BigDecimal.ZERO;
-        BigDecimal serviceFee = booking.getServiceFee() != null ? booking.getServiceFee() : BigDecimal.ZERO;
-        BigDecimal taxes = BigDecimal.ZERO;
-        BigDecimal accommodation = total.subtract(cleaningFee).subtract(serviceFee).subtract(taxes).max(BigDecimal.ZERO);
-
         return ReservationDetailResponse.PaymentSummary.builder()
-                .totalAmount(total)
-                .accommodationAmount(accommodation)
-                .cleaningFee(cleaningFee)
-                .serviceFee(serviceFee)
-                .taxes(taxes)
+                .totalAmount(BigDecimal.valueOf(booking.getTotalPrice()))
+                .accommodationAmount(snapshotAmount(booking.getAccommodationSubtotal()))
+                .cleaningFee(snapshotAmount(booking.getCleaningFee()))
+                .serviceFee(snapshotAmount(booking.getServiceFee()))
+                .taxes(snapshotAmount(booking.getTaxes()))
                 .currency(booking.getCurrency())
                 .stripePaymentIntentId(booking.getPaymentIntentId())
                 .stripePaymentStatus(resolveStripeStatus(booking))
@@ -986,7 +1118,7 @@ public class BookingService {
                 || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
 
         return BookingDetailResponse.CancellationPolicy.builder()
-                .type(refundable ? "Flexible" : "Not refundable")
+                .type(refundable ? booking.getCancellationPolicyCode() : "Not refundable")
                 .description(refundable
                         ? "Cancel before check-in to request a refund according to the host policy."
                         : "This reservation is no longer eligible for automatic refund.")
@@ -1038,18 +1170,12 @@ public class BookingService {
     }
 
     private BookingDetailResponse.PaymentSummary buildPaymentSummary(Booking booking) {
-        BigDecimal total = BigDecimal.valueOf(booking.getTotalPrice());
-        BigDecimal cleaningFee = booking.getCleaningFee() != null ? booking.getCleaningFee() : BigDecimal.ZERO;
-        BigDecimal serviceFee = booking.getServiceFee() != null ? booking.getServiceFee() : BigDecimal.ZERO;
-        BigDecimal taxes = BigDecimal.ZERO;
-        BigDecimal accommodation = total.subtract(cleaningFee).subtract(serviceFee).subtract(taxes).max(BigDecimal.ZERO);
-
         return BookingDetailResponse.PaymentSummary.builder()
-                .totalAmount(total)
-                .accommodationAmount(accommodation)
-                .cleaningFee(cleaningFee)
-                .serviceFee(serviceFee)
-                .taxes(taxes)
+                .totalAmount(BigDecimal.valueOf(booking.getTotalPrice()))
+                .accommodationAmount(snapshotAmount(booking.getAccommodationSubtotal()))
+                .cleaningFee(snapshotAmount(booking.getCleaningFee()))
+                .serviceFee(snapshotAmount(booking.getServiceFee()))
+                .taxes(snapshotAmount(booking.getTaxes()))
                 .currency(booking.getCurrency())
                 .refundPolicy(resolveRefundPolicy(booking))
                 .stripePaymentIntentId(booking.getPaymentIntentId())
