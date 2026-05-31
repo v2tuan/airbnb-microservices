@@ -3,6 +3,7 @@ package com.listingservice.service;
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
+import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.dto.response.ListingItemResponse;
@@ -28,6 +29,7 @@ public interface IListingService {
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     void suspendListing(UUID listingId, ListingSuspensionRequest request);
+    void unsuspendListing(UUID listingId, ListingUnsuspensionRequest request);
     List<HomeSectionResponse> getHomeSections(Integer limitPerSection);
 
     /**

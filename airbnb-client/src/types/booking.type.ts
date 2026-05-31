@@ -26,6 +26,28 @@ export type HostCancellationReasonCode =
   | "UNAVAILABLE"
   | "OTHER";
 
+export type ComplaintStatus =
+  | "WAITING_HOST_RESPONSE"
+  | "OPEN"
+  | "ESCALATED_TO_ADMIN"
+  | "RESOLVED"
+  | "REJECTED"
+  | "CLOSED";
+
+export type ComplaintType =
+  | "CANNOT_CHECK_IN"
+  | "NOT_AS_DESCRIBED"
+  | "UNCLEAN"
+  | "MISSING_AMENITY"
+  | "SAFETY_ISSUE";
+
+export type AdminComplaintDecision =
+  | "REJECT"
+  | "RESOLVE_NO_REFUND"
+  | "PARTIAL_REFUND"
+  | "FULL_REFUND"
+  | "SUSPEND_LISTING";
+
 export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 
 export interface BookingTripsResponse {
@@ -229,6 +251,29 @@ export interface HostCancellationQuoteResponse {
     willMarkHostAdminReview: boolean;
   };
   expiresAt: string;
+}
+
+export interface ComplaintResponse {
+  complaintId: string;
+  bookingId: string;
+  guestId: string;
+  hostId: string;
+  listingId: string;
+  type: ComplaintType;
+  status: ComplaintStatus;
+  description: string;
+  evidenceUrls: string[];
+  hostResponse?: string | null;
+  hostRespondedAt?: string | null;
+  hostResponseDeadline: string;
+  escalatedAt?: string | null;
+  adminNote?: string | null;
+  adminDecision?: AdminComplaintDecision | null;
+  refundAmount?: number | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
 }
 
 export interface BookingReviewSummary {

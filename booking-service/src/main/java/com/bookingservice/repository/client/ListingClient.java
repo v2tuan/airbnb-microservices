@@ -3,6 +3,7 @@ package com.bookingservice.repository.client;
 import com.bookingservice.dto.ApiResponse;
 import com.bookingservice.dto.request.ListingSuspensionRequest;
 import com.bookingservice.dto.request.ListingBatchRequest;
+import com.bookingservice.dto.request.ListingUnsuspensionRequest;
 import com.bookingservice.dto.response.ListingResponse;
 import feign.QueryMap;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -42,5 +43,12 @@ public interface ListingClient {
             @RequestHeader("Authorization") String token,
             @PathVariable UUID listingId,
             @RequestBody ListingSuspensionRequest request
+    );
+
+    @PatchMapping("/{listingId}/unsuspend")
+    ApiResponse<Void> unsuspendListing(
+            @RequestHeader("Authorization") String token,
+            @PathVariable UUID listingId,
+            @RequestBody ListingUnsuspensionRequest request
     );
 }

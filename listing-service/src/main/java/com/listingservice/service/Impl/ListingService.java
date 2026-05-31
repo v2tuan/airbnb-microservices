@@ -3,6 +3,7 @@ package com.listingservice.service.Impl;
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
+import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.HomeListingCardResponse;
 import com.listingservice.dto.response.HomeSectionResponse;
@@ -220,6 +221,22 @@ public class ListingService implements IListingService {
         listingRepository.save(listing);
 
         log.info("Listing suspended: {}", listingId);
+    }
+
+    @Override
+    @Transactional
+    public void unsuspendListing(UUID listingId, ListingUnsuspensionRequest request) {
+        log.info("Unsuspending listing ID: {}", listingId);
+
+        Listing listing = listingRepository.findById(listingId)
+                .orElseThrow(() -> new AppException(ErrorCode.LISTING_NOT_FOUND));
+
+        listing.setStatus(ListingStatus.ACTIVE);
+        listing.setSuspendedUntil(null);
+        listing.setSuspensionReason(null);
+        listingRepository.save(listing);
+
+        log.info("Listing unsuspended: {} reason={}", listingId, request.getReason());
     }
 
     @Override

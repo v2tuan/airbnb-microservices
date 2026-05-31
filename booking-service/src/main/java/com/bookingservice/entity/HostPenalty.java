@@ -77,6 +77,9 @@ public class HostPenalty {
     @Column(name = "waived_at")
     private LocalDateTime waivedAt;
 
+    @Column(name = "waiver_reason", length = 1000)
+    private String waiverReason;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

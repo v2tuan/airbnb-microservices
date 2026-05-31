@@ -4,12 +4,21 @@ import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.HostCancellationQuote;
 import com.bookingservice.entity.HostPenalty;
 import com.bookingservice.entity.HostPenaltyStatus;
+import com.bookingservice.dto.response.HostPenaltyResponse;
 import com.bookingservice.repository.HostPenaltyRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -53,6 +62,54 @@ public class HostPenaltyService {
                 .listingSuspendedUntil(quote.getListingSuspendedUntil())
                 .build();
         return hostPenaltyRepository.save(penalty);
+    }
+
+    @Transactional
+    public HostPenaltyResponse waivePenalty(UUID penaltyId, String reason) {
+        requireAdmin();
+        HostPenalty penalty = hostPenaltyRepository.findById(penaltyId)
+                .orElseThrow(() -> new IllegalArgumentException("Host penalty not found"));
+        if (penalty.getStatus() != HostPenaltyStatus.ACTIVE) {
+            throw new IllegalStateException("Only active penalties can be waived");
+        }
+        penalty.setStatus(HostPenaltyStatus.WAIVED);
+        penalty.setWaivedAt(LocalDateTime.now());
+        penalty.setWaiverReason(reason);
+        return mapToResponse(hostPenaltyRepository.save(penalty));
+    }
+
+    private HostPenaltyResponse mapToResponse(HostPenalty penalty) {
+        return HostPenaltyResponse.builder()
+                .penaltyId(penalty.getPenaltyId())
+                .bookingId(penalty.getBookingId())
+                .hostId(penalty.getHostId())
+                .listingId(penalty.getListingId())
+                .reasonCode(penalty.getReasonCode())
+                .points(penalty.getPoints())
+                .status(penalty.getStatus())
+                .listingSuspensionTriggered(penalty.getListingSuspensionTriggered())
+                .hostAdminReviewTriggered(penalty.getHostAdminReviewTriggered())
+                .listingSuspendedUntil(penalty.getListingSuspendedUntil())
+                .createdAt(penalty.getCreatedAt())
+                .waivedAt(penalty.getWaivedAt())
+                .waiverReason(penalty.getWaiverReason())
+                .build();
+    }
+
+    private void requireAdmin() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Jwt jwt = (Jwt) authentication.getPrincipal();
+        Object realmAccess = jwt.getClaims().get("realm_access");
+        if (!(realmAccess instanceof Map<?, ?> realmAccessMap)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role is required");
+        }
+        Object roles = realmAccessMap.get("roles");
+        if (!(roles instanceof Collection<?> roleCollection) || roleCollection.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .noneMatch(role -> role.equals("ADMIN") || role.equals("ROLE_ADMIN"))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role is required");
+        }
     }
 
     public record ThresholdPreview(

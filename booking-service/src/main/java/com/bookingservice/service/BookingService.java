@@ -25,8 +25,10 @@ import com.bookingservice.constant.ListingStatus;
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingCancellationQuote;
 import com.bookingservice.entity.BookingStatus;
+import com.bookingservice.entity.ComplaintStatus;
 import com.bookingservice.entity.HostCancellationQuote;
 import com.bookingservice.repository.BookingCancellationQuoteRepository;
+import com.bookingservice.repository.BookingComplaintRepository;
 import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.HostCancellationQuoteRepository;
 import com.bookingservice.repository.client.ListingClient;
@@ -68,6 +70,7 @@ public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final BookingCancellationQuoteRepository cancellationQuoteRepository;
+    private final BookingComplaintRepository complaintRepository;
     private final HostCancellationQuoteRepository hostCancellationQuoteRepository;
     private final ListingClient listingClient;
     private final PaymentClient paymentClient;
@@ -568,6 +571,11 @@ public class BookingService {
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid booking is required before cancellation");
         }
+        if (complaintRepository.existsByBookingIdAndStatusIn(
+                booking.getBookingId(),
+                List.of(ComplaintStatus.ESCALATED_TO_ADMIN))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has an active complaint escalated to admin");
+        }
     }
 
     private void validateHostCancellationEligibility(Booking booking, UUID hostId, Jwt jwt) {
@@ -583,6 +591,11 @@ public class BookingService {
         }
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid reservation is required before cancellation");
+        }
+        if (complaintRepository.existsByBookingIdAndStatusIn(
+                booking.getBookingId(),
+                List.of(ComplaintStatus.ESCALATED_TO_ADMIN))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reservation has an active complaint escalated to admin");
         }
     }
 
