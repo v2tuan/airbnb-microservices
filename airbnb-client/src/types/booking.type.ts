@@ -9,6 +9,16 @@ export type BookingStatus =
   | "CANCELLED_BY_HOST"
   | "CANCELLED_BY_ADMIN";
 
+export type PaymentLifecycleStatus =
+  | "PAYMENT_PENDING"
+  | "PAID"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_CANCELLED"
+  | "REFUND_PENDING"
+  | "PARTIALLY_REFUNDED"
+  | "REFUNDED"
+  | "REFUND_FAILED";
+
 export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 
 export interface BookingTripsResponse {
@@ -60,6 +70,7 @@ export interface CheckoutResponse {
   publishableKey: string;
   totalAmount: number;
   currency: string;
+  paymentStatus: PaymentLifecycleStatus;
   expiresAt: string;
   message: string;
 }
@@ -171,7 +182,7 @@ export interface BookingPaymentSummary {
   currency: string;
   refundPolicy?: string | null;
   stripePaymentIntentId?: string | null;
-  stripePaymentStatus?: string | null;
+  stripePaymentStatus?: PaymentLifecycleStatus | null;
 }
 
 export interface BookingCancellationPolicy {

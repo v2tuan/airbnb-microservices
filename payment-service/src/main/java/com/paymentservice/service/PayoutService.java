@@ -2,8 +2,11 @@ package com.paymentservice.service;
 
 import com.paymentservice.dto.request.BookingStatus;
 import com.paymentservice.dto.response.BookingResponse;
+import com.paymentservice.entity.Payment;
+import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
 import com.paymentservice.event.PayoutCompletedEvent;
+import com.paymentservice.repository.PaymentRepository;
 import com.paymentservice.repository.PayoutRepository;
 import com.paymentservice.repository.client.BookingClient;
 import com.stripe.exception.StripeException;
@@ -22,6 +25,7 @@ import java.time.LocalDateTime;
 @Slf4j
 public class PayoutService {
     private final PayoutRepository payoutRepository;
+    private final PaymentRepository paymentRepository;
     private final BookingClient bookingClient;
     private final ServiceTokenProvider serviceTokenProvider;
     private final PaymentEventPublisher eventPublisher;
@@ -39,6 +43,10 @@ public class PayoutService {
             payout.setStatus("CANCELLED");
             payout.setFailureReason("Booking was cancelled before payout");
             payoutRepository.save(payout);
+            return;
+        }
+
+        if (!isPaymentEligibleForPayout(payout, now)) {
             return;
         }
 
@@ -104,6 +112,38 @@ public class PayoutService {
         payout.setStatus(retryCount >= 5 ? "FAILED" : "RETRY");
         payout.setNextRetryAt(LocalDateTime.now().plusMinutes(Math.min(60, retryCount * 10L)));
         payoutRepository.save(payout);
+    }
+
+    private boolean isPaymentEligibleForPayout(Payout payout, LocalDateTime now) {
+        if (payout.getPaymentId() == null) {
+            return true;
+        }
+
+        Payment payment = paymentRepository.findById(payout.getPaymentId()).orElse(null);
+        if (payment == null) {
+            payout.setStatus("FAILED");
+            payout.setFailureReason("Payment record not found for payout");
+            payoutRepository.save(payout);
+            return false;
+        }
+
+        if (payment.getStatus() == PaymentStatus.PAID) {
+            return true;
+        }
+        if (payment.getStatus() == PaymentStatus.PAYMENT_FAILED
+                || payment.getStatus() == PaymentStatus.PAYMENT_CANCELLED
+                || payment.getStatus() == PaymentStatus.REFUNDED) {
+            payout.setStatus("CANCELLED");
+            payout.setFailureReason("Payment is not payable: " + payment.getStatus());
+            payoutRepository.save(payout);
+            return false;
+        }
+
+        payout.setStatus("PENDING_CHECKIN");
+        payout.setFailureReason("Payment is not ready for payout: " + payment.getStatus());
+        payout.setScheduledAt(now.plusMinutes(30));
+        payoutRepository.save(payout);
+        return false;
     }
 
     private boolean isCancelledStatus(BookingStatus status) {

@@ -1,6 +1,11 @@
 import { cn } from "@/lib/utils";
 
-export type PaymentStatus = "paid" | "pending" | "cancelled" | "refunded";
+export type PaymentStatus =
+  | "paid"
+  | "pending"
+  | "failed"
+  | "cancelled"
+  | "refunded";
 
 interface BookingStatusBadgeProps {
   status: PaymentStatus;
@@ -19,6 +24,10 @@ const statusConfig: Record<
   pending: {
     label: "Pending",
     className: "bg-amber-50 text-amber-700 border border-amber-200",
+  },
+  failed: {
+    label: "Failed",
+    className: "bg-rose-50 text-rose-700 border border-rose-200",
   },
   cancelled: {
     label: "Cancelled",

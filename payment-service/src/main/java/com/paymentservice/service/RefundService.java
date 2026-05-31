@@ -81,6 +81,9 @@ public class RefundService {
                 .initiatedAt(LocalDateTime.now())
                 .build());
 
+        payment.setStatus(PaymentStatus.REFUND_PENDING);
+        paymentRepository.save(payment);
+
         try {
             handleTransferReversalIfNeeded(originalTransaction.getBookingId(), refundAmount, refund);
 
@@ -128,6 +131,8 @@ public class RefundService {
             refund.setCompletedAt(LocalDateTime.now());
             refundTransaction.setStatus("FAILED");
             refundTransaction.setFailureReason(ex.getMessage());
+            payment.setStatus(PaymentStatus.REFUND_FAILED);
+            paymentRepository.save(payment);
             transactionRepository.save(refundTransaction);
             return refundMapper.toResponse(refundRepository.save(refund));
         }

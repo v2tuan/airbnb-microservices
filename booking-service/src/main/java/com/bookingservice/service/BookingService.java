@@ -1294,13 +1294,14 @@ public class BookingService {
 
     private String resolveStripeStatus(Booking booking) {
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank()) {
-            return booking.getStatus() == BookingStatus.PENDING_PAYMENT ? "requires_payment_method" : null;
+            return booking.getStatus() == BookingStatus.PENDING_PAYMENT ? "PAYMENT_PENDING" : null;
         }
 
         return switch (booking.getStatus()) {
-            case CONFIRMED, CHECKED_IN, CHECKED_OUT, COMPLETED -> "succeeded";
-            case PENDING_PAYMENT -> "requires_payment_method";
-            case EXPIRED, CANCELLED_BY_GUEST, CANCELLED_BY_HOST, CANCELLED_BY_ADMIN -> "canceled";
+            case CONFIRMED, CHECKED_IN, CHECKED_OUT, COMPLETED -> "PAID";
+            case PENDING_PAYMENT -> "PAYMENT_PENDING";
+            case EXPIRED -> "PAYMENT_CANCELLED";
+            case CANCELLED_BY_GUEST, CANCELLED_BY_HOST, CANCELLED_BY_ADMIN -> "REFUND_PENDING";
         };
     }
 

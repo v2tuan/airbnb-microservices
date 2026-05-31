@@ -34,6 +34,19 @@ import type {
 const fallbackImage = "/header/home.png";
 
 function mapPaymentStatus(booking: BookingDetailResponse) {
+  const stripeStatus = booking.payment?.stripePaymentStatus;
+  if (stripeStatus === "PAID") return "paid";
+  if (stripeStatus === "PAYMENT_FAILED" || stripeStatus === "REFUND_FAILED") {
+    return "failed";
+  }
+  if (stripeStatus === "PAYMENT_CANCELLED") return "cancelled";
+  if (
+    stripeStatus === "REFUND_PENDING" ||
+    stripeStatus === "PARTIALLY_REFUNDED" ||
+    stripeStatus === "REFUNDED"
+  ) {
+    return "refunded";
+  }
   if (booking.status === "PENDING_PAYMENT") return "pending";
   if (
     booking.status === "CANCELLED_BY_GUEST" ||
