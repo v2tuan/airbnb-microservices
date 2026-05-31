@@ -16,7 +16,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { cancelBooking, getBookingDetail } from "@/api/endpoints/booking";
+import {
+  cancelBooking,
+  confirmCancellationQuote,
+  getBookingDetail,
+  requestCancellationQuote,
+} from "@/api/endpoints/booking";
 import { BookingStatusBadge } from "@/components/trips/BookingStatusBadge";
 import { CancelReservationModal } from "@/components/trips/CancelReservationModal";
 import { ExpiredReservationState } from "@/components/trips/ExpiredReservationState";
@@ -29,6 +34,7 @@ import type { RootState } from "@/store";
 import type {
   BookingDetailResponse,
   BookingStatus,
+  GuestCancellationQuoteResponse,
 } from "@/types/booking.type";
 
 const fallbackImage = "/header/home.png";
@@ -86,6 +92,11 @@ export default function ManageReservationPage() {
   const [adults, setAdults] = useState(1);
   const [children, setChildren] = useState(0);
   const [cancelRequestSent, setCancelRequestSent] = useState(false);
+  const [cancellationQuote, setCancellationQuote] =
+    useState<GuestCancellationQuoteResponse | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,11 +158,55 @@ export default function ManageReservationPage() {
     window.setTimeout(() => setNotesSaved(false), 2000);
   };
 
-  const handleCancelReservation = async (reason: string) => {
+  const loadCancellationQuote = async () => {
     if (!booking) return;
 
     try {
-      await cancelBooking(token, booking.bookingId, reason);
+      setQuoteLoading(true);
+      setQuoteError(null);
+      const response = await requestCancellationQuote(token, booking.bookingId);
+      setCancellationQuote(response.data);
+    } catch (err) {
+      console.error("Failed to load cancellation quote", err);
+      setQuoteError("Could not calculate the cancellation quote. Try again.");
+      setCancellationQuote(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  const openCancellationModal = () => {
+    setCancelOpen(true);
+    setCancellationQuote(null);
+    void loadCancellationQuote();
+  };
+
+  const handleCancelPendingHold = async () => {
+    if (!booking) return;
+
+    try {
+      await cancelBooking(token, booking.bookingId, "Guest abandoned unpaid hold");
+      setBooking((current) =>
+        current
+          ? {
+              ...current,
+              status: "EXPIRED",
+              statusDisplayName: "Expired",
+            }
+          : current,
+      );
+      setCancelRequestSent(true);
+    } catch (err) {
+      console.error("Failed to expire pending booking", err);
+    }
+  };
+
+  const handleCancelReservation = async (reason: string, quoteId: string) => {
+    if (!booking) return;
+
+    try {
+      setCancelSubmitting(true);
+      await confirmCancellationQuote(token, booking.bookingId, quoteId, reason);
       setBooking((current) =>
         current
           ? {
@@ -163,8 +218,12 @@ export default function ManageReservationPage() {
       );
       setCancelRequestSent(true);
       setCancelOpen(false);
+      setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
+      setQuoteError("Cancellation failed. Request a new quote and try again.");
+    } finally {
+      setCancelSubmitting(false);
     }
   };
 
@@ -555,7 +614,11 @@ export default function ManageReservationPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setCancelOpen(true)}
+                onClick={
+                  booking.status === "PENDING_PAYMENT"
+                    ? handleCancelPendingHold
+                    : openCancellationModal
+                }
                 className="w-full rounded-xl border border-red-200 py-2.5 text-sm font-medium text-red-600 transition-all hover:bg-red-50"
               >
                 Cancel this reservation
@@ -574,7 +637,12 @@ export default function ManageReservationPage() {
         isOpen={cancelOpen}
         policy={booking.cancellationPolicy}
         payment={booking.payment}
+        quote={cancellationQuote}
+        quoteLoading={quoteLoading}
+        quoteError={quoteError}
+        submitting={cancelSubmitting}
         onClose={() => setCancelOpen(false)}
+        onRetryQuote={loadCancellationQuote}
         onConfirm={handleCancelReservation}
       />
     </div>

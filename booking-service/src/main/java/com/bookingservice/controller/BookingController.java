@@ -3,12 +3,14 @@ package com.bookingservice.controller;
 import com.bookingservice.dto.ApiResponse;
 import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.CancelBookingRequest;
+import com.bookingservice.dto.request.ConfirmCancellationQuoteRequest;
 import com.bookingservice.dto.request.CreateBookingRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
 import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
+import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostReservationsPageResponse;
 import com.bookingservice.dto.response.ReservationDetailResponse;
 import com.bookingservice.dto.response.ReservationResponse;
@@ -77,6 +79,29 @@ public class BookingController {
                 .success(true)
                 .message("Cancel booking success")
                 .data(bookingService.cancelMyBooking(id, request))
+                .build());
+    }
+
+    @PostMapping("/{id}/cancellation-quotes")
+    public ResponseEntity<ApiResponse<GuestCancellationQuoteResponse>> requestGuestCancellationQuote(
+            @PathVariable UUID id
+    ) {
+        return ResponseEntity.ok(ApiResponse.<GuestCancellationQuoteResponse>builder()
+                .success(true)
+                .message("Cancellation quote created")
+                .data(bookingService.requestGuestCancellationQuote(id))
+                .build());
+    }
+
+    @PostMapping("/{id}/cancel/confirm")
+    public ResponseEntity<ApiResponse<BookingResponse>> confirmGuestCancellationQuote(
+            @PathVariable UUID id,
+            @Valid @RequestBody ConfirmCancellationQuoteRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.<BookingResponse>builder()
+                .success(true)
+                .message("Cancel booking success")
+                .data(bookingService.confirmGuestCancellationQuote(id, request))
                 .build());
     }
 

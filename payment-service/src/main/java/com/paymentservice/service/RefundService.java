@@ -1,5 +1,6 @@
 package com.paymentservice.service;
 
+import com.paymentservice.dto.request.BookingRefundRequest;
 import com.paymentservice.dto.request.RefundRequest;
 import com.paymentservice.dto.response.RefundResponse;
 import com.paymentservice.entity.Payment;
@@ -47,10 +48,39 @@ public class RefundService {
     public RefundResponse processRefund(RefundRequest request) {
         Transaction originalTransaction = transactionRepository.findById(request.getTransactionId())
                 .orElseThrow(() -> new RuntimeException("Transaction not found"));
+        return processRefund(
+                originalTransaction,
+                request.getRefundAmount(),
+                request.getRefundReason(),
+                request.getRefundDetails()
+        );
+    }
+
+    @Transactional
+    public RefundResponse processBookingRefund(UUID bookingId, BookingRefundRequest request) {
+        Transaction originalTransaction = transactionRepository.findByBookingId(bookingId).stream()
+                .filter(transaction -> "PAYMENT".equals(transaction.getTransactionType()))
+                .filter(transaction -> "COMPLETED".equals(transaction.getStatus()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Completed payment transaction not found for booking"));
+        return processRefund(
+                originalTransaction,
+                request.getRefundAmount(),
+                request.getRefundReason(),
+                request.getRefundDetails()
+        );
+    }
+
+    private RefundResponse processRefund(
+            Transaction originalTransaction,
+            BigDecimal requestedRefundAmount,
+            String refundReason,
+            String refundDetails
+    ) {
         Payment payment = paymentRepository.findByBookingId(originalTransaction.getBookingId())
                 .orElseThrow(() -> new RuntimeException("Payment not found for booking"));
 
-        long refundAmount = request.getRefundAmount().longValue();
+        long refundAmount = requestedRefundAmount.longValue();
         long alreadyRefunded = payment.getRefundedAmount() == null ? 0L : payment.getRefundedAmount();
         if (refundAmount <= 0 || refundAmount + alreadyRefunded > payment.getAmount()) {
             throw new RuntimeException("Invalid refund amount");
@@ -65,7 +95,7 @@ public class RefundService {
                 .amount(BigDecimal.valueOf(refundAmount))
                 .currency(originalTransaction.getCurrency())
                 .status("PROCESSING")
-                .description("Refund for transaction: " + request.getTransactionId())
+                .description("Refund for transaction: " + originalTransaction.getTransactionId())
                 .initiatedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now())
                 .build());
@@ -75,8 +105,8 @@ public class RefundService {
                 .refundTransaction(refundTransaction)
                 .refundAmount(BigDecimal.valueOf(refundAmount))
                 .refundType(refundAmount == payment.getAmount() ? "FULL" : "PARTIAL")
-                .refundReason(request.getRefundReason())
-                .refundDetails(request.getRefundDetails())
+                .refundReason(refundReason)
+                .refundDetails(refundDetails)
                 .status("PROCESSING")
                 .initiatedAt(LocalDateTime.now())
                 .build());

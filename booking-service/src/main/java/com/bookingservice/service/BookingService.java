@@ -1,7 +1,9 @@
 package com.bookingservice.service;
 
 import com.bookingservice.dto.request.BookingFilterType;
+import com.bookingservice.dto.request.BookingRefundRequest;
 import com.bookingservice.dto.request.CancelBookingRequest;
+import com.bookingservice.dto.request.ConfirmCancellationQuoteRequest;
 import com.bookingservice.dto.request.CreateBookingRequest;
 import com.bookingservice.dto.request.ListingBatchRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
@@ -9,6 +11,7 @@ import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
+import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostReservationsPageResponse;
 import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.dto.response.PublicUserResponse;
@@ -16,9 +19,12 @@ import com.bookingservice.dto.response.ReservationDetailResponse;
 import com.bookingservice.dto.response.ReservationResponse;
 import com.bookingservice.constant.ListingStatus;
 import com.bookingservice.entity.Booking;
+import com.bookingservice.entity.BookingCancellationQuote;
 import com.bookingservice.entity.BookingStatus;
+import com.bookingservice.repository.BookingCancellationQuoteRepository;
 import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.client.ListingClient;
+import com.bookingservice.repository.client.PaymentClient;
 import com.bookingservice.repository.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,9 +57,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class BookingService {
     private static final String DEFAULT_CANCELLATION_POLICY_CODE = "FLEXIBLE";
+    private static final int GUEST_CANCELLATION_QUOTE_TTL_MINUTES = 10;
 
     private final BookingRepository bookingRepository;
+    private final BookingCancellationQuoteRepository cancellationQuoteRepository;
     private final ListingClient listingClient;
+    private final PaymentClient paymentClient;
     private final UserClient userClient;
 
     private record PricingSnapshot(
@@ -65,6 +74,16 @@ public class BookingService {
             BigDecimal totalAmount,
             String currency,
             String cancellationPolicyCode
+    ) {
+    }
+
+    private record RefundBreakdown(
+            BigDecimal accommodationRefund,
+            BigDecimal cleaningFeeRefund,
+            BigDecimal serviceFeeRefund,
+            BigDecimal taxesRefund,
+            BigDecimal refundAmount,
+            BigDecimal nonRefundableAmount
     ) {
     }
 
@@ -213,18 +232,87 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking payment hold has expired");
         }
 
-        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT && booking.getStatus() != BookingStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled");
+        if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote is required");
         }
 
-        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
-            booking.setStatus(BookingStatus.EXPIRED);
-        } else {
-            booking.setStatus(BookingStatus.CANCELLED_BY_GUEST);
-            booking.setCancelledAt(LocalDateTime.now());
-            booking.setCancellationReason(request.getReason());
-        }
+        booking.setStatus(BookingStatus.EXPIRED);
+        booking.setCancellationReason(request.getReason());
         return mapToResponse(bookingRepository.save(booking));
+    }
+
+    @Transactional
+    public GuestCancellationQuoteResponse requestGuestCancellationQuote(UUID bookingId) {
+        UUID guestId = UUID.fromString(currentJwt().getSubject());
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        validateGuestCancellationEligibility(booking, guestId);
+
+        String policyCode = normalizeCancellationPolicyCode(booking.getCancellationPolicyCode());
+        RefundBreakdown breakdown = calculateGuestRefund(booking, policyCode, LocalDateTime.now());
+        BookingCancellationQuote quote = cancellationQuoteRepository.save(BookingCancellationQuote.builder()
+                .bookingId(booking.getBookingId())
+                .guestId(guestId)
+                .policyCode(policyCode)
+                .currency(booking.getCurrency())
+                .accommodationRefund(breakdown.accommodationRefund())
+                .cleaningFeeRefund(breakdown.cleaningFeeRefund())
+                .serviceFeeRefund(breakdown.serviceFeeRefund())
+                .taxesRefund(breakdown.taxesRefund())
+                .refundAmount(breakdown.refundAmount())
+                .nonRefundableAmount(breakdown.nonRefundableAmount())
+                .expiresAt(LocalDateTime.now().plusMinutes(GUEST_CANCELLATION_QUOTE_TTL_MINUTES))
+                .build());
+
+        return mapToGuestCancellationQuoteResponse(quote);
+    }
+
+    @Transactional
+    public BookingResponse confirmGuestCancellationQuote(UUID bookingId, ConfirmCancellationQuoteRequest request) {
+        Jwt jwt = currentJwt();
+        UUID guestId = UUID.fromString(jwt.getSubject());
+        LocalDateTime now = LocalDateTime.now();
+
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+        validateGuestCancellationEligibility(booking, guestId);
+
+        BookingCancellationQuote quote = cancellationQuoteRepository
+                .findByQuoteIdAndBookingIdForUpdate(request.getQuoteId(), bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found"));
+
+        if (!quote.getGuestId().equals(guestId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found");
+        }
+        if (quote.getConfirmedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has already been used");
+        }
+        if (!quote.getExpiresAt().isAfter(now)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has expired");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED_BY_GUEST);
+        booking.setCancelledAt(now);
+        booking.setCancellationReason(request.getReason());
+        quote.setConfirmedAt(now);
+
+        Booking saved = bookingRepository.save(booking);
+        cancellationQuoteRepository.save(quote);
+
+        if (quote.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
+            paymentClient.createBookingRefund(
+                    "Bearer " + jwt.getTokenValue(),
+                    bookingId,
+                    BookingRefundRequest.builder()
+                            .refundAmount(quote.getRefundAmount())
+                            .refundReason("GUEST_CANCELLATION")
+                            .refundDetails("Guest cancellation quote " + quote.getQuoteId())
+                            .build()
+            );
+        }
+
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -349,6 +437,120 @@ public class BookingService {
         return code == null || code.isBlank()
                 ? DEFAULT_CANCELLATION_POLICY_CODE
                 : code.trim().toUpperCase();
+    }
+
+    private String normalizeCancellationPolicyCode(String code) {
+        if (code == null || code.isBlank()) {
+            return DEFAULT_CANCELLATION_POLICY_CODE;
+        }
+        String normalized = code.trim().toUpperCase();
+        return switch (normalized) {
+            case "FLEXIBLE", "MODERATE", "STRICT" -> normalized;
+            default -> DEFAULT_CANCELLATION_POLICY_CODE;
+        };
+    }
+
+    private void validateGuestCancellationEligibility(Booking booking, UUID guestId) {
+        if (!booking.getGuestId().equals(guestId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled");
+        }
+        if (booking.getCheckedInAt() != null || !LocalDate.now().isBefore(booking.getCheckInDate())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Guest cancellation is not available after check-in");
+        }
+        if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid booking is required before cancellation");
+        }
+    }
+
+    private RefundBreakdown calculateGuestRefund(Booking booking, String policyCode, LocalDateTime now) {
+        BigDecimal accommodation = snapshotAmount(booking.getAccommodationSubtotal());
+        BigDecimal cleaningFee = snapshotAmount(booking.getCleaningFee());
+        BigDecimal serviceFee = snapshotAmount(booking.getServiceFee());
+        BigDecimal taxes = snapshotAmount(booking.getTaxes());
+        BigDecimal totalPaid = money(BigDecimal.valueOf(booking.getTotalPrice()));
+        LocalDateTime checkInAt = booking.getCheckInDate().atStartOfDay();
+        long hoursUntilCheckIn = ChronoUnit.HOURS.between(now, checkInAt);
+
+        BigDecimal accommodationRefund;
+        BigDecimal cleaningFeeRefund;
+        BigDecimal serviceFeeRefund;
+        BigDecimal taxesRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        switch (policyCode) {
+            case "MODERATE" -> {
+                if (hoursUntilCheckIn >= 24L * 5L) {
+                    accommodationRefund = accommodation;
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = serviceFee;
+                    taxesRefund = taxes;
+                } else if (hoursUntilCheckIn >= 24L) {
+                    accommodationRefund = money(accommodation.multiply(BigDecimal.valueOf(0.5)));
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                } else {
+                    accommodationRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                }
+            }
+            case "STRICT" -> {
+                if (hoursUntilCheckIn >= 24L * 7L) {
+                    accommodationRefund = money(accommodation.multiply(BigDecimal.valueOf(0.5)));
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                } else {
+                    accommodationRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                }
+            }
+            default -> {
+                if (hoursUntilCheckIn >= 24L) {
+                    accommodationRefund = accommodation;
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = serviceFee;
+                    taxesRefund = taxes;
+                } else {
+                    int unusedNights = Math.max(0, safeCount(booking.getTotalNights()) - 1);
+                    accommodationRefund = capMoney(
+                            snapshotAmount(booking.getNightlyPrice()).multiply(BigDecimal.valueOf(unusedNights)),
+                            accommodation
+                    );
+                    cleaningFeeRefund = cleaningFee;
+                    serviceFeeRefund = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                }
+            }
+        }
+
+        BigDecimal refundAmount = capMoney(
+                accommodationRefund.add(cleaningFeeRefund).add(serviceFeeRefund).add(taxesRefund),
+                totalPaid
+        );
+        BigDecimal nonRefundableAmount = money(totalPaid.subtract(refundAmount).max(BigDecimal.ZERO));
+
+        return new RefundBreakdown(
+                money(accommodationRefund),
+                money(cleaningFeeRefund),
+                money(serviceFeeRefund),
+                money(taxesRefund),
+                refundAmount,
+                nonRefundableAmount
+        );
+    }
+
+    private BigDecimal capMoney(BigDecimal amount, BigDecimal max) {
+        BigDecimal normalized = money(amount);
+        BigDecimal normalizedMax = money(max);
+        if (normalized.compareTo(normalizedMax) > 0) {
+            return normalizedMax;
+        }
+        if (normalized.compareTo(BigDecimal.ZERO) < 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return normalized;
     }
 
     private String resolveSnapshotCurrency(ListingResponse listing, CreateBookingRequest request) {
@@ -899,6 +1101,22 @@ public class BookingService {
                         : null)
                 .coverImageUrl(resolveCoverImage(listing))
                 .tripLabel(resolveTripLabel(booking))
+                .build();
+    }
+
+    private GuestCancellationQuoteResponse mapToGuestCancellationQuoteResponse(BookingCancellationQuote quote) {
+        return GuestCancellationQuoteResponse.builder()
+                .quoteId(quote.getQuoteId())
+                .bookingId(quote.getBookingId())
+                .refundAmount(quote.getRefundAmount())
+                .nonRefundableAmount(quote.getNonRefundableAmount())
+                .accommodationRefund(quote.getAccommodationRefund())
+                .cleaningFeeRefund(quote.getCleaningFeeRefund())
+                .serviceFeeRefund(quote.getServiceFeeRefund())
+                .taxesRefund(quote.getTaxesRefund())
+                .currency(quote.getCurrency())
+                .policyCode(quote.getPolicyCode())
+                .expiresAt(quote.getExpiresAt())
                 .build();
     }
 

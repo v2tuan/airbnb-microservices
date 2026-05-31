@@ -193,6 +193,20 @@ export interface BookingCancellationPolicy {
   refundable: boolean;
 }
 
+export interface GuestCancellationQuoteResponse {
+  quoteId: string;
+  bookingId: string;
+  refundAmount: number;
+  nonRefundableAmount: number;
+  accommodationRefund: number;
+  cleaningFeeRefund: number;
+  serviceFeeRefund: number;
+  taxesRefund: number;
+  currency: string;
+  policyCode: "FLEXIBLE" | "MODERATE" | "STRICT" | string;
+  expiresAt: string;
+}
+
 export interface BookingReviewSummary {
   averageRating: number | string;
   reviewCount: number;
