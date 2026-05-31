@@ -43,8 +43,77 @@ export interface AdminReservationSummary {
 export interface AdminReservationsQuery {
   statuses?: BookingStatus[];
   search?: string;
+  checkInFrom?: string;
+  checkInTo?: string;
+  guest?: string;
+  host?: string;
+  listing?: string;
+  bookingCode?: string;
   page?: number;
   size?: number;
+}
+
+export interface AdminBookingPartySummary {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+}
+
+export interface AdminBookingListingSummary {
+  id: string;
+  title?: string | null;
+  city?: string | null;
+  country?: string | null;
+  status?: string | null;
+}
+
+export interface AdminPaymentSummary {
+  paymentId?: string | null;
+  paymentIntentId?: string | null;
+  status?: PaymentLifecycleStatus | null;
+  amount?: number | null;
+  currency?: string | null;
+  paidAt?: string | null;
+}
+
+export interface AdminRefundSummary {
+  refundId: string;
+  status: RefundStatus;
+  amount: number;
+  currency: string;
+  businessCause: RefundBusinessCause;
+  createdAt: string;
+}
+
+export interface AdminBookingTimelineItem {
+  key: string;
+  label: string;
+  description?: string | null;
+  occurredAt?: string | null;
+}
+
+export interface AdminReservationDetail {
+  bookingId: string;
+  reservationCode?: string | null;
+  status: BookingStatus;
+  checkInDate: string;
+  checkOutDate: string;
+  createdAt: string;
+  expiresAt?: string | null;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+  completedAt?: string | null;
+  totalAmount: number;
+  currency: string;
+  guest: AdminBookingPartySummary;
+  host: AdminBookingPartySummary;
+  listing: AdminBookingListingSummary;
+  payment?: AdminPaymentSummary | null;
+  refunds?: AdminRefundSummary[];
+  timeline?: AdminBookingTimelineItem[];
+  complaintId?: string | null;
 }
 
 export interface AdminRefundRecord {
@@ -107,6 +176,14 @@ export async function listAdminReservations(
     params.append("statuses", status);
   });
   if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.checkInFrom) params.set("checkInFrom", query.checkInFrom);
+  if (query.checkInTo) params.set("checkInTo", query.checkInTo);
+  if (query.guest?.trim()) params.set("guest", query.guest.trim());
+  if (query.host?.trim()) params.set("host", query.host.trim());
+  if (query.listing?.trim()) params.set("listing", query.listing.trim());
+  if (query.bookingCode?.trim()) {
+    params.set("bookingCode", query.bookingCode.trim());
+  }
   if (query.page !== undefined) params.set("page", String(query.page));
   if (query.size !== undefined) params.set("size", String(query.size));
 
@@ -114,6 +191,19 @@ export async function listAdminReservations(
   return unwrap(
     await apiClient.get(
       `${prefix}/bookings/admin/reservations${params.toString() ? `?${params.toString()}` : ""}`,
+      authConfig(token),
+    ),
+  );
+}
+
+export async function getAdminReservationDetail(
+  token: string | null,
+  bookingId: string,
+): Promise<ApiResponse<AdminReservationDetail>> {
+  // TODO backend: implement GET /bookings/admin/reservations/{bookingId} with booking, party, listing, payment, refund and timeline summaries.
+  return unwrap(
+    await apiClient.get(
+      `${prefix}/bookings/admin/reservations/${bookingId}`,
       authConfig(token),
     ),
   );
