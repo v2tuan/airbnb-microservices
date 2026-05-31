@@ -31,6 +31,7 @@ public class BookingTripResponse {
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
+    private LocalDateTime checkedOutAt;
 
 //    private Long secondsUntilExpiry;
 

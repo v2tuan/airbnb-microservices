@@ -32,6 +32,7 @@ export interface BookingTripsResponse {
   createdAt: string;
   expiresAt: string;
   paidAt: string | null;
+  checkedOutAt?: string | null;
   currency: string;
   hostId: string | null;
   listingId: string;
@@ -91,6 +92,7 @@ export interface BookingDetailResponse {
   expiresAt: string;
   paidAt: string | null;
   checkedInAt: string | null;
+  checkedOutAt: string | null;
   completedAt: string | null;
   paymentIntentId: string | null;
   numAdults: number;
@@ -225,6 +227,7 @@ export interface HostReservationResponse {
   expiresAt?: string | null;
   paidAt?: string | null;
   checkedInAt?: string | null;
+  checkedOutAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
   numAdults: number;
@@ -283,6 +286,7 @@ export interface HostReservationDetailResponse {
   expiresAt?: string | null;
   paidAt?: string | null;
   checkedInAt?: string | null;
+  checkedOutAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
   cancellationReason?: string | null;

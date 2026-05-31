@@ -6,9 +6,19 @@ interface TripTimelineProps {
   checkIn: string;
   checkOut: string;
   status: BookingStatus;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+  completedAt?: string | null;
 }
 
-export function TripTimeline({ checkIn, checkOut, status }: TripTimelineProps) {
+export function TripTimeline({
+  checkIn,
+  checkOut,
+  status,
+  checkedInAt,
+  checkedOutAt,
+  completedAt,
+}: TripTimelineProps) {
   const now = new Date();
   const checkInDate = new Date(checkIn);
   const checkOutDate = new Date(checkOut);
@@ -27,6 +37,9 @@ export function TripTimeline({ checkIn, checkOut, status }: TripTimelineProps) {
     isConfirmed || isCheckedIn || isCheckedOut || isCompleted;
 
   const isBeforeTrip = isActiveReservation && now < checkInDate;
+  const hasCheckedIn = Boolean(checkedInAt) || isCheckedIn || isCheckedOut || isCompleted;
+  const hasCheckedOut = Boolean(checkedOutAt) || isCheckedOut || isCompleted;
+  const hasCompleted = Boolean(completedAt) || isCompleted;
   const isDuringTrip =
     (isActiveReservation && now >= checkInDate && now < checkOutDate) ||
     isCheckedIn;
@@ -61,21 +74,30 @@ export function TripTimeline({ checkIn, checkOut, status }: TripTimelineProps) {
       icon: Key,
       label: `Check-in - ${formatDate(checkIn)}`,
       description: "Arrive at the property",
-      done: isActiveReservation && (isDuringTrip || isAfterTrip),
+      done: hasCheckedIn || (isActiveReservation && (isDuringTrip || isAfterTrip)),
       active: isCheckedIn,
     },
     {
       icon: MapPin,
       label: "Enjoying your stay",
       description: "Make memories",
-      done: isActiveReservation && isAfterTrip,
-      active: isActiveReservation && isDuringTrip,
+      done: hasCheckedOut || (isActiveReservation && isAfterTrip),
+      active: isCheckedIn || (isActiveReservation && isDuringTrip),
     },
     {
       icon: Smile,
       label: `Check-out - ${formatDate(checkOut)}`,
-      description: "Leave a review for your host",
-      done: isAfterTrip,
+      description: hasCompleted
+        ? "Your trip is completed"
+        : "Your stay has ended and is waiting for final completion",
+      done: hasCheckedOut || isAfterTrip,
+      active: isCheckedOut,
+    },
+    {
+      icon: CheckCircle2,
+      label: "Completed",
+      description: "The stay has been finalized",
+      done: hasCompleted,
       active: false,
     },
   ];

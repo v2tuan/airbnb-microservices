@@ -118,7 +118,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             :type = 'UPCOMING'
             AND (
                 (
-                    b.status = com.bookingservice.entity.BookingStatus.CONFIRMED
+                    b.status IN (
+                        com.bookingservice.entity.BookingStatus.CONFIRMED,
+                        com.bookingservice.entity.BookingStatus.CHECKED_IN,
+                        com.bookingservice.entity.BookingStatus.CHECKED_OUT
+                    )
                     AND b.checkOutDate >= CURRENT_DATE
                 )
 
@@ -131,9 +135,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
         OR (
             :type = 'COMPLETED'
-            AND b.status IN (
-                com.bookingservice.entity.BookingStatus.COMPLETED            )
-            AND b.checkOutDate < CURRENT_DATE
+            AND b.status = com.bookingservice.entity.BookingStatus.COMPLETED
         )
     )
     ORDER BY b.createdAt DESC

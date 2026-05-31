@@ -70,6 +70,7 @@ type StatusFilterKey =
   | "NEEDS_ATTENTION"
   | "CONFIRMED"
   | "IN_HOUSE"
+  | "CHECKED_OUT"
   | "COMPLETED"
   | "CANCELLED";
 
@@ -180,6 +181,7 @@ const statusViews: Array<{
   },
   { key: "CONFIRMED", label: "Confirmed", statuses: ["CONFIRMED"] },
   { key: "IN_HOUSE", label: "In-house", statuses: ["CHECKED_IN"] },
+  { key: "CHECKED_OUT", label: "Checked out", statuses: ["CHECKED_OUT"] },
   { key: "COMPLETED", label: "Completed", statuses: ["COMPLETED"] },
   {
     key: "CANCELLED",
@@ -215,6 +217,7 @@ const emptyStatusCounts: Record<StatusFilterKey, number> = {
   NEEDS_ATTENTION: 0,
   CONFIRMED: 0,
   IN_HOUSE: 0,
+  CHECKED_OUT: 0,
   COMPLETED: 0,
   CANCELLED: 0,
 };

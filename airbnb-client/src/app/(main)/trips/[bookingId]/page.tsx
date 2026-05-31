@@ -359,6 +359,7 @@ export default function BookingDetailPage() {
     },
     { label: "Paid at", value: formatDateTime(booking.paidAt) },
     { label: "Checked in at", value: formatDateTime(booking.checkedInAt) },
+    { label: "Checked out at", value: formatDateTime(booking.checkedOutAt) },
     { label: "Completed at", value: formatDateTime(booking.completedAt) },
   ];
   const houseRules = listing?.houseRules;
@@ -858,6 +859,9 @@ export default function BookingDetailPage() {
                 checkIn={booking.checkInDate}
                 checkOut={booking.checkOutDate}
                 status={effectiveStatus}
+                checkedInAt={booking.checkedInAt}
+                checkedOutAt={booking.checkedOutAt}
+                completedAt={booking.completedAt}
               />
             </div>
             <div className="animate-fade-in-up-delay-3">

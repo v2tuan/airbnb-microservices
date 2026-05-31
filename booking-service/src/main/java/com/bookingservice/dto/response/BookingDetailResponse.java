@@ -36,6 +36,7 @@ public class BookingDetailResponse {
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
     private LocalDateTime checkedInAt;
+    private LocalDateTime checkedOutAt;
     private LocalDateTime completedAt;
     private String paymentIntentId;
     private Integer numAdults;

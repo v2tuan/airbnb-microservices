@@ -153,6 +153,10 @@ public class BookingService {
         if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
             booking.setCheckedInAt(LocalDateTime.now());
         }
+        if ((request.getStatus() == BookingStatus.CHECKED_OUT || request.getStatus() == BookingStatus.COMPLETED)
+                && booking.getCheckedOutAt() == null) {
+            booking.setCheckedOutAt(LocalDateTime.now());
+        }
         if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
             booking.setCompletedAt(LocalDateTime.now());
         }
@@ -586,6 +590,10 @@ public class BookingService {
         if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
             booking.setCheckedInAt(LocalDateTime.now());
         }
+        if ((request.getStatus() == BookingStatus.CHECKED_OUT || request.getStatus() == BookingStatus.COMPLETED)
+                && booking.getCheckedOutAt() == null) {
+            booking.setCheckedOutAt(LocalDateTime.now());
+        }
         if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
             booking.setCompletedAt(LocalDateTime.now());
         }
@@ -657,6 +665,7 @@ public class BookingService {
                         "NEEDS_ATTENTION", 0L,
                         "CONFIRMED", 0L,
                         "IN_HOUSE", 0L,
+                        "CHECKED_OUT", 0L,
                         "COMPLETED", 0L,
                         "CANCELLED", 0L
                 ))
@@ -736,8 +745,9 @@ public class BookingService {
         if (reservation.getStatus() == BookingStatus.CHECKED_IN) return 1;
         if (reservation.getStatus() == BookingStatus.CONFIRMED && reservation.getCheckInDate().isEqual(today)) return 2;
         if (reservation.getStatus() == BookingStatus.CONFIRMED) return 3;
-        if (reservation.getStatus() == BookingStatus.COMPLETED) return 4;
-        return 5;
+        if (reservation.getStatus() == BookingStatus.CHECKED_OUT) return 4;
+        if (reservation.getStatus() == BookingStatus.COMPLETED) return 5;
+        return 6;
     }
 
     private HostReservationsPageResponse.ReservationStats buildReservationStats(List<ReservationResponse> scopedReservations) {
@@ -779,6 +789,7 @@ public class BookingService {
                 "NEEDS_ATTENTION", countStatuses(scopedReservations, BookingStatus.PENDING_PAYMENT),
                 "CONFIRMED", countStatuses(scopedReservations, BookingStatus.CONFIRMED),
                 "IN_HOUSE", countStatuses(scopedReservations, BookingStatus.CHECKED_IN),
+                "CHECKED_OUT", countStatuses(scopedReservations, BookingStatus.CHECKED_OUT),
                 "COMPLETED", countStatuses(scopedReservations, BookingStatus.COMPLETED),
                 "CANCELLED", countStatuses(
                         scopedReservations,
@@ -851,6 +862,7 @@ public class BookingService {
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
                 .checkedInAt(booking.getCheckedInAt())
+                .checkedOutAt(booking.getCheckedOutAt())
                 .completedAt(booking.getCompletedAt())
                 .cancelledAt(booking.getCancelledAt())
                 .guestCount(booking.getNumAdults())
@@ -874,6 +886,7 @@ public class BookingService {
                 .createdAt(booking.getCreatedAt())
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
+                .checkedOutAt(booking.getCheckedOutAt())
                 .numAdults(booking.getNumAdults())
                 .numChildren(booking.getNumChildren())
                 .numInfants(booking.getNumInfants())
@@ -917,6 +930,7 @@ public class BookingService {
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
                 .checkedInAt(booking.getCheckedInAt())
+                .checkedOutAt(booking.getCheckedOutAt())
                 .completedAt(booking.getCompletedAt())
                 .cancelledAt(booking.getCancelledAt())
                 .numAdults(booking.getNumAdults())
@@ -951,6 +965,7 @@ public class BookingService {
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
                 .checkedInAt(booking.getCheckedInAt())
+                .checkedOutAt(booking.getCheckedOutAt())
                 .completedAt(booking.getCompletedAt())
                 .cancelledAt(booking.getCancelledAt())
                 .cancellationReason(booking.getCancellationReason())
@@ -1047,6 +1062,7 @@ public class BookingService {
                 .expiresAt(booking.getExpiresAt())
                 .paidAt(booking.getPaidAt())
                 .checkedInAt(booking.getCheckedInAt())
+                .checkedOutAt(booking.getCheckedOutAt())
                 .completedAt(booking.getCompletedAt())
                 .paymentIntentId(booking.getPaymentIntentId())
                 .numAdults(booking.getNumAdults())

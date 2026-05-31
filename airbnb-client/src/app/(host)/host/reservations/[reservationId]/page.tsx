@@ -264,6 +264,10 @@ function buildOptimisticReservation(
       status === "CHECKED_IN" || status === "CHECKED_OUT" || status === "COMPLETED"
         ? (reservation.checkedInAt ?? now)
         : reservation.checkedInAt,
+    checkedOutAt:
+      status === "CHECKED_OUT" || status === "COMPLETED"
+        ? (reservation.checkedOutAt ?? now)
+        : reservation.checkedOutAt,
     completedAt:
       status === "COMPLETED"
         ? (reservation.completedAt ?? now)
@@ -361,6 +365,14 @@ function timelineSteps(reservation: HostReservationDetailResponse) {
         ["CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
           reservation.status,
         ),
+    },
+    {
+      key: "checked-out",
+      label: "Checked out",
+      value: formatDateTime(reservation.checkedOutAt),
+      done:
+        !!reservation.checkedOutAt ||
+        ["CHECKED_OUT", "COMPLETED"].includes(reservation.status),
     },
     {
       key: "final",
