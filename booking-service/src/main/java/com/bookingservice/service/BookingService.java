@@ -76,6 +76,7 @@ public class BookingService {
     private final PaymentClient paymentClient;
     private final UserClient userClient;
     private final HostPenaltyService hostPenaltyService;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     private record PricingSnapshot(
             BigDecimal nightlyPrice,
@@ -97,6 +98,15 @@ public class BookingService {
             BigDecimal refundAmount,
             BigDecimal nonRefundableAmount
     ) {
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isListingAvailable(UUID listingId, LocalDate checkIn, LocalDate checkOut) {
+        if (listingId == null || checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
+            return false;
+        }
+
+        return bookingRepository.findConflictingBookings(listingId, checkIn, checkOut).isEmpty();
     }
 
     @Transactional
@@ -149,6 +159,7 @@ public class BookingService {
                 .build();
 
         Booking saved = bookingRepository.save(booking);
+        publishBookingEvent("BOOKING_REQUEST_CREATED", saved, true, false, false);
         return CreateBookingResponse.builder()
                 .bookingId(saved.getBookingId())
                 .hostId(saved.getHostId().toString())
@@ -175,7 +186,8 @@ public class BookingService {
             return mapToResponse(bookingRepository.save(booking));
         }
 
-        validateStatusTransition(booking.getStatus(), request.getStatus());
+        BookingStatus previousStatus = booking.getStatus();
+        validateStatusTransition(previousStatus, request.getStatus());
         booking.setStatus(request.getStatus());
 
         if (request.getPaymentIntentId() != null) {
@@ -201,7 +213,9 @@ public class BookingService {
             booking.setCancellationReason(request.getReason());
         }
 
-        return mapToResponse(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        publishStatusTransitionEvent(previousStatus, saved);
+        return mapToResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -244,7 +258,9 @@ public class BookingService {
                 && booking.getExpiresAt() != null
                 && booking.getExpiresAt().isBefore(LocalDateTime.now())) {
             booking.setStatus(BookingStatus.EXPIRED);
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking payment hold has expired");
+            Booking saved = bookingRepository.save(booking);
+            publishBookingEvent("BOOKING_EXPIRED", saved, true, false, false);
+            return mapToResponse(saved);
         }
 
         if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
@@ -253,7 +269,9 @@ public class BookingService {
 
         booking.setStatus(BookingStatus.EXPIRED);
         booking.setCancellationReason(request.getReason());
-        return mapToResponse(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+        publishBookingEvent("BOOKING_EXPIRED", saved, true, false, false);
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -313,6 +331,7 @@ public class BookingService {
         quote.setConfirmedAt(now);
 
         Booking saved = bookingRepository.save(booking);
+        publishBookingEvent("BOOKING_CANCELLED_BY_GUEST", saved, true, true, false);
         cancellationQuoteRepository.save(quote);
 
         if (quote.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -327,6 +346,7 @@ public class BookingService {
                             .businessCauseId(quote.getQuoteId())
                             .build()
             );
+            publishRefundCreated(saved, quote.getRefundAmount(), "CANCELLATION_QUOTE", quote.getQuoteId());
         }
 
         return mapToResponse(saved);
@@ -400,6 +420,7 @@ public class BookingService {
 
         Booking saved = bookingRepository.save(booking);
         hostCancellationQuoteRepository.save(quote);
+        publishBookingEvent("BOOKING_CANCELLED_BY_HOST", saved, true, true, false);
 
         paymentClient.createBookingRefund(
                 "Bearer " + jwt.getTokenValue(),
@@ -414,6 +435,7 @@ public class BookingService {
                         .businessCauseId(quote.getQuoteId())
                         .build()
         );
+        publishRefundCreated(saved, quote.getGuestRefundAmount(), "CANCELLATION_QUOTE", quote.getQuoteId());
         hostPenaltyService.createActivePenalty(saved, quote);
         applyHostPenaltyThresholdActions(jwt, quote);
 
@@ -449,6 +471,7 @@ public class BookingService {
         List<Booking> expired = bookingRepository.findExpiredPendingForUpdate(LocalDateTime.now());
         expired.forEach(booking -> booking.setStatus(BookingStatus.EXPIRED));
         bookingRepository.saveAll(expired);
+        expired.forEach(booking -> publishBookingEvent("BOOKING_EXPIRED", booking, true, false, false));
         return expired.size();
     }
 
@@ -632,6 +655,7 @@ public class BookingService {
                             .reason("Host cancellation threshold reached for listing penalties")
                             .build()
             );
+            publishListingEvent("LISTING_SUSPENDED", quote.getListingId(), quote.getHostId());
         } catch (Exception exception) {
             log.warn("Failed to suspend listing {} after host penalty threshold", quote.getListingId(), exception);
         }
@@ -956,6 +980,7 @@ public class BookingService {
         }
 
         // Chỉ đổi status khi status mới khác status hiện tại; nếu trùng, vẫn cho phép cập nhật reason/timestamp liên quan.
+        BookingStatus previousStatus = booking.getStatus();
         if (booking.getStatus() != request.getStatus()) {
             validateStatusTransition(booking.getStatus(), request.getStatus());
             booking.setStatus(request.getStatus());
@@ -982,6 +1007,9 @@ public class BookingService {
         }
 
         Booking saved = bookingRepository.save(booking);
+        if (previousStatus != saved.getStatus()) {
+            publishStatusTransitionEvent(previousStatus, saved);
+        }
         ListingResponse listing = listingClient
                 .getListingById("Bearer " + jwt.getTokenValue(), saved.getListingId())
                 .getData();
@@ -1755,6 +1783,88 @@ public class BookingService {
                 .map(photo -> photo.getPhotoUrl())
                 .findFirst()
                 .orElseGet(() -> listing.getPhotos().getFirst().getPhotoUrl());
+    }
+
+    private void publishStatusTransitionEvent(BookingStatus previousStatus, Booking booking) {
+        String eventType = switch (booking.getStatus()) {
+            case CONFIRMED -> "BOOKING_CONFIRMED";
+            case EXPIRED -> "BOOKING_EXPIRED";
+            case CHECKED_IN -> "BOOKING_CHECKED_IN";
+            case CHECKED_OUT -> "BOOKING_CHECKED_OUT";
+            case COMPLETED -> "BOOKING_COMPLETED";
+            case CANCELLED_BY_GUEST -> "BOOKING_CANCELLED_BY_GUEST";
+            case CANCELLED_BY_HOST -> "BOOKING_CANCELLED_BY_HOST";
+            case CANCELLED_BY_ADMIN -> "BOOKING_CANCELLED_BY_ADMIN";
+            case PENDING_PAYMENT -> null;
+        };
+
+        if (eventType == null || previousStatus == booking.getStatus()) {
+            return;
+        }
+
+        publishBookingEvent(
+                eventType,
+                booking,
+                true,
+                booking.getStatus() != BookingStatus.EXPIRED,
+                booking.getStatus() == BookingStatus.CANCELLED_BY_ADMIN
+        );
+    }
+
+    private void publishBookingEvent(
+            String eventType,
+            Booking booking,
+            boolean guestRecipient,
+            boolean hostRecipient,
+            boolean adminRecipient
+    ) {
+        Map<String, Object> payload = bookingPayload(booking);
+        if (guestRecipient) {
+            notificationEventPublisher.publish(eventType, booking.getGuestId(), "GUEST", payload);
+        }
+        if (hostRecipient && booking.getHostId() != null) {
+            notificationEventPublisher.publish(eventType, booking.getHostId(), "HOST", payload);
+        }
+        if (adminRecipient) {
+            notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
+        }
+    }
+
+    private void publishRefundCreated(Booking booking, BigDecimal amount, String businessCause, UUID businessCauseId) {
+        notificationEventPublisher.publish(
+                "REFUND_CREATED",
+                booking.getGuestId(),
+                "GUEST",
+                Map.of(
+                        "bookingId", booking.getBookingId().toString(),
+                        "refundAmount", amount,
+                        "currency", booking.getCurrency(),
+                        "businessCause", businessCause,
+                        "businessCauseId", businessCauseId.toString()
+                )
+        );
+    }
+
+    private void publishListingEvent(String eventType, UUID listingId, UUID hostId) {
+        Map<String, Object> payload = Map.of("listingId", listingId.toString());
+        if (hostId != null) {
+            notificationEventPublisher.publish(eventType, hostId, "HOST", payload);
+        }
+        notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
+    }
+
+    private Map<String, Object> bookingPayload(Booking booking) {
+        return Map.of(
+                "bookingId", booking.getBookingId().toString(),
+                "listingId", booking.getListingId().toString(),
+                "guestId", booking.getGuestId().toString(),
+                "hostId", booking.getHostId() != null ? booking.getHostId().toString() : "",
+                "status", booking.getStatus().name(),
+                "checkInDate", booking.getCheckInDate().toString(),
+                "checkOutDate", booking.getCheckOutDate().toString(),
+                "totalAmount", booking.getTotalPrice(),
+                "currency", booking.getCurrency()
+        );
     }
 
     private Jwt currentJwt() {

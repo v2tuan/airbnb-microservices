@@ -15,6 +15,7 @@ import com.listingservice.exception.AppException;
 import com.listingservice.exception.ErrorCode;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
+import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.IListingService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +44,7 @@ public class ListingService implements IListingService {
 
     ListingRepository listingRepository;
     IListingMapper listingMapper;
+    AvailabilityClient availabilityClient;
 
     @Override
     @Transactional
@@ -135,18 +138,13 @@ public class ListingService implements IListingService {
     }
 
     @Override
-    public List<ListingResponse> searchListings(String city, String country, Integer maxGuests) {
+    public List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut) {
         log.info("Searching listings - City: {}, Country: {}, Max Guests: {}", city, country, maxGuests);
 
-        List<Listing> listings;
-
-        if (city != null && country != null) {
-            listings = listingRepository.findByCityAndCountry(city, country);
-        } else if (city != null) {
-            listings = listingRepository.findByCity(city);
-        } else {
-            listings = listingRepository.findByStatus(ListingStatus.ACTIVE);
-        }
+        List<Listing> listings = listingRepository.findByStatus(ListingStatus.ACTIVE).stream()
+                .filter(listing -> matchesIgnoreCase(listing.getCity(), city))
+                .filter(listing -> matchesIgnoreCase(listing.getCountry(), country))
+                .toList();
 
         if (maxGuests != null) {
             listings = listings.stream()
@@ -154,26 +152,34 @@ public class ListingService implements IListingService {
                     .toList();
         }
 
-        return listings.stream()
+        return filterAvailableForSearch(listings, checkIn, checkOut).stream()
                 .map(listingMapper::toResponse)
                 .toList();
     }
 
     @Override
-    public List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
+    public List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, LocalDate checkIn, LocalDate checkOut) {
         log.info("Searching listings by price range: {} - {}", minPrice, maxPrice);
 
-        return listingRepository.findByPriceRangeAndStatus(minPrice, maxPrice, ListingStatus.ACTIVE)
+        return filterAvailableForSearch(
+                listingRepository.findByPriceRangeAndStatus(minPrice, maxPrice, ListingStatus.ACTIVE),
+                checkIn,
+                checkOut
+        )
                 .stream()
                 .map(listingMapper::toResponse)
                 .toList();
     }
 
     @Override
-    public List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius) {
+    public List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius, LocalDate checkIn, LocalDate checkOut) {
         log.info("Searching listings by location - Lat: {}, Lng: {}, Radius: {}km", latitude, longitude, radius);
 
-        return listingRepository.findByLocationWithinRadius(latitude, longitude, radius, ListingStatus.ACTIVE)
+        return filterAvailableForSearch(
+                listingRepository.findByLocationWithinRadius(latitude, longitude, radius, ListingStatus.ACTIVE),
+                checkIn,
+                checkOut
+        )
                 .stream()
                 .map(listingMapper::toResponse)
                 .toList();
@@ -364,6 +370,25 @@ public class ListingService implements IListingService {
         }
 
         return Math.min(limitPerSection, MAX_SECTION_LIMIT);
+    }
+
+    private boolean matchesIgnoreCase(String actual, String expected) {
+        return expected == null || expected.isBlank()
+                || actual != null && actual.equalsIgnoreCase(expected.trim());
+    }
+
+    private List<Listing> filterAvailableForSearch(List<Listing> listings, LocalDate checkIn, LocalDate checkOut) {
+        if (checkIn == null || checkOut == null) {
+            return listings;
+        }
+
+        if (!checkOut.isAfter(checkIn)) {
+            return List.of();
+        }
+
+        return listings.stream()
+                .filter(listing -> availabilityClient.isAvailable(listing.getListingId(), checkIn, checkOut))
+                .toList();
     }
 
     private void validateCheckInWindow(Listing listing) {

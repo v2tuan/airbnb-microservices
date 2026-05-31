@@ -45,6 +45,7 @@ public class RefundService {
     private final TransactionService transactionService;
     private final RefundMapper refundMapper;
     private final PaymentEventPublisher eventPublisher;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     @Transactional
     public RefundResponse processBookingRefund(UUID bookingId, BookingRefundRequest request) {
@@ -160,6 +161,7 @@ public class RefundService {
                     stripeRefund.getId(),
                     LocalDateTime.now()
             ));
+            publishRefundNotification("REFUND_COMPLETED", payment, saved, refundAmount, null);
 
             return refundMapper.toResponse(saved);
         } catch (StripeException ex) {
@@ -182,7 +184,32 @@ public class RefundService {
                     ex.getMessage(),
                     LocalDateTime.now()
             ));
+            publishRefundNotification("REFUND_FAILED", payment, saved, refundAmount, ex.getMessage());
             return refundMapper.toResponse(saved);
+        }
+    }
+
+    private void publishRefundNotification(
+            String eventType,
+            Payment payment,
+            Refund refund,
+            long amount,
+            String failureReason
+    ) {
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("refundId", refund.getRefundId().toString());
+        payload.put("bookingId", payment.getBookingId().toString());
+        payload.put("paymentId", payment.getId().toString());
+        payload.put("amount", amount);
+        payload.put("currency", payment.getCurrency());
+        payload.put("status", refund.getStatus().name());
+        if (failureReason != null && !failureReason.isBlank()) {
+            payload.put("failureReason", failureReason);
+        }
+
+        notificationEventPublisher.publish(eventType, payment.getGuestId(), "GUEST", payload);
+        if ("REFUND_FAILED".equals(eventType)) {
+            notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
         }
     }
 

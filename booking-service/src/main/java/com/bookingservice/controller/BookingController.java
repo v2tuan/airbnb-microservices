@@ -53,6 +53,19 @@ public class BookingController {
     private final ComplaintService complaintService;
     private final HostPenaltyService hostPenaltyService;
 
+    @GetMapping("/availability")
+    public ResponseEntity<ApiResponse<Boolean>> isListingAvailable(
+            @RequestParam UUID listingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut
+    ) {
+        return ResponseEntity.ok(ApiResponse.<Boolean>builder()
+                .success(true)
+                .message("Availability checked")
+                .data(bookingService.isListingAvailable(listingId, checkIn, checkOut))
+                .build());
+    }
+
     @PostMapping
     public ResponseEntity<CreateBookingResponse> createBooking(
             @Valid @RequestBody CreateBookingRequest request) {

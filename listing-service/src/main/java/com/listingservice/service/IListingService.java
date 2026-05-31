@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,9 +24,9 @@ public interface IListingService {
     List<ListingResponse> getListingsByIds(List<UUID> listingIds);
     List<ListingResponse> getAllListings();
     List<ListingResponse> getListingsByHost(String hostId);
-    List<ListingResponse> searchListings(String city, String country, Integer maxGuests);
-    List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice);
-    List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius);
+    List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut);
+    List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, LocalDate checkIn, LocalDate checkOut);
+    List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius, LocalDate checkIn, LocalDate checkOut);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     void suspendListing(UUID listingId, ListingSuspensionRequest request);

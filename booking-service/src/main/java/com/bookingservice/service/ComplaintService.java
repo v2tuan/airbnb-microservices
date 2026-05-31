@@ -89,6 +89,7 @@ public class ComplaintService {
     private final BookingRepository bookingRepository;
     private final PaymentClient paymentClient;
     private final ListingClient listingClient;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     @Transactional
     public ComplaintResponse createComplaint(UUID bookingId, CreateComplaintRequest request) {
@@ -117,6 +118,7 @@ public class ComplaintService {
                 .evidenceUrls(serializeEvidenceUrls(request.getEvidenceUrls()))
                 .hostResponseDeadline(now.plusHours(HOST_RESPONSE_DEADLINE_HOURS))
                 .build());
+        publishComplaintEvent("COMPLAINT_CREATED", complaint, false, true, false);
         return mapToResponse(complaint);
     }
 
@@ -181,7 +183,9 @@ public class ComplaintService {
         complaint.setStatus(ComplaintStatus.RESOLVED);
         complaint.setResolvedAt(LocalDateTime.now());
         complaint.setUpdatedAt(LocalDateTime.now());
-        return mapToResponse(complaintRepository.save(complaint));
+        BookingComplaint saved = complaintRepository.save(complaint);
+        publishComplaintEvent("COMPLAINT_RESOLVED", saved, true, true, false);
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -195,7 +199,9 @@ public class ComplaintService {
         if (complaint.getStatus() != ComplaintStatus.OPEN) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint cannot be escalated");
         }
-        return mapToResponse(escalateComplaint(complaint));
+        BookingComplaint saved = escalateComplaint(complaint);
+        publishComplaintEvent("COMPLAINT_ESCALATED", saved, false, false, true);
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -223,10 +229,12 @@ public class ComplaintService {
             case REJECT -> {
                 complaint.setStatus(ComplaintStatus.REJECTED);
                 complaint.setResolvedAt(now);
+                publishComplaintEvent("COMPLAINT_REJECTED", complaint, true, true, false);
             }
             case RESOLVE_NO_REFUND -> {
                 complaint.setStatus(ComplaintStatus.RESOLVED);
                 complaint.setResolvedAt(now);
+                publishComplaintEvent("COMPLAINT_RESOLVED", complaint, true, true, false);
             }
             case PARTIAL_REFUND -> {
                 BigDecimal amount = request.getRefundAmount();
@@ -237,22 +245,27 @@ public class ComplaintService {
                 complaint.setRefundAmount(money(amount));
                 createRefund(jwt, booking, money(amount), "COMPLAINT_PARTIAL_REFUND", "Complaint decision " + complaintId,
                         "COMPLAINT_DECISION", complaintId);
+                publishRefundCreated(booking, money(amount), "COMPLAINT_DECISION", complaintId);
                 complaint.setStatus(ComplaintStatus.RESOLVED);
                 complaint.setResolvedAt(now);
+                publishComplaintEvent("COMPLAINT_RESOLVED", complaint, true, true, false);
             }
             case FULL_REFUND -> {
                 BigDecimal amount = totalAmount(booking);
                 complaint.setRefundAmount(amount);
                 createRefund(jwt, booking, amount, "COMPLAINT_FULL_REFUND", "Complaint decision " + complaintId,
                         "COMPLAINT_DECISION", complaintId);
+                publishRefundCreated(booking, amount, "COMPLAINT_DECISION", complaintId);
                 if (booking.getStatus() == BookingStatus.CHECKED_IN) {
                     booking.setStatus(BookingStatus.CANCELLED_BY_ADMIN);
                     booking.setCancelledAt(now);
                     booking.setCancellationReason("Admin complaint full refund: " + request.getAdminNote().trim());
                     bookingRepository.save(booking);
+                    publishBookingCancelledByAdmin(booking);
                 }
                 complaint.setStatus(ComplaintStatus.RESOLVED);
                 complaint.setResolvedAt(now);
+                publishComplaintEvent("COMPLAINT_RESOLVED", complaint, true, true, false);
             }
             case SUSPEND_LISTING -> {
                 listingClient.suspendListing("Bearer " + jwt.getTokenValue(), complaint.getListingId(),
@@ -260,8 +273,10 @@ public class ComplaintService {
                                 .suspendedUntil(now.plusDays(7))
                                 .reason("Admin complaint decision: " + request.getAdminNote().trim())
                                 .build());
+                publishListingEvent("LISTING_SUSPENDED", complaint.getListingId(), complaint.getHostId());
                 complaint.setStatus(ComplaintStatus.RESOLVED);
                 complaint.setResolvedAt(now);
+                publishComplaintEvent("COMPLAINT_RESOLVED", complaint, true, true, false);
             }
         }
 
@@ -283,10 +298,12 @@ public class ComplaintService {
         booking.setCancelledAt(now);
         booking.setCancellationReason(request.getReason() + " - " + request.getAdminNote());
         Booking saved = bookingRepository.save(booking);
+        publishBookingCancelledByAdmin(saved);
 
         if (request.getRefundAmount() != null && request.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
             createRefund(jwt, saved, money(request.getRefundAmount()), "ADMIN_FORCE_CANCELLATION",
                     "Admin force cancellation: " + request.getAdminNote(), "ADMIN_FORCE_CANCELLATION", saved.getBookingId());
+            publishRefundCreated(saved, money(request.getRefundAmount()), "ADMIN_FORCE_CANCELLATION", saved.getBookingId());
         }
 
         return ReservationDetailResponse.builder()
@@ -322,20 +339,24 @@ public class ComplaintService {
     public void suspendListing(UUID listingId, AdminListingStatusRequest request) {
         Jwt jwt = currentJwt();
         requireAdmin(jwt);
+        UUID hostId = resolveListingHostId("Bearer " + jwt.getTokenValue(), listingId);
         listingClient.suspendListing("Bearer " + jwt.getTokenValue(), listingId,
                 ListingSuspensionRequest.builder()
                         .suspendedUntil(request.getSuspendedUntil())
                         .reason(request.getReason())
                         .build());
+        publishListingEvent("LISTING_SUSPENDED", listingId, hostId);
     }
 
     public void unsuspendListing(UUID listingId, AdminListingStatusRequest request) {
         Jwt jwt = currentJwt();
         requireAdmin(jwt);
+        UUID hostId = resolveListingHostId("Bearer " + jwt.getTokenValue(), listingId);
         listingClient.unsuspendListing("Bearer " + jwt.getTokenValue(), listingId,
                 ListingUnsuspensionRequest.builder()
                         .reason(request.getReason())
                         .build());
+        publishListingEvent("LISTING_UNSUSPENDED", listingId, hostId);
     }
 
     @Scheduled(fixedDelayString = "${booking.complaints.auto-escalate-delay-ms:60000}")
@@ -345,7 +366,10 @@ public class ComplaintService {
                 ComplaintStatus.WAITING_HOST_RESPONSE,
                 LocalDateTime.now()
         );
-        overdue.forEach(this::escalateComplaint);
+        overdue.forEach(complaint -> {
+            BookingComplaint escalated = escalateComplaint(complaint);
+            publishComplaintEvent("COMPLAINT_ESCALATED", escalated, false, false, true);
+        });
     }
 
     @Scheduled(fixedDelayString = "${booking.complaints.auto-close-delay-ms:300000}")
@@ -451,6 +475,90 @@ public class ComplaintService {
                 .createdAt(complaint.getCreatedAt())
                 .updatedAt(complaint.getUpdatedAt())
                 .build();
+    }
+
+    private void publishComplaintEvent(
+            String eventType,
+            BookingComplaint complaint,
+            boolean guestRecipient,
+            boolean hostRecipient,
+            boolean adminRecipient
+    ) {
+        Map<String, Object> payload = Map.of(
+                "complaintId", complaint.getComplaintId().toString(),
+                "bookingId", complaint.getBookingId().toString(),
+                "listingId", complaint.getListingId().toString(),
+                "type", complaint.getType().name(),
+                "status", complaint.getStatus().name()
+        );
+        if (guestRecipient) {
+            notificationEventPublisher.publish(eventType, complaint.getGuestId(), "GUEST", payload);
+        }
+        if (hostRecipient) {
+            notificationEventPublisher.publish(eventType, complaint.getHostId(), "HOST", payload);
+        }
+        if (adminRecipient) {
+            notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
+        }
+    }
+
+    private void publishBookingCancelledByAdmin(Booking booking) {
+        Map<String, Object> payload = bookingPayload(booking);
+        notificationEventPublisher.publish("BOOKING_CANCELLED_BY_ADMIN", booking.getGuestId(), "GUEST", payload);
+        if (booking.getHostId() != null) {
+            notificationEventPublisher.publish("BOOKING_CANCELLED_BY_ADMIN", booking.getHostId(), "HOST", payload);
+        }
+        notificationEventPublisher.publishToRole("BOOKING_CANCELLED_BY_ADMIN", "ADMIN", payload);
+    }
+
+    private void publishRefundCreated(Booking booking, BigDecimal amount, String businessCause, UUID businessCauseId) {
+        notificationEventPublisher.publish(
+                "REFUND_CREATED",
+                booking.getGuestId(),
+                "GUEST",
+                Map.of(
+                        "bookingId", booking.getBookingId().toString(),
+                        "refundAmount", amount,
+                        "currency", booking.getCurrency(),
+                        "businessCause", businessCause,
+                        "businessCauseId", businessCauseId.toString()
+                )
+        );
+    }
+
+    private void publishListingEvent(String eventType, UUID listingId, UUID hostId) {
+        Map<String, Object> payload = Map.of("listingId", listingId.toString());
+        if (hostId != null) {
+            notificationEventPublisher.publish(eventType, hostId, "HOST", payload);
+        }
+        notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
+    }
+
+    private UUID resolveListingHostId(String bearerToken, UUID listingId) {
+        try {
+            var response = listingClient.getListingById(bearerToken, listingId);
+            if (response == null || response.getData() == null || response.getData().getHostId() == null) {
+                return null;
+            }
+            return UUID.fromString(response.getData().getHostId());
+        } catch (Exception ex) {
+            log.warn("Failed to resolve host for listing notification listingId={}", listingId, ex);
+            return null;
+        }
+    }
+
+    private Map<String, Object> bookingPayload(Booking booking) {
+        return Map.of(
+                "bookingId", booking.getBookingId().toString(),
+                "listingId", booking.getListingId().toString(),
+                "guestId", booking.getGuestId().toString(),
+                "hostId", booking.getHostId() != null ? booking.getHostId().toString() : "",
+                "status", booking.getStatus().name(),
+                "checkInDate", booking.getCheckInDate().toString(),
+                "checkOutDate", booking.getCheckOutDate().toString(),
+                "totalAmount", booking.getTotalPrice(),
+                "currency", booking.getCurrency()
+        );
     }
 
     private Jwt currentJwt() {

@@ -24,6 +24,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class HostPenaltyService {
     private final HostPenaltyRepository hostPenaltyRepository;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     public ThresholdPreview previewThresholds(Booking booking, LocalDateTime now) {
         int listingCount = (int) hostPenaltyRepository.countByListingIdAndStatusAndCreatedAtAfter(
@@ -61,7 +62,9 @@ public class HostPenaltyService {
                 .hostAdminReviewTriggered(quote.getWillMarkHostAdminReview())
                 .listingSuspendedUntil(quote.getListingSuspendedUntil())
                 .build();
-        return hostPenaltyRepository.save(penalty);
+        HostPenalty saved = hostPenaltyRepository.save(penalty);
+        publishPenaltyEvent("HOST_PENALTY_CREATED", saved);
+        return saved;
     }
 
     @Transactional
@@ -75,7 +78,24 @@ public class HostPenaltyService {
         penalty.setStatus(HostPenaltyStatus.WAIVED);
         penalty.setWaivedAt(LocalDateTime.now());
         penalty.setWaiverReason(reason);
-        return mapToResponse(hostPenaltyRepository.save(penalty));
+        HostPenalty saved = hostPenaltyRepository.save(penalty);
+        publishPenaltyEvent("HOST_PENALTY_WAIVED", saved);
+        return mapToResponse(saved);
+    }
+
+    private void publishPenaltyEvent(String eventType, HostPenalty penalty) {
+        notificationEventPublisher.publish(
+                eventType,
+                penalty.getHostId(),
+                "HOST",
+                Map.of(
+                        "penaltyId", penalty.getPenaltyId().toString(),
+                        "bookingId", penalty.getBookingId().toString(),
+                        "listingId", penalty.getListingId().toString(),
+                        "status", penalty.getStatus().name(),
+                        "points", penalty.getPoints()
+                )
+        );
     }
 
     private HostPenaltyResponse mapToResponse(HostPenalty penalty) {

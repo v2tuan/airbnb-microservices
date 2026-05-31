@@ -80,6 +80,7 @@ kafka:
     payout-completed: payout.completed
     refund-completed: refund.completed
     refund-failed: refund.failed
+    notifications: notifications
 
 payout:
   scheduler-delay-ms: ${PAYOUT_SCHEDULER_DELAY_MS:60000}

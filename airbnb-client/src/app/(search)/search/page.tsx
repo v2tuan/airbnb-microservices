@@ -24,6 +24,10 @@ interface SearchPageProps {
     q?: string;
     city?: string;
     country?: string;
+    checkin?: string;
+    checkout?: string;
+    checkIn?: string;
+    checkOut?: string;
     guests?: string;
     minPrice?: string;
     maxPrice?: string;
@@ -207,6 +211,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = await searchParams;
   const destination = query.city ?? query.q ?? "";
   const country = query.country;
+  const checkIn = query.checkIn ?? query.checkin;
+  const checkOut = query.checkOut ?? query.checkout;
   const maxGuests = parsePositiveNumber(query.guests);
   const minPrice = parsePositiveNumber(query.minPrice);
   const maxPrice = parsePositiveNumber(query.maxPrice);
@@ -228,6 +234,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         listingAPI.searchByPriceRange({
           minPrice,
           maxPrice,
+          checkIn,
+          checkOut,
         }),
       );
       listings = unwrapApiData(response.data);
@@ -237,6 +245,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           city: destination || undefined,
           country,
           maxGuests,
+          checkIn,
+          checkOut,
         }),
       );
       listings = unwrapApiData(response.data);
@@ -275,6 +285,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     q: query.q,
     city: query.city,
     country: query.country,
+    checkin: query.checkin,
+    checkout: query.checkout,
+    checkIn: query.checkIn,
+    checkOut: query.checkOut,
     guests: query.guests,
     minPrice: query.minPrice,
     maxPrice: query.maxPrice,

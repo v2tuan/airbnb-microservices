@@ -168,10 +168,12 @@ public class ListingDetailController {
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListings(
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String country,
-            @RequestParam(required = false) Integer maxGuests) {
-        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}",
-                city, country, maxGuests);
-        List<ListingResponse> response = listingService.searchListings(city, country, maxGuests);
+            @RequestParam(required = false) Integer maxGuests,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, CheckIn: {}, CheckOut: {}",
+                city, country, maxGuests, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchListings(city, country, maxGuests, checkIn, checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
@@ -183,9 +185,12 @@ public class ListingDetailController {
     @GetMapping("/search/price")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByPriceRange(
             @RequestParam BigDecimal minPrice,
-            @RequestParam BigDecimal maxPrice) {
-        log.info("REST request to search listings by price range: {} - {}", minPrice, maxPrice);
-        List<ListingResponse> response = listingService.searchByPriceRange(minPrice, maxPrice);
+            @RequestParam BigDecimal maxPrice,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to search listings by price range: {} - {}, CheckIn: {}, CheckOut: {}",
+                minPrice, maxPrice, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchByPriceRange(minPrice, maxPrice, checkIn, checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
@@ -198,10 +203,12 @@ public class ListingDetailController {
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByLocation(
             @RequestParam BigDecimal latitude,
             @RequestParam BigDecimal longitude,
-            @RequestParam Double radius) {
-        log.info("REST request to search listings by location - Lat: {}, Lng: {}, Radius: {}km",
-                latitude, longitude, radius);
-        List<ListingResponse> response = listingService.searchByLocation(latitude, longitude, radius);
+            @RequestParam Double radius,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to search listings by location - Lat: {}, Lng: {}, Radius: {}km, CheckIn: {}, CheckOut: {}",
+                latitude, longitude, radius, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchByLocation(latitude, longitude, radius, checkIn, checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
