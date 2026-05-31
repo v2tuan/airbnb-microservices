@@ -2,6 +2,7 @@ package com.listingservice.service;
 
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.dto.response.ListingItemResponse;
@@ -26,6 +27,7 @@ public interface IListingService {
     List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
+    void suspendListing(UUID listingId, ListingSuspensionRequest request);
     List<HomeSectionResponse> getHomeSections(Integer limitPerSection);
 
     /**

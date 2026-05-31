@@ -3,6 +3,7 @@ package com.listingservice.controller;
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.CompositeListingResponse;
@@ -236,6 +237,21 @@ public class ListingDetailController {
                 ApiResponse.<Void>builder()
                         .code(1000)
                         .message("Listing deactivated successfully")
+                        .build());
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
+    @PatchMapping("/{listingId}/suspend")
+    public ResponseEntity<ApiResponse<Void>> suspendListing(
+            @PathVariable UUID listingId,
+            @Valid @RequestBody ListingSuspensionRequest request
+    ) {
+        log.info("REST request to suspend listing ID: {}", listingId);
+        listingService.suspendListing(listingId, request);
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .code(1000)
+                        .message("Listing suspended successfully")
                         .build());
     }
 

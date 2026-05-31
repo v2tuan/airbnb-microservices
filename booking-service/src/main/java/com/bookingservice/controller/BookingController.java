@@ -4,13 +4,16 @@ import com.bookingservice.dto.ApiResponse;
 import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.CancelBookingRequest;
 import com.bookingservice.dto.request.ConfirmCancellationQuoteRequest;
+import com.bookingservice.dto.request.ConfirmHostCancellationQuoteRequest;
 import com.bookingservice.dto.request.CreateBookingRequest;
+import com.bookingservice.dto.request.HostCancellationQuoteRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
 import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
+import com.bookingservice.dto.response.HostCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostReservationsPageResponse;
 import com.bookingservice.dto.response.ReservationDetailResponse;
 import com.bookingservice.dto.response.ReservationResponse;
@@ -170,6 +173,30 @@ public class BookingController {
                 .success(true)
                 .message("Update reservation status success")
                 .data(bookingService.updateReservationStatus(reservationId, request))
+                .build());
+    }
+
+    @PostMapping("/host/reservations/{reservationId}/cancellation-quotes")
+    public ResponseEntity<ApiResponse<HostCancellationQuoteResponse>> requestHostCancellationQuote(
+            @PathVariable UUID reservationId,
+            @Valid @RequestBody HostCancellationQuoteRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.<HostCancellationQuoteResponse>builder()
+                .success(true)
+                .message("Host cancellation quote created")
+                .data(bookingService.requestHostCancellationQuote(reservationId, request))
+                .build());
+    }
+
+    @PostMapping("/host/reservations/{reservationId}/cancel/confirm")
+    public ResponseEntity<ApiResponse<ReservationDetailResponse>> confirmHostCancellationQuote(
+            @PathVariable UUID reservationId,
+            @Valid @RequestBody ConfirmHostCancellationQuoteRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.<ReservationDetailResponse>builder()
+                .success(true)
+                .message("Cancel reservation success")
+                .data(bookingService.confirmHostCancellationQuote(reservationId, request))
                 .build());
     }
 

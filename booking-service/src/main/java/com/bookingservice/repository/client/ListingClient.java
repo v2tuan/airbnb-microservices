@@ -1,6 +1,7 @@
 package com.bookingservice.repository.client;
 
 import com.bookingservice.dto.ApiResponse;
+import com.bookingservice.dto.request.ListingSuspensionRequest;
 import com.bookingservice.dto.request.ListingBatchRequest;
 import com.bookingservice.dto.response.ListingResponse;
 import feign.QueryMap;
@@ -34,5 +35,12 @@ public interface ListingClient {
     ApiResponse<List<ListingResponse>> getListingsByHost(
             @RequestHeader("Authorization") String token,
             @PathVariable("hostId") String hostId
+    );
+
+    @PatchMapping("/{listingId}/suspend")
+    ApiResponse<Void> suspendListing(
+            @RequestHeader("Authorization") String token,
+            @PathVariable UUID listingId,
+            @RequestBody ListingSuspensionRequest request
     );
 }

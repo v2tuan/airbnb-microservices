@@ -19,6 +19,13 @@ export type PaymentLifecycleStatus =
   | "REFUNDED"
   | "REFUND_FAILED";
 
+export type HostCancellationReasonCode =
+  | "PROPERTY_DAMAGE"
+  | "PERSONAL_EMERGENCY"
+  | "DOUBLE_BOOKING"
+  | "UNAVAILABLE"
+  | "OTHER";
+
 export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 
 export interface BookingTripsResponse {
@@ -204,6 +211,23 @@ export interface GuestCancellationQuoteResponse {
   taxesRefund: number;
   currency: string;
   policyCode: "FLEXIBLE" | "MODERATE" | "STRICT" | string;
+  expiresAt: string;
+}
+
+export interface HostCancellationQuoteResponse {
+  quoteId: string;
+  bookingId: string;
+  reasonCode: HostCancellationReasonCode;
+  guestRefundAmount: number;
+  currency: string;
+  penaltyPoints: number;
+  thresholdResult: {
+    listingActivePenaltyCount: number;
+    hostActivePenaltyCount: number;
+    willSuspendListing: boolean;
+    listingSuspendedUntil?: string | null;
+    willMarkHostAdminReview: boolean;
+  };
   expiresAt: string;
 }
 

@@ -7,6 +7,8 @@ import type {
   CheckoutRequest,
   CheckoutResponse,
   GuestCancellationQuoteResponse,
+  HostCancellationQuoteResponse,
+  HostCancellationReasonCode,
   HostReservationDetailResponse,
   HostReservationResponse,
   HostReservationsPageResponse,
@@ -174,6 +176,35 @@ export async function updateHostReservationStatus(
   const res = await apiClient.patch(
     `${prefix}/bookings/host/reservations/${reservationId}/status`,
     data,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function requestHostCancellationQuote(
+  token: string | null,
+  reservationId: string,
+  reasonCode: HostCancellationReasonCode,
+): Promise<ApiResponse<HostCancellationQuoteResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/host/reservations/${reservationId}/cancellation-quotes`,
+    { reasonCode },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function confirmHostCancellationQuote(
+  token: string | null,
+  reservationId: string,
+  quoteId: string,
+  reason: string,
+): Promise<ApiResponse<HostReservationDetailResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/host/reservations/${reservationId}/cancel/confirm`,
+    { quoteId, reason },
     { headers: { Authorization: `Bearer ${token}` } },
   );
 

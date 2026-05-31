@@ -4,14 +4,18 @@ import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.BookingRefundRequest;
 import com.bookingservice.dto.request.CancelBookingRequest;
 import com.bookingservice.dto.request.ConfirmCancellationQuoteRequest;
+import com.bookingservice.dto.request.ConfirmHostCancellationQuoteRequest;
 import com.bookingservice.dto.request.CreateBookingRequest;
+import com.bookingservice.dto.request.HostCancellationQuoteRequest;
 import com.bookingservice.dto.request.ListingBatchRequest;
+import com.bookingservice.dto.request.ListingSuspensionRequest;
 import com.bookingservice.dto.request.UpdateBookingStatusRequest;
 import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
+import com.bookingservice.dto.response.HostCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostReservationsPageResponse;
 import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.dto.response.PublicUserResponse;
@@ -21,8 +25,10 @@ import com.bookingservice.constant.ListingStatus;
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingCancellationQuote;
 import com.bookingservice.entity.BookingStatus;
+import com.bookingservice.entity.HostCancellationQuote;
 import com.bookingservice.repository.BookingCancellationQuoteRepository;
 import com.bookingservice.repository.BookingRepository;
+import com.bookingservice.repository.HostCancellationQuoteRepository;
 import com.bookingservice.repository.client.ListingClient;
 import com.bookingservice.repository.client.PaymentClient;
 import com.bookingservice.repository.client.UserClient;
@@ -58,12 +64,15 @@ import java.util.stream.Collectors;
 public class BookingService {
     private static final String DEFAULT_CANCELLATION_POLICY_CODE = "FLEXIBLE";
     private static final int GUEST_CANCELLATION_QUOTE_TTL_MINUTES = 10;
+    private static final int HOST_CANCELLATION_QUOTE_TTL_MINUTES = 10;
 
     private final BookingRepository bookingRepository;
     private final BookingCancellationQuoteRepository cancellationQuoteRepository;
+    private final HostCancellationQuoteRepository hostCancellationQuoteRepository;
     private final ListingClient listingClient;
     private final PaymentClient paymentClient;
     private final UserClient userClient;
+    private final HostPenaltyService hostPenaltyService;
 
     private record PricingSnapshot(
             BigDecimal nightlyPrice,
@@ -152,6 +161,9 @@ public class BookingService {
     public BookingResponse updateBookingStatus(UUID bookingId, UpdateBookingStatusRequest request) {
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
+        if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cancellation quote is required");
+        }
 
         if (booking.getStatus() == request.getStatus()) {
             if (request.getPaymentIntentId() != null && booking.getPaymentIntentId() == null) {
@@ -316,6 +328,95 @@ public class BookingService {
     }
 
     @Transactional
+    public HostCancellationQuoteResponse requestHostCancellationQuote(
+            UUID bookingId,
+            HostCancellationQuoteRequest request
+    ) {
+        Jwt jwt = currentJwt();
+        UUID hostId = UUID.fromString(jwt.getSubject());
+        LocalDateTime now = LocalDateTime.now();
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+
+        validateHostCancellationEligibility(booking, hostId, jwt);
+
+        int penaltyPoints = calculateHostPenaltyPoints(booking, now);
+        HostPenaltyService.ThresholdPreview threshold = hostPenaltyService.previewThresholds(booking, now);
+        HostCancellationQuote quote = hostCancellationQuoteRepository.save(HostCancellationQuote.builder()
+                .bookingId(booking.getBookingId())
+                .hostId(booking.getHostId())
+                .listingId(booking.getListingId())
+                .reasonCode(request.getReasonCode())
+                .guestRefundAmount(money(BigDecimal.valueOf(booking.getTotalPrice())))
+                .currency(booking.getCurrency())
+                .penaltyPoints(penaltyPoints)
+                .listingActivePenaltyCount(threshold.listingActivePenaltyCount())
+                .hostActivePenaltyCount(threshold.hostActivePenaltyCount())
+                .willSuspendListing(threshold.willSuspendListing())
+                .listingSuspendedUntil(threshold.listingSuspendedUntil())
+                .willMarkHostAdminReview(threshold.willMarkHostAdminReview())
+                .expiresAt(now.plusMinutes(HOST_CANCELLATION_QUOTE_TTL_MINUTES))
+                .build());
+
+        return mapToHostCancellationQuoteResponse(quote);
+    }
+
+    @Transactional
+    public ReservationDetailResponse confirmHostCancellationQuote(
+            UUID bookingId,
+            ConfirmHostCancellationQuoteRequest request
+    ) {
+        Jwt jwt = currentJwt();
+        UUID hostId = UUID.fromString(jwt.getSubject());
+        LocalDateTime now = LocalDateTime.now();
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+
+        validateHostCancellationEligibility(booking, hostId, jwt);
+
+        HostCancellationQuote quote = hostCancellationQuoteRepository
+                .findByQuoteIdAndBookingIdForUpdate(request.getQuoteId(), bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found"));
+
+        if (!quote.getHostId().equals(booking.getHostId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found");
+        }
+        if (quote.getConfirmedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has already been used");
+        }
+        if (!quote.getExpiresAt().isAfter(now)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has expired");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED_BY_HOST);
+        booking.setCancelledAt(now);
+        booking.setCancellationReason(resolveHostCancellationReason(request.getReason(), quote));
+        quote.setConfirmedAt(now);
+
+        Booking saved = bookingRepository.save(booking);
+        hostCancellationQuoteRepository.save(quote);
+
+        paymentClient.createBookingRefund(
+                "Bearer " + jwt.getTokenValue(),
+                bookingId,
+                BookingRefundRequest.builder()
+                        .refundAmount(quote.getGuestRefundAmount())
+                        .refundReason("HOST_CANCELLATION")
+                        .refundDetails("Host cancellation quote " + quote.getQuoteId()
+                                + ", reason=" + quote.getReasonCode()
+                                + ", penaltyPoints=" + quote.getPenaltyPoints())
+                        .build()
+        );
+        hostPenaltyService.createActivePenalty(saved, quote);
+        applyHostPenaltyThresholdActions(jwt, quote);
+
+        ListingResponse listing = listingClient
+                .getListingById("Bearer " + jwt.getTokenValue(), saved.getListingId())
+                .getData();
+        return mapToReservationDetailResponse(saved, listing, fetchGuestProfile(saved.getGuestId()));
+    }
+
+    @Transactional
     public BookingResponse checkIn(UUID bookingId) {
         return updateBookingStatus(bookingId, UpdateBookingStatusRequest.builder()
                 .status(BookingStatus.CHECKED_IN)
@@ -462,6 +563,60 @@ public class BookingService {
         }
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid booking is required before cancellation");
+        }
+    }
+
+    private void validateHostCancellationEligibility(Booking booking, UUID hostId, Jwt jwt) {
+        boolean admin = isAdmin(jwt);
+        if (!admin && !booking.getHostId().equals(hostId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found");
+        }
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reservation cannot be cancelled by host");
+        }
+        if (booking.getCheckedInAt() != null || !LocalDate.now().isBefore(booking.getCheckInDate())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cancellation is not available after check-in");
+        }
+        if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid reservation is required before cancellation");
+        }
+    }
+
+    private int calculateHostPenaltyPoints(Booking booking, LocalDateTime now) {
+        long hoursUntilCheckIn = ChronoUnit.HOURS.between(now, booking.getCheckInDate().atStartOfDay());
+        if (hoursUntilCheckIn > 24L * 7L) {
+            return 1;
+        }
+        if (hoursUntilCheckIn >= 24L) {
+            return 2;
+        }
+        return 3;
+    }
+
+    private String resolveHostCancellationReason(String reason, HostCancellationQuote quote) {
+        String trimmed = reason == null ? "" : reason.trim();
+        if (trimmed.isBlank()) {
+            return "Host cancellation: " + quote.getReasonCode();
+        }
+        return "Host cancellation: " + quote.getReasonCode() + " - " + trimmed;
+    }
+
+    private void applyHostPenaltyThresholdActions(Jwt jwt, HostCancellationQuote quote) {
+        if (!Boolean.TRUE.equals(quote.getWillSuspendListing())) {
+            return;
+        }
+
+        try {
+            listingClient.suspendListing(
+                    "Bearer " + jwt.getTokenValue(),
+                    quote.getListingId(),
+                    ListingSuspensionRequest.builder()
+                            .suspendedUntil(quote.getListingSuspendedUntil())
+                            .reason("Host cancellation threshold reached for listing penalties")
+                            .build()
+            );
+        } catch (Exception exception) {
+            log.warn("Failed to suspend listing {} after host penalty threshold", quote.getListingId(), exception);
         }
     }
 
@@ -779,6 +934,9 @@ public class BookingService {
 
         ensureCanManageReservation(jwt, booking);
         validateReservationManagementStatus(request.getStatus());
+        if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cancellation quote is required");
+        }
 
         // Chỉ đổi status khi status mới khác status hiện tại; nếu trùng, vẫn cho phép cập nhật reason/timestamp liên quan.
         if (booking.getStatus() != request.getStatus()) {
@@ -1116,6 +1274,25 @@ public class BookingService {
                 .taxesRefund(quote.getTaxesRefund())
                 .currency(quote.getCurrency())
                 .policyCode(quote.getPolicyCode())
+                .expiresAt(quote.getExpiresAt())
+                .build();
+    }
+
+    private HostCancellationQuoteResponse mapToHostCancellationQuoteResponse(HostCancellationQuote quote) {
+        return HostCancellationQuoteResponse.builder()
+                .quoteId(quote.getQuoteId())
+                .bookingId(quote.getBookingId())
+                .reasonCode(quote.getReasonCode())
+                .guestRefundAmount(quote.getGuestRefundAmount())
+                .currency(quote.getCurrency())
+                .penaltyPoints(quote.getPenaltyPoints())
+                .thresholdResult(HostCancellationQuoteResponse.ThresholdResult.builder()
+                        .listingActivePenaltyCount(quote.getListingActivePenaltyCount())
+                        .hostActivePenaltyCount(quote.getHostActivePenaltyCount())
+                        .willSuspendListing(quote.getWillSuspendListing())
+                        .listingSuspendedUntil(quote.getListingSuspendedUntil())
+                        .willMarkHostAdminReview(quote.getWillMarkHostAdminReview())
+                        .build())
                 .expiresAt(quote.getExpiresAt())
                 .build();
     }

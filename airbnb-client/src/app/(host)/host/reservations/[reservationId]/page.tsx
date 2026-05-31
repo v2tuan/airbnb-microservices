@@ -22,7 +22,9 @@ import { useParams, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import {
+  confirmHostCancellationQuote,
   getHostReservationDetail,
+  requestHostCancellationQuote,
   updateHostReservationStatus,
 } from "@/api/endpoints/booking";
 import { ReservationStatusBadge } from "@/components/trips/ReservationStatusBadge";
@@ -40,6 +42,8 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { RootState } from "@/store";
 import type {
   BookingStatus,
+  HostCancellationQuoteResponse,
+  HostCancellationReasonCode,
   HostReservationDetailResponse,
 } from "@/types/booking.type";
 
@@ -67,6 +71,16 @@ const timelineSkeletonKeys = [
   "timeline-paid",
   "timeline-check-in",
   "timeline-final",
+];
+const hostCancellationReasons: Array<{
+  code: HostCancellationReasonCode;
+  label: string;
+}> = [
+  { code: "PROPERTY_DAMAGE", label: "Property damage" },
+  { code: "PERSONAL_EMERGENCY", label: "Personal emergency" },
+  { code: "DOUBLE_BOOKING", label: "Double booking" },
+  { code: "UNAVAILABLE", label: "Unavailable" },
+  { code: "OTHER", label: "Other" },
 ];
 
 /**
@@ -636,7 +650,14 @@ export default function HostReservationDetailPage() {
   const [error, setError] = useState("");
   const [savingStatus, setSavingStatus] = useState<BookingStatus | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReasonCode, setCancelReasonCode] =
+    useState<HostCancellationReasonCode>("UNAVAILABLE");
   const [cancelReason, setCancelReason] = useState("");
+  const [cancellationQuote, setCancellationQuote] =
+    useState<HostCancellationQuoteResponse | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const reservationRequestId = useRef(0);
 
@@ -731,6 +752,83 @@ export default function HostReservationDetailPage() {
       );
     } finally {
       setSavingStatus(null);
+    }
+  };
+
+  const loadHostCancellationQuote = async (
+    reasonCode = cancelReasonCode,
+  ) => {
+    if (!token || !reservation) return;
+
+    try {
+      setQuoteLoading(true);
+      setQuoteError("");
+      const response = await requestHostCancellationQuote(
+        token,
+        reservation.reservationId,
+        reasonCode,
+      );
+      setCancellationQuote(response.data);
+    } catch (err) {
+      setCancellationQuote(null);
+      setQuoteError(
+        getApiErrorMessage(err) ?? "Unable to calculate cancellation quote.",
+      );
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  const openCancellationDialog = () => {
+    setCancelOpen(true);
+    setCancellationQuote(null);
+    setQuoteError("");
+    void loadHostCancellationQuote();
+  };
+
+  const handleReasonCodeChange = (reasonCode: HostCancellationReasonCode) => {
+    setCancelReasonCode(reasonCode);
+    setCancellationQuote(null);
+    setQuoteError("");
+    void loadHostCancellationQuote(reasonCode);
+  };
+
+  const confirmHostCancellation = async () => {
+    if (!token || !reservation || !cancellationQuote) return;
+
+    const previousReservation = reservation;
+    setCancelSubmitting(true);
+    setSavingStatus("CANCELLED_BY_HOST");
+    setError("");
+    setSuccessMessage("");
+    setReservation(
+      buildOptimisticReservation(
+        previousReservation,
+        "CANCELLED_BY_HOST",
+        cancelReason,
+      ),
+    );
+
+    try {
+      const response = await confirmHostCancellationQuote(
+        token,
+        previousReservation.reservationId,
+        cancellationQuote.quoteId,
+        cancelReason,
+      );
+      setReservation(response.data);
+      setSuccessMessage("Reservation cancelled and refund initiated.");
+      setCancelOpen(false);
+      setCancelReason("");
+      setCancellationQuote(null);
+    } catch (err) {
+      setReservation(previousReservation);
+      setQuoteError(
+        getApiErrorMessage(err) ?? "Unable to cancel reservation.",
+      );
+    } finally {
+      setSavingStatus(null);
+      setCancelSubmitting(false);
     }
   };
 
@@ -1096,7 +1194,7 @@ export default function HostReservationDetailPage() {
                 {canCancel(reservation.status) ? (
                   <button
                     type="button"
-                    onClick={() => setCancelOpen(true)}
+                    onClick={openCancellationDialog}
                     className="inline-flex h-12 w-full items-center justify-center rounded-lg border border-[#222222] bg-white px-6 text-base font-medium text-[#222222] transition hover:bg-[#f7f7f7]"
                   >
                     Cancel reservation
@@ -1173,7 +1271,13 @@ export default function HostReservationDetailPage() {
       <Dialog
         open={cancelOpen}
         onOpenChange={(open) => {
-          if (savingStatus !== "CANCELLED_BY_HOST") setCancelOpen(open);
+          if (savingStatus !== "CANCELLED_BY_HOST") {
+            setCancelOpen(open);
+            if (!open) {
+              setQuoteError("");
+              setCancellationQuote(null);
+            }
+          }
         }}
       >
         <DialogContent className="max-w-lg rounded-[14px] bg-white">
@@ -1188,7 +1292,106 @@ export default function HostReservationDetailPage() {
           </DialogHeader>
 
           <label className="text-sm font-medium leading-[1.43] text-[#222222]">
-            Reason
+            Reason code
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {hostCancellationReasons.map((reason) => (
+                <button
+                  key={reason.code}
+                  type="button"
+                  onClick={() => handleReasonCodeChange(reason.code)}
+                  disabled={quoteLoading || cancelSubmitting}
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-left text-sm font-medium transition",
+                    cancelReasonCode === reason.code
+                      ? "border-[#222222] bg-[#f7f7f7] text-[#222222]"
+                      : "border-[#dddddd] bg-white text-[#6a6a6a] hover:border-[#222222]",
+                  )}
+                >
+                  {reason.label}
+                </button>
+              ))}
+            </div>
+          </label>
+
+          <div className="rounded-lg border border-[#dddddd] bg-[#f7f7f7] p-4">
+            {quoteLoading ? (
+              <div className="flex items-center gap-2 text-sm text-[#6a6a6a]">
+                <Loader2 className="size-4 animate-spin" />
+                Calculating cancellation quote...
+              </div>
+            ) : quoteError ? (
+              <div>
+                <p className="text-sm font-medium text-[#c13515]">
+                  {quoteError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => loadHostCancellationQuote()}
+                  className="mt-2 text-sm font-medium text-[#222222] underline underline-offset-2"
+                >
+                  Retry quote
+                </button>
+              </div>
+            ) : cancellationQuote ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-[#6a6a6a]">Guest refund</span>
+                  <span className="font-semibold text-[#222222]">
+                    {formatCurrency(
+                      Number(cancellationQuote.guestRefundAmount),
+                      cancellationQuote.currency,
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[#6a6a6a]">Penalty points</span>
+                  <span className="font-semibold text-[#c13515]">
+                    {cancellationQuote.penaltyPoints}
+                  </span>
+                </div>
+                <div className="border-t border-[#dddddd] pt-3">
+                  <p className="font-medium text-[#222222]">
+                    Threshold result
+                  </p>
+                  <p className="mt-1 text-[#6a6a6a]">
+                    Listing penalties in 90 days:{" "}
+                    {
+                      cancellationQuote.thresholdResult
+                        .listingActivePenaltyCount
+                    }
+                    /3
+                  </p>
+                  <p className="text-[#6a6a6a]">
+                    Host penalties in 180 days:{" "}
+                    {cancellationQuote.thresholdResult.hostActivePenaltyCount}
+                    /5
+                  </p>
+                  {cancellationQuote.thresholdResult.willSuspendListing ? (
+                    <p className="mt-2 font-medium text-[#c13515]">
+                      This listing will be suspended for 7 days.
+                    </p>
+                  ) : null}
+                  {cancellationQuote.thresholdResult
+                    .willMarkHostAdminReview ? (
+                    <p className="mt-2 font-medium text-[#c13515]">
+                      This host will be marked for admin review.
+                    </p>
+                  ) : null}
+                </div>
+                <p className="text-xs text-[#6a6a6a]">
+                  Quote expires at{" "}
+                  {new Date(cancellationQuote.expiresAt).toLocaleTimeString(
+                    "en-US",
+                    { hour: "numeric", minute: "2-digit" },
+                  )}
+                  .
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <label className="text-sm font-medium leading-[1.43] text-[#222222]">
+            Guest-facing note
             <textarea
               value={cancelReason}
               onChange={(event) => setCancelReason(event.target.value)}
@@ -1202,7 +1405,7 @@ export default function HostReservationDetailPage() {
             <DialogClose asChild>
               <button
                 type="button"
-                disabled={savingStatus === "CANCELLED_BY_HOST"}
+                disabled={cancelSubmitting}
                 className="h-12 rounded-lg border border-[#222222] bg-white px-6 text-base font-medium text-[#222222] transition hover:bg-[#f7f7f7] disabled:opacity-60"
               >
                 Keep reservation
@@ -1210,11 +1413,11 @@ export default function HostReservationDetailPage() {
             </DialogClose>
             <button
               type="button"
-              onClick={() => updateStatus("CANCELLED_BY_HOST", cancelReason)}
-              disabled={savingStatus === "CANCELLED_BY_HOST"}
+              onClick={confirmHostCancellation}
+              disabled={!cancellationQuote || quoteLoading || cancelSubmitting}
               className="inline-flex h-12 items-center justify-center rounded-lg bg-[#ff385c] px-6 text-base font-medium text-white transition active:bg-[#e00b41] disabled:bg-[#ffd1da]"
             >
-              {savingStatus === "CANCELLED_BY_HOST" ? (
+              {cancelSubmitting ? (
                 <Loader2 className="mr-2 size-4 animate-spin" />
               ) : null}
               Cancel reservation
