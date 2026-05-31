@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Data
 public class BookingRefundRequest {
@@ -17,4 +18,10 @@ public class BookingRefundRequest {
     private String refundReason;
 
     private String refundDetails;
+
+    @NotBlank(message = "Business cause is required")
+    private String businessCause;
+
+    @NotNull(message = "Business cause ID is required")
+    private UUID businessCauseId;
 }

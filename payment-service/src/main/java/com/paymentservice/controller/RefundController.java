@@ -1,6 +1,5 @@
 package com.paymentservice.controller;
 
-import com.paymentservice.dto.request.RefundRequest;
 import com.paymentservice.dto.request.BookingRefundRequest;
 import com.paymentservice.dto.response.RefundResponse;
 import com.paymentservice.service.RefundService;
@@ -19,17 +18,6 @@ import java.util.UUID;
 public class RefundController {
 
     private final RefundService refundService;
-
-    /**
-     * Process refund
-     * POST /api/v1/refunds
-     */
-    @PostMapping
-    public ResponseEntity<RefundResponse> processRefund(
-        @Valid @RequestBody RefundRequest request) {
-        RefundResponse response = refundService.processRefund(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
 
     @PostMapping("/booking/{bookingId}")
     public ResponseEntity<RefundResponse> processBookingRefund(

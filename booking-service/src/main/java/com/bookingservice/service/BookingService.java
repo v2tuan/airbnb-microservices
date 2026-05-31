@@ -320,6 +320,8 @@ public class BookingService {
                             .refundAmount(quote.getRefundAmount())
                             .refundReason("GUEST_CANCELLATION")
                             .refundDetails("Guest cancellation quote " + quote.getQuoteId())
+                            .businessCause("CANCELLATION_QUOTE")
+                            .businessCauseId(quote.getQuoteId())
                             .build()
             );
         }
@@ -405,6 +407,8 @@ public class BookingService {
                         .refundDetails("Host cancellation quote " + quote.getQuoteId()
                                 + ", reason=" + quote.getReasonCode()
                                 + ", penaltyPoints=" + quote.getPenaltyPoints())
+                        .businessCause("CANCELLATION_QUOTE")
+                        .businessCauseId(quote.getQuoteId())
                         .build()
         );
         hostPenaltyService.createActivePenalty(saved, quote);

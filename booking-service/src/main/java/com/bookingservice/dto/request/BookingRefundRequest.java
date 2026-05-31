@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Data
 @Builder
@@ -19,4 +20,10 @@ public class BookingRefundRequest {
     private String refundReason;
 
     private String refundDetails;
+
+    @NotBlank
+    private String businessCause;
+
+    @NotNull
+    private UUID businessCauseId;
 }

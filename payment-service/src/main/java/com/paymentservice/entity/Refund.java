@@ -45,8 +45,19 @@ public class Refund {
     @Column(columnDefinition = "TEXT")
     private String refundDetails;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
-    private String status; // PENDING, PROCESSING, COMPLETED, FAILED
+    private RefundStatus status; // PENDING, PROCESSING, COMPLETED, FAILED
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "business_cause", nullable = false, length = 50)
+    private RefundBusinessCause businessCause;
+
+    @Column(name = "business_cause_id", nullable = false)
+    private UUID businessCauseId;
+
+    @Column(name = "failure_reason", columnDefinition = "TEXT")
+    private String failureReason;
 
     private UUID processedBy;
 

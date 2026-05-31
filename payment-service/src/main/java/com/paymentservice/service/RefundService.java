@@ -1,14 +1,16 @@
 package com.paymentservice.service;
 
 import com.paymentservice.dto.request.BookingRefundRequest;
-import com.paymentservice.dto.request.RefundRequest;
 import com.paymentservice.dto.response.RefundResponse;
 import com.paymentservice.entity.Payment;
 import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
 import com.paymentservice.entity.Refund;
+import com.paymentservice.entity.RefundBusinessCause;
+import com.paymentservice.entity.RefundStatus;
 import com.paymentservice.entity.Transaction;
 import com.paymentservice.event.RefundCompletedEvent;
+import com.paymentservice.event.RefundFailedEvent;
 import com.paymentservice.mapper.RefundMapper;
 import com.paymentservice.repository.PaymentRepository;
 import com.paymentservice.repository.PayoutRepository;
@@ -45,18 +47,6 @@ public class RefundService {
     private final PaymentEventPublisher eventPublisher;
 
     @Transactional
-    public RefundResponse processRefund(RefundRequest request) {
-        Transaction originalTransaction = transactionRepository.findById(request.getTransactionId())
-                .orElseThrow(() -> new RuntimeException("Transaction not found"));
-        return processRefund(
-                originalTransaction,
-                request.getRefundAmount(),
-                request.getRefundReason(),
-                request.getRefundDetails()
-        );
-    }
-
-    @Transactional
     public RefundResponse processBookingRefund(UUID bookingId, BookingRefundRequest request) {
         Transaction originalTransaction = transactionRepository.findByBookingId(bookingId).stream()
                 .filter(transaction -> "PAYMENT".equals(transaction.getTransactionType()))
@@ -67,7 +57,9 @@ public class RefundService {
                 originalTransaction,
                 request.getRefundAmount(),
                 request.getRefundReason(),
-                request.getRefundDetails()
+                request.getRefundDetails(),
+                resolveBusinessCause(request.getBusinessCause()),
+                request.getBusinessCauseId()
         );
     }
 
@@ -75,15 +67,21 @@ public class RefundService {
             Transaction originalTransaction,
             BigDecimal requestedRefundAmount,
             String refundReason,
-            String refundDetails
+            String refundDetails,
+            RefundBusinessCause businessCause,
+            UUID businessCauseId
     ) {
         Payment payment = paymentRepository.findByBookingId(originalTransaction.getBookingId())
                 .orElseThrow(() -> new RuntimeException("Payment not found for booking"));
+        if (refundRepository.existsByBusinessCauseAndBusinessCauseId(businessCause, businessCauseId)) {
+            throw new RuntimeException("Refund already exists for business cause");
+        }
 
-        long refundAmount = requestedRefundAmount.longValue();
+        long refundAmount = toMinorUnitAmount(requestedRefundAmount);
         long alreadyRefunded = payment.getRefundedAmount() == null ? 0L : payment.getRefundedAmount();
-        if (refundAmount <= 0 || refundAmount + alreadyRefunded > payment.getAmount()) {
-            throw new RuntimeException("Invalid refund amount");
+        long remainingRefundable = payment.getAmount() - alreadyRefunded;
+        if (refundAmount <= 0 || refundAmount > remainingRefundable) {
+            throw new RuntimeException("Refund amount exceeds remaining refundable paid amount");
         }
 
         Transaction refundTransaction = transactionRepository.save(Transaction.builder()
@@ -94,7 +92,7 @@ public class RefundService {
                 .transactionType("REFUND")
                 .amount(BigDecimal.valueOf(refundAmount))
                 .currency(originalTransaction.getCurrency())
-                .status("PROCESSING")
+                .status(RefundStatus.PENDING.name())
                 .description("Refund for transaction: " + originalTransaction.getTransactionId())
                 .initiatedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now())
@@ -107,7 +105,9 @@ public class RefundService {
                 .refundType(refundAmount == payment.getAmount() ? "FULL" : "PARTIAL")
                 .refundReason(refundReason)
                 .refundDetails(refundDetails)
-                .status("PROCESSING")
+                .status(RefundStatus.PENDING)
+                .businessCause(businessCause)
+                .businessCauseId(businessCauseId)
                 .initiatedAt(LocalDateTime.now())
                 .build());
 
@@ -115,6 +115,11 @@ public class RefundService {
         paymentRepository.save(payment);
 
         try {
+            refund.setStatus(RefundStatus.PROCESSING);
+            refundTransaction.setStatus(RefundStatus.PROCESSING.name());
+            transactionRepository.save(refundTransaction);
+            refundRepository.save(refund);
+
             handleTransferReversalIfNeeded(originalTransaction.getBookingId(), refundAmount, refund);
 
             com.stripe.model.Refund stripeRefund = com.stripe.model.Refund.create(
@@ -123,16 +128,18 @@ public class RefundService {
                             .setAmount(refundAmount)
                             .putMetadata("bookingId", originalTransaction.getBookingId().toString())
                             .putMetadata("refundId", refund.getRefundId().toString())
+                            .putMetadata("businessCause", businessCause.name())
+                            .putMetadata("businessCauseId", businessCauseId.toString())
                             .build(),
                     RequestOptions.builder()
                             .setIdempotencyKey("refund_" + refund.getRefundId())
                             .build());
 
             refund.setGatewayRefundId(stripeRefund.getId());
-            refund.setStatus("COMPLETED");
+            refund.setStatus(RefundStatus.COMPLETED);
             refund.setCompletedAt(LocalDateTime.now());
             refundTransaction.setGatewayTransactionId(stripeRefund.getId());
-            refundTransaction.setStatus("COMPLETED");
+            refundTransaction.setStatus(RefundStatus.COMPLETED.name());
             refundTransaction.setCompletedAt(LocalDateTime.now());
 
             payment.setRefundedAmount(alreadyRefunded + refundAmount);
@@ -156,15 +163,26 @@ public class RefundService {
 
             return refundMapper.toResponse(saved);
         } catch (StripeException ex) {
-            refund.setStatus("FAILED");
+            refund.setStatus(RefundStatus.FAILED);
             refund.setRefundDetails(appendDetail(refund.getRefundDetails(), ex.getMessage()));
+            refund.setFailureReason(ex.getMessage());
             refund.setCompletedAt(LocalDateTime.now());
-            refundTransaction.setStatus("FAILED");
+            refundTransaction.setStatus(RefundStatus.FAILED.name());
             refundTransaction.setFailureReason(ex.getMessage());
             payment.setStatus(PaymentStatus.REFUND_FAILED);
             paymentRepository.save(payment);
             transactionRepository.save(refundTransaction);
-            return refundMapper.toResponse(refundRepository.save(refund));
+            Refund saved = refundRepository.save(refund);
+            eventPublisher.refundFailed(originalTransaction.getBookingId().toString(), new RefundFailedEvent(
+                    saved.getRefundId(),
+                    originalTransaction.getBookingId(),
+                    payment.getId(),
+                    refundAmount,
+                    payment.getCurrency(),
+                    ex.getMessage(),
+                    LocalDateTime.now()
+            ));
+            return refundMapper.toResponse(saved);
         }
     }
 
@@ -194,11 +212,12 @@ public class RefundService {
         Refund refund = refundRepository.findById(refundId)
                 .orElseThrow(() -> new RuntimeException("Refund not found"));
 
-        refund.setStatus(newStatus);
-        if ("COMPLETED".equals(newStatus) || "FAILED".equals(newStatus)) {
+        RefundStatus status = RefundStatus.valueOf(newStatus);
+        refund.setStatus(status);
+        if (status == RefundStatus.COMPLETED || status == RefundStatus.FAILED) {
             refund.setCompletedAt(LocalDateTime.now());
             if (refund.getRefundTransaction() != null) {
-                transactionService.updateTransactionStatus(refund.getRefundTransaction().getTransactionId(), newStatus);
+                transactionService.updateTransactionStatus(refund.getRefundTransaction().getTransactionId(), status.name());
             }
         }
 
@@ -225,5 +244,21 @@ public class RefundService {
             return detail;
         }
         return current + "\n" + detail;
+    }
+
+    private RefundBusinessCause resolveBusinessCause(String businessCause) {
+        try {
+            return RefundBusinessCause.valueOf(businessCause);
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Unsupported refund business cause: " + businessCause);
+        }
+    }
+
+    private long toMinorUnitAmount(BigDecimal requestedRefundAmount) {
+        try {
+            return requestedRefundAmount.longValueExact();
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("Refund amount must be an exact minor-unit amount", ex);
+        }
     }
 }
