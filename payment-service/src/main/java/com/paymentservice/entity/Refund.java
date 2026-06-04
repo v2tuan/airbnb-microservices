@@ -65,7 +65,14 @@ public class Refund {
     private String gatewayRefundId;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime initiatedAt = LocalDateTime.now();
+    private LocalDateTime initiatedAt;
 
     private LocalDateTime completedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (initiatedAt == null) {
+            initiatedAt = LocalDateTime.now();
+        }
+    }
 }

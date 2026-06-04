@@ -1,5 +1,6 @@
 package com.bookingservice.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -20,6 +21,10 @@ public class RefundResponse {
     private UUID businessCauseId;
     private String failureReason;
     private String gatewayRefundId;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime initiatedAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime completedAt;
 }

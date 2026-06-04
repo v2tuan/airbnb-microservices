@@ -66,10 +66,13 @@ public class PaymentService {
         UUID guestId = UUID.fromString(jwt.getSubject());
 
         CreateBookingRequest bookingRequest = bookingMapper.toCreateBookingRequest(request);
+
+        // Tạo Booking
         CreateBookingResponse booking = bookingServiceClient.createBooking("Bearer " + jwt.getTokenValue(), bookingRequest);
         UUID bookingId = booking.getBookingId();
         UUID hostId = UUID.fromString(booking.getHostId());
 
+        // Lấy Stripe account id của host
         String hostStripeAccountId = userClient.getStripeAccountId(booking.getHostId()).getData();
         if (hostStripeAccountId == null || hostStripeAccountId.isBlank()) {
             throw new IllegalStateException("Host has not completed Stripe Connect onboarding");
@@ -97,8 +100,11 @@ public class PaymentService {
         RequestOptions options = RequestOptions.builder()
                 .setIdempotencyKey(resolveStripeIdempotencyKey(idempotencyKey, bookingId))
                 .build();
+
+        // Tạo payment intent
         PaymentIntent paymentIntent = PaymentIntent.create(params, options);
 
+        // Lưu thông tin payment vào DB
         Payment payment = Payment.builder()
                 .bookingId(bookingId)
                 .guestId(guestId)
@@ -115,6 +121,7 @@ public class PaymentService {
                 .build();
         paymentRepository.save(payment);
 
+        // Lưu log
         audit("PAYMENT_INTENT_CREATED", null, "SUCCESS",
                 Map.of("bookingId", bookingId.toString(), "paymentIntentId", paymentIntent.getId()));
 
@@ -165,6 +172,7 @@ public class PaymentService {
             return;
         }
 
+        // Nếu trạng thái là đã paid sẵn rồi thì chỉ cập nhật thông tin payment thôi không xử lý gì thêm
         boolean alreadyPaid = payment.getStatus() == PaymentStatus.PAID;
         if (!alreadyPaid) {
             payment.setStatus(PaymentStatus.PAID);
@@ -174,8 +182,10 @@ public class PaymentService {
             paymentRepository.save(payment);
         }
 
+        // Cập nhật trạng thái Booking sang Confirmed
         BookingResponse booking = confirmBookingIfPending(bookingId, paymentIntent.getId());
 
+        // Lưu vào transaction để quản lý
         Transaction transaction = transactionRepository.findByGatewayTransactionId(paymentIntent.getId())
                 .orElseGet(() -> transactionRepository.save(Transaction.builder()
                         .bookingId(bookingId)
@@ -190,6 +200,7 @@ public class PaymentService {
                         .completedAt(LocalDateTime.now())
                         .build()));
 
+        // Tạo Payout với status PENDING_CHECKIN
         if (payoutRepository.findByBookingId(bookingId).isEmpty()) {
             payoutRepository.save(Payout.builder()
                     .paymentId(payment.getId())

@@ -280,10 +280,14 @@ public class BookingService {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
 
+        // Kiểm tra xem guest có đủ điều kiện hủy phòng hay không
         validateGuestCancellationEligibility(booking, guestId);
 
+        // Tính toán số tiền refund dựa theo policy mà host chọn
         String policyCode = normalizeCancellationPolicyCode(booking.getCancellationPolicyCode());
         RefundBreakdown breakdown = calculateGuestRefund(booking, policyCode, LocalDateTime.now());
+
+        // Lưu quote vào DB để quản lý, Quote này có giới hạn thười gian ví dụ 15p
         BookingCancellationQuote quote = cancellationQuoteRepository.save(BookingCancellationQuote.builder()
                 .bookingId(booking.getBookingId())
                 .guestId(guestId)

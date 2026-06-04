@@ -79,9 +79,10 @@ public class RefundService {
         }
 
         long refundAmount = toMinorUnitAmount(requestedRefundAmount);
-        long alreadyRefunded = payment.getRefundedAmount() == null ? 0L : payment.getRefundedAmount();
+        long alreadyRefunded = payment.getRefundedAmount();
         long remainingRefundable = payment.getAmount() - alreadyRefunded;
         if (refundAmount <= 0 || refundAmount > remainingRefundable) {
+            log.error("refundAmount" + refundAmount + " remainingRefundable" + remainingRefundable);
             throw new RuntimeException("Refund amount exceeds remaining refundable paid amount");
         }
 
