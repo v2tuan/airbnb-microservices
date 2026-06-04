@@ -14,10 +14,6 @@ interface SearchPageProps {
     q?: string;
     city?: string;
     country?: string;
-    checkin?: string;
-    checkout?: string;
-    checkIn?: string;
-    checkOut?: string;
     guests?: string;
     minPrice?: string;
     maxPrice?: string;
@@ -98,52 +94,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = await searchParams;
   const destination = query.city ?? query.q ?? "";
   const country = query.country;
-<<<<<<< HEAD
-  const checkIn = query.checkIn ?? query.checkin;
-  const checkOut = query.checkOut ?? query.checkout;
-  const maxGuests = parsePositiveNumber(query.guests);
-  const minPrice = parsePositiveNumber(query.minPrice);
-  const maxPrice = parsePositiveNumber(query.maxPrice);
-  const bedrooms = parsePositiveNumber(query.bedrooms);
-  const beds = parsePositiveNumber(query.beds);
-  const bathrooms = parsePositiveNumber(query.bathrooms);
-  const requestedSize = parsePositiveNumber(query.size);
-  const pageSize =
-    requestedSize && pageSizeOptions.includes(requestedSize)
-      ? requestedSize
-      : defaultPageSize;
-=======
   const maxGuests = query.guests ? Number(query.guests) : undefined;
   const minPrice = query.minPrice ? Number(query.minPrice) : undefined;
   const maxPrice = query.maxPrice ? Number(query.maxPrice) : undefined;
->>>>>>> origin/master
 
   let listings: ListingResponse[] = [];
   let errorMessage = "";
 
   try {
-<<<<<<< HEAD
-    if (minPrice !== undefined && maxPrice !== undefined) {
-      const response = await withSearchTimeout(
-        listingAPI.searchByPriceRange({
-          minPrice,
-          maxPrice,
-          checkIn,
-          checkOut,
-        }),
-      );
-      listings = unwrapApiData(response.data);
-    } else {
-      const response = await withSearchTimeout(
-        listingAPI.searchListings({
-          city: destination || undefined,
-          country,
-          maxGuests,
-          checkIn,
-          checkOut,
-        }),
-      );
-=======
     if (Number.isFinite(minPrice) && Number.isFinite(maxPrice)) {
       const response = await listingAPI.searchByPriceRange({
         minPrice: minPrice as number,
@@ -156,7 +114,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         country,
         maxGuests,
       });
->>>>>>> origin/master
       listings = unwrapApiData(response.data);
     }
   } catch {
@@ -169,40 +126,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       country,
       maxGuests,
   );
-<<<<<<< HEAD
-  const totalPages = Math.max(1, Math.ceil(visibleListings.length / pageSize));
-  const currentPage = Math.min(parsePage(query.page), totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedListings = visibleListings.slice(
-    startIndex,
-    startIndex + pageSize,
-  );
-  const pageNumbers = buildPageNumbers(currentPage, totalPages);
-
-  const baseQuery = {
-    q: query.q,
-    city: query.city,
-    country: query.country,
-    checkin: query.checkin,
-    checkout: query.checkout,
-    checkIn: query.checkIn,
-    checkOut: query.checkOut,
-    guests: query.guests,
-    minPrice: query.minPrice,
-    maxPrice: query.maxPrice,
-    roomType: query.roomType,
-    propertyType: query.propertyType,
-    amenity: query.amenity,
-    amenities: query.amenities,
-    bedrooms: query.bedrooms,
-    beds: query.beds,
-    bathrooms: query.bathrooms,
-    instantBook: query.instantBook,
-    size: pageSize,
-  };
-  const rangeStart = visibleListings.length === 0 ? 0 : startIndex + 1;
-  const rangeEnd = Math.min(startIndex + pageSize, visibleListings.length);
-=======
   const resultLabel = destination
       ? `Places in ${destination}`
       : "Places to stay";
@@ -210,7 +133,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       Number.isFinite(minPrice) && Number.isFinite(maxPrice)
           ? `${formatPrice(minPrice as number, "USD")} - ${formatPrice(maxPrice as number, "USD")}`
           : "Any price";
->>>>>>> origin/master
 
   return (
       <main className="min-h-screen bg-white">
@@ -342,86 +264,86 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                   <p className="mt-1 text-sm">Try adjusting your filters or destination.</p>
                 </div>
             ) : (
-              <div className="grid grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 3xl:grid-cols-3">
-            {visibleListings.map((listing) => {
-              const coverImageUrl = resolveCoverImage(listing);
-              const basePrice = listing.pricing?.basePrice ?? 0;
-              const currency = listing.pricing?.currency ?? "USD";
+                <div className="grid grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 3xl:grid-cols-3">
+                  {visibleListings.map((listing) => {
+                    const coverImageUrl = resolveCoverImage(listing);
+                    const basePrice = listing.pricing?.basePrice ?? 0;
+                    const currency = listing.pricing?.currency ?? "USD";
 
-              return (
-              <Link
-              key={listing.listingId}
-            href={`/rooms/${listing.listingId}`}
-            className="group block"
-          >
-            <article>
-              {/* Image — đổi từ aspect-square → aspect-[20/13] giống Airbnb */}
-              <div className="relative aspect-[20/13] overflow-hidden rounded-2xl bg-neutral-100">
-                <Image
-                    src={coverImageUrl}
-                    alt={listing.title}
-                    fill
-                    className="object-cover transition duration-500 group-hover:scale-[1.03]"
-                    sizes="(max-width: 767px) 92vw, (max-width: 1535px) 44vw, 28vw"
-                />
+                    return (
+                        <Link
+                            key={listing.listingId}
+                            href={`/rooms/${listing.listingId}`}
+                            className="group block"
+                        >
+                          <article>
+                            {/* Image — đổi từ aspect-square → aspect-[20/13] giống Airbnb */}
+                            <div className="relative aspect-[20/13] overflow-hidden rounded-2xl bg-neutral-100">
+                              <Image
+                                  src={coverImageUrl}
+                                  alt={listing.title}
+                                  fill
+                                  className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                                  sizes="(max-width: 767px) 92vw, (max-width: 1535px) 44vw, 28vw"
+                              />
 
-                {/* Wishlist button */}
-                <button
-                    aria-label="Save to wishlist"
-                    className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-full transition"
-                >
-                  <Heart
-                      className="size-[22px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-                      stroke="white"
-                      strokeWidth={2}
-                      fill="transparent"
-                  />
-                </button>
+                              {/* Wishlist button */}
+                              <button
+                                  aria-label="Save to wishlist"
+                                  className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-full transition"
+                              >
+                                <Heart
+                                    className="size-[22px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                                    stroke="white"
+                                    strokeWidth={2}
+                                    fill="transparent"
+                                />
+                              </button>
 
-                {/* Badges */}
-                {listing.instantBook ? (
-                    <span className="absolute left-3 top-3 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-neutral-950 shadow-sm">
+                              {/* Badges */}
+                              {listing.instantBook ? (
+                                  <span className="absolute left-3 top-3 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-neutral-950 shadow-sm">
                 Instant Book
               </span>
-                ) : null}
-              </div>
+                              ) : null}
+                            </div>
 
-              {/* Info — bố cục giống Airbnb */}
-              <div className="mt-3 space-y-0.5">
-                {/* Dòng 1: Location (bold) + Rating */}
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="line-clamp-1 text-sm font-semibold text-neutral-950">
-                    {listing.city}, {listing.country}
-                  </h2>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-sm text-neutral-950">
+                            {/* Info — bố cục giống Airbnb */}
+                            <div className="mt-3 space-y-0.5">
+                              {/* Dòng 1: Location (bold) + Rating */}
+                              <div className="flex items-start justify-between gap-2">
+                                <h2 className="line-clamp-1 text-sm font-semibold text-neutral-950">
+                                  {listing.city}, {listing.country}
+                                </h2>
+                                <span className="inline-flex shrink-0 items-center gap-1 text-sm text-neutral-950">
                 <Star className="size-3.5 fill-neutral-950" />
-                    {resolveRating(listing.listingId)}
+                                  {resolveRating(listing.listingId)}
               </span>
-                </div>
+                              </div>
 
-                {/* Dòng 2: Title (màu xám nhạt hơn) */}
-                <p className="line-clamp-1 text-sm text-neutral-500">
-                  {listing.title}
-                </p>
+                              {/* Dòng 2: Title (màu xám nhạt hơn) */}
+                              <p className="line-clamp-1 text-sm text-neutral-500">
+                                {listing.title}
+                              </p>
 
-                {/* Dòng 3: Stay details */}
-                <p className="line-clamp-1 text-sm text-neutral-500">
-                  {formatStayDetails(listing)}
-                </p>
+                              {/* Dòng 3: Stay details */}
+                              <p className="line-clamp-1 text-sm text-neutral-500">
+                                {formatStayDetails(listing)}
+                              </p>
 
-                {/* Dòng 4: Giá — underline giống Airbnb style */}
-                <p className="pt-1 text-sm text-neutral-950">
+                              {/* Dòng 4: Giá — underline giống Airbnb style */}
+                              <p className="pt-1 text-sm text-neutral-950">
               <span className="font-semibold underline">
                 {formatPrice(basePrice, currency)}
               </span>
-                  <span className="text-neutral-500"> / night</span>
-                </p>
-              </div>
-            </article>
-          </Link>
-          );
-          })}
-        </div>
+                                <span className="text-neutral-500"> / night</span>
+                              </p>
+                            </div>
+                          </article>
+                        </Link>
+                    );
+                  })}
+                </div>
             )}
           </section>
 
