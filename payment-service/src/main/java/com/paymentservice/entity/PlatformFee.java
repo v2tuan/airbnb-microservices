@@ -33,7 +33,7 @@ public class PlatformFee {
     private BigDecimal percentage;
 
     @Column(precision = 10, scale = 2)
-    private BigDecimal fixedAmount = BigDecimal.ZERO;
+    private BigDecimal fixedAmount;
 
     @Column(precision = 10, scale = 2)
     private BigDecimal minAmount;
@@ -42,7 +42,7 @@ public class PlatformFee {
     private BigDecimal maxAmount;
 
     @Column(length = 3, nullable = false)
-    private String currency = "VND";
+    private String currency;
 
     @Column(nullable = false)
     private LocalDate effectiveFrom;
@@ -50,8 +50,24 @@ public class PlatformFee {
     private LocalDate effectiveTo;
 
     @Column(nullable = false)
-    private Boolean isActive = true;
+    private Boolean isActive;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (fixedAmount == null) {
+            fixedAmount = BigDecimal.ZERO;
+        }
+        if (currency == null) {
+            currency = "VND";
+        }
+        if (isActive == null) {
+            isActive = true;
+        }
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+    }
 }

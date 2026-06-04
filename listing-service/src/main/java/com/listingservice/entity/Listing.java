@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.HashSet;
 import java.util.Set;
@@ -98,6 +99,12 @@ public class Listing extends BaseEntity {
 
     @Column(name = "check_out_time")
     LocalTime checkOutTime;
+
+    @Column(name = "suspended_until")
+    LocalDateTime suspendedUntil;
+
+    @Column(name = "suspension_reason", length = 500)
+    String suspensionReason;
     
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

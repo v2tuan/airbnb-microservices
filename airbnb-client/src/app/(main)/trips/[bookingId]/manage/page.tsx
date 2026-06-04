@@ -16,7 +16,13 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { cancelBooking, getBookingDetail } from "@/api/endpoints/booking";
+import {
+  cancelBooking,
+  confirmCancellationQuote,
+  createComplaint,
+  getBookingDetail,
+  requestCancellationQuote,
+} from "@/api/endpoints/booking";
 import { BookingStatusBadge } from "@/components/trips/BookingStatusBadge";
 import { CancelReservationModal } from "@/components/trips/CancelReservationModal";
 import { ExpiredReservationState } from "@/components/trips/ExpiredReservationState";
@@ -29,13 +35,40 @@ import type { RootState } from "@/store";
 import type {
   BookingDetailResponse,
   BookingStatus,
+  ComplaintType,
+  GuestCancellationQuoteResponse,
 } from "@/types/booking.type";
 
 const fallbackImage = "/header/home.png";
+const complaintTypes: Array<{ value: ComplaintType; label: string }> = [
+  { value: "CANNOT_CHECK_IN", label: "Cannot check in" },
+  { value: "NOT_AS_DESCRIBED", label: "Not as described" },
+  { value: "UNCLEAN", label: "Unclean" },
+  { value: "MISSING_AMENITY", label: "Missing amenity" },
+  { value: "SAFETY_ISSUE", label: "Safety issue" },
+];
 
 function mapPaymentStatus(booking: BookingDetailResponse) {
+  const stripeStatus = booking.payment?.stripePaymentStatus;
+  if (stripeStatus === "PAID") return "paid";
+  if (stripeStatus === "PAYMENT_FAILED" || stripeStatus === "REFUND_FAILED") {
+    return "failed";
+  }
+  if (stripeStatus === "PAYMENT_CANCELLED") return "cancelled";
+  if (
+    stripeStatus === "REFUND_PENDING" ||
+    stripeStatus === "PARTIALLY_REFUNDED" ||
+    stripeStatus === "REFUNDED"
+  ) {
+    return "refunded";
+  }
   if (booking.status === "PENDING_PAYMENT") return "pending";
-  if (booking.status === "CANCELLED" || booking.status === "EXPIRED") {
+  if (
+    booking.status === "CANCELLED_BY_GUEST" ||
+    booking.status === "CANCELLED_BY_HOST" ||
+    booking.status === "CANCELLED_BY_ADMIN" ||
+    booking.status === "EXPIRED"
+  ) {
     return "cancelled";
   }
   return "paid";
@@ -68,6 +101,16 @@ export default function ManageReservationPage() {
   const [adults, setAdults] = useState(1);
   const [children, setChildren] = useState(0);
   const [cancelRequestSent, setCancelRequestSent] = useState(false);
+  const [cancellationQuote, setCancellationQuote] =
+    useState<GuestCancellationQuoteResponse | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [complaintType, setComplaintType] =
+    useState<ComplaintType>("NOT_AS_DESCRIBED");
+  const [complaintDescription, setComplaintDescription] = useState("");
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false);
+  const [complaintMessage, setComplaintMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -123,30 +166,103 @@ export default function ManageReservationPage() {
     () => Number(booking?.payment?.totalAmount ?? 0),
     [booking],
   );
+  const canCreateComplaint =
+    booking?.status === "CHECKED_IN" &&
+    booking.checkedInAt &&
+    Date.now() - new Date(booking.checkedInAt).getTime() <=
+      24 * 60 * 60 * 1000;
 
   const saveNotes = () => {
     setNotesSaved(true);
     window.setTimeout(() => setNotesSaved(false), 2000);
   };
 
-  const handleCancelReservation = async (reason: string) => {
+  const loadCancellationQuote = async () => {
     if (!booking) return;
 
     try {
-      await cancelBooking(token, booking.bookingId, reason);
+      setQuoteLoading(true);
+      setQuoteError(null);
+      const response = await requestCancellationQuote(token, booking.bookingId);
+      setCancellationQuote(response.data);
+    } catch (err) {
+      console.error("Failed to load cancellation quote", err);
+      setQuoteError("Could not calculate the cancellation quote. Try again.");
+      setCancellationQuote(null);
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  const openCancellationModal = () => {
+    setCancelOpen(true);
+    setCancellationQuote(null);
+    void loadCancellationQuote();
+  };
+
+  const handleCancelPendingHold = async () => {
+    if (!booking) return;
+
+    try {
+      await cancelBooking(token, booking.bookingId, "Guest abandoned unpaid hold");
       setBooking((current) =>
         current
           ? {
               ...current,
-              status: "CANCELLED",
-              statusDisplayName: "Cancelled",
+              status: "EXPIRED",
+              statusDisplayName: "Expired",
+            }
+          : current,
+      );
+      setCancelRequestSent(true);
+    } catch (err) {
+      console.error("Failed to expire pending booking", err);
+    }
+  };
+
+  const handleCancelReservation = async (reason: string, quoteId: string) => {
+    if (!booking) return;
+
+    try {
+      setCancelSubmitting(true);
+      await confirmCancellationQuote(token, booking.bookingId, quoteId, reason);
+      setBooking((current) =>
+        current
+          ? {
+              ...current,
+              status: "CANCELLED_BY_GUEST",
+              statusDisplayName: "Cancelled by guest",
             }
           : current,
       );
       setCancelRequestSent(true);
       setCancelOpen(false);
+      setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
+      setQuoteError("Cancellation failed. Request a new quote and try again.");
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
+  const submitComplaint = async () => {
+    if (!booking || !complaintDescription.trim()) return;
+
+    try {
+      setComplaintSubmitting(true);
+      setComplaintMessage("");
+      await createComplaint(token, booking.bookingId, {
+        type: complaintType,
+        description: complaintDescription.trim(),
+      });
+      setComplaintDescription("");
+      setComplaintMessage("Complaint submitted. The host has 24 hours to respond.");
+    } catch (err) {
+      console.error("Failed to submit complaint", err);
+      setComplaintMessage("Unable to submit complaint. You may already have an active complaint.");
+    } finally {
+      setComplaintSubmitting(false);
     }
   };
 
@@ -506,8 +622,58 @@ export default function ManageReservationPage() {
             </div>
           </div>
 
+          {canCreateComplaint ? (
+            <div className="animate-fade-in-up-delay-3 rounded-2xl border border-amber-100 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="font-display font-semibold text-slate-900">
+                    Report a check-in issue
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Available within 24 hours after check-in.
+                  </p>
+                </div>
+              </div>
+              <select
+                value={complaintType}
+                onChange={(event) =>
+                  setComplaintType(event.target.value as ComplaintType)
+                }
+                className="mb-3 w-full rounded-xl border border-slate-200 p-3 text-sm text-slate-700 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100"
+              >
+                {complaintTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={complaintDescription}
+                onChange={(event) => setComplaintDescription(event.target.value)}
+                placeholder="Describe the issue and include any evidence links if needed."
+                className="mb-3 h-28 w-full resize-none rounded-xl border border-slate-200 p-3 text-sm text-slate-700 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-100"
+              />
+              <button
+                type="button"
+                onClick={submitComplaint}
+                disabled={complaintSubmitting || !complaintDescription.trim()}
+                className="w-full rounded-xl bg-amber-600 py-2.5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:bg-amber-200"
+              >
+                {complaintSubmitting ? "Submitting..." : "Submit complaint"}
+              </button>
+              {complaintMessage ? (
+                <p className="mt-3 text-sm font-medium text-slate-600">
+                  {complaintMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {!isPaymentExpired &&
-          (booking.status === "PAID" ||
+          (booking.status === "CONFIRMED" ||
             booking.status === "PENDING_PAYMENT") ? (
             <div className="animate-fade-in-up-delay-3 rounded-2xl border border-red-100 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center gap-3">
@@ -537,7 +703,11 @@ export default function ManageReservationPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setCancelOpen(true)}
+                onClick={
+                  booking.status === "PENDING_PAYMENT"
+                    ? handleCancelPendingHold
+                    : openCancellationModal
+                }
                 className="w-full rounded-xl border border-red-200 py-2.5 text-sm font-medium text-red-600 transition-all hover:bg-red-50"
               >
                 Cancel this reservation
@@ -556,7 +726,12 @@ export default function ManageReservationPage() {
         isOpen={cancelOpen}
         policy={booking.cancellationPolicy}
         payment={booking.payment}
+        quote={cancellationQuote}
+        quoteLoading={quoteLoading}
+        quoteError={quoteError}
+        submitting={cancelSubmitting}
         onClose={() => setCancelOpen(false)}
+        onRetryQuote={loadCancellationQuote}
         onConfirm={handleCancelReservation}
       />
     </div>

@@ -74,7 +74,7 @@ public class Payment {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     @Builder.Default
-    private PaymentStatus status = PaymentStatus.CREATED;
+    private PaymentStatus status = PaymentStatus.PAYMENT_PENDING;
 
     @Column(name = "stripe_event_id")
     private String stripeEventId;

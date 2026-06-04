@@ -30,7 +30,11 @@ export function PaymentSummaryCard({
       ? "Charged at booking"
       : paymentStatus === "pending"
         ? "Charge pending"
-        : "Updated on original payment method";
+        : paymentStatus === "failed"
+          ? "Payment needs a new attempt"
+          : paymentStatus === "cancelled"
+            ? "Payment was cancelled"
+            : "Updated on original payment method";
   const paymentRows = [
     {
       label: "Stripe status",

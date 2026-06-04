@@ -66,10 +66,13 @@ public class PaymentService {
         UUID guestId = UUID.fromString(jwt.getSubject());
 
         CreateBookingRequest bookingRequest = bookingMapper.toCreateBookingRequest(request);
+
+        // Tạo Booking
         CreateBookingResponse booking = bookingServiceClient.createBooking("Bearer " + jwt.getTokenValue(), bookingRequest);
         UUID bookingId = booking.getBookingId();
         UUID hostId = UUID.fromString(booking.getHostId());
 
+        // Lấy Stripe account id của host
         String hostStripeAccountId = userClient.getStripeAccountId(booking.getHostId()).getData();
         if (hostStripeAccountId == null || hostStripeAccountId.isBlank()) {
             throw new IllegalStateException("Host has not completed Stripe Connect onboarding");
@@ -97,8 +100,11 @@ public class PaymentService {
         RequestOptions options = RequestOptions.builder()
                 .setIdempotencyKey(resolveStripeIdempotencyKey(idempotencyKey, bookingId))
                 .build();
+
+        // Tạo payment intent
         PaymentIntent paymentIntent = PaymentIntent.create(params, options);
 
+        // Lưu thông tin payment vào DB
         Payment payment = Payment.builder()
                 .bookingId(bookingId)
                 .guestId(guestId)
@@ -111,10 +117,11 @@ public class PaymentService {
                 .hostAmount(hostAmount)
                 .amountDecimal(BigDecimal.valueOf(amount))
                 .currency(request.getCurrency().toLowerCase())
-                .status(PaymentStatus.CREATED)
+                .status(PaymentStatus.PAYMENT_PENDING)
                 .build();
         paymentRepository.save(payment);
 
+        // Lưu log
         audit("PAYMENT_INTENT_CREATED", null, "SUCCESS",
                 Map.of("bookingId", bookingId.toString(), "paymentIntentId", paymentIntent.getId()));
 
@@ -125,6 +132,7 @@ public class PaymentService {
                 .publishableKey(stripeConfig.getPublishableKey())
                 .totalAmount(amount)
                 .currency(request.getCurrency())
+                .paymentStatus(PaymentStatus.PAYMENT_PENDING)
                 .expiresAt(booking.getExpiresAt())
                 .message("Booking created. Complete payment before it expires.")
                 .build();
@@ -158,24 +166,26 @@ public class PaymentService {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
                 .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
 
-        if (payment.getStatus() == PaymentStatus.SUCCEEDED) {
+        if (payment.getStatus() != PaymentStatus.PAID && isPaidOrRefundStatus(payment.getStatus())) {
+            log.warn("Ignoring succeeded event for refunded payment paymentId={} status={}",
+                    payment.getId(), payment.getStatus());
             return;
         }
 
-        payment.setStatus(PaymentStatus.SUCCEEDED);
-        payment.setSucceededAt(LocalDateTime.now());
-        payment.setStripeEventId(eventId);
-        payment.setWebhookPayload(rawPayload);
-        paymentRepository.save(payment);
+        // Nếu trạng thái là đã paid sẵn rồi thì chỉ cập nhật thông tin payment thôi không xử lý gì thêm
+        boolean alreadyPaid = payment.getStatus() == PaymentStatus.PAID;
+        if (!alreadyPaid) {
+            payment.setStatus(PaymentStatus.PAID);
+            payment.setSucceededAt(LocalDateTime.now());
+            payment.setStripeEventId(eventId);
+            payment.setWebhookPayload(rawPayload);
+            paymentRepository.save(payment);
+        }
 
-        BookingResponse booking = bookingServiceClient.updateBookingStatus(
-                serviceTokenProvider.bearerToken(),
-                bookingId,
-                UpdateBookingStatusRequest.builder()
-                        .paymentIntentId(paymentIntent.getId())
-                        .status(BookingStatus.PAID)
-                        .build());
+        // Cập nhật trạng thái Booking sang Confirmed
+        BookingResponse booking = confirmBookingIfPending(bookingId, paymentIntent.getId());
 
+        // Lưu vào transaction để quản lý
         Transaction transaction = transactionRepository.findByGatewayTransactionId(paymentIntent.getId())
                 .orElseGet(() -> transactionRepository.save(Transaction.builder()
                         .bookingId(bookingId)
@@ -190,6 +200,7 @@ public class PaymentService {
                         .completedAt(LocalDateTime.now())
                         .build()));
 
+        // Tạo Payout với status PENDING_CHECKIN
         if (payoutRepository.findByBookingId(bookingId).isEmpty()) {
             payoutRepository.save(Payout.builder()
                     .paymentId(payment.getId())
@@ -224,7 +235,12 @@ public class PaymentService {
     private void handlePaymentFailed(PaymentIntent paymentIntent, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
                 .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
-        payment.setStatus(PaymentStatus.FAILED);
+        if (isPaidOrRefundStatus(payment.getStatus())) {
+            log.warn("Ignoring failed event for already settled payment paymentId={} status={}",
+                    payment.getId(), payment.getStatus());
+            return;
+        }
+        payment.setStatus(PaymentStatus.PAYMENT_FAILED);
         payment.setStripeEventId(eventId);
         payment.setWebhookPayload(rawPayload);
         payment.setFailureMessage("Stripe payment_intent.payment_failed");
@@ -234,10 +250,41 @@ public class PaymentService {
     private void handlePaymentCancelled(PaymentIntent paymentIntent, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
                 .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
-        payment.setStatus(PaymentStatus.CANCELLED);
+        if (isPaidOrRefundStatus(payment.getStatus())) {
+            log.warn("Ignoring cancelled event for already settled payment paymentId={} status={}",
+                    payment.getId(), payment.getStatus());
+            return;
+        }
+        payment.setStatus(PaymentStatus.PAYMENT_CANCELLED);
         payment.setStripeEventId(eventId);
         payment.setWebhookPayload(rawPayload);
         paymentRepository.save(payment);
+    }
+
+    private BookingResponse confirmBookingIfPending(UUID bookingId, String paymentIntentId) {
+        BookingResponse current = bookingServiceClient.getBooking(serviceTokenProvider.bearerToken(), bookingId);
+        if (current.getStatus() == BookingStatus.CONFIRMED) {
+            return current;
+        }
+        if (current.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            throw new IllegalStateException("Cannot confirm booking " + bookingId + " from status " + current.getStatus());
+        }
+
+        return bookingServiceClient.updateBookingStatus(
+                serviceTokenProvider.bearerToken(),
+                bookingId,
+                UpdateBookingStatusRequest.builder()
+                        .paymentIntentId(paymentIntentId)
+                        .status(BookingStatus.CONFIRMED)
+                        .build());
+    }
+
+    private boolean isPaidOrRefundStatus(PaymentStatus status) {
+        return status == PaymentStatus.PAID
+                || status == PaymentStatus.REFUND_PENDING
+                || status == PaymentStatus.PARTIALLY_REFUNDED
+                || status == PaymentStatus.REFUNDED
+                || status == PaymentStatus.REFUND_FAILED;
     }
 
     private boolean registerWebhookEvent(String type, String paymentIntentId, String eventId, String payload) {

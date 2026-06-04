@@ -18,7 +18,8 @@ export type ListingStatus =
   | "DRAFT"
   | "ACTIVE"
   | "INACTIVE"
-  | "PENDING_APPROVAL";
+  | "PENDING_APPROVAL"
+  | "SUSPENDED";
 
 export interface HomeListingCardResponse {
   listingId: string;
@@ -258,6 +259,8 @@ export const listingAPI = {
     city?: string;
     country?: string;
     maxGuests?: number;
+    checkIn?: string;
+    checkOut?: string;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/search`, { params });
   },
@@ -265,6 +268,8 @@ export const listingAPI = {
   searchByPriceRange: (params: {
     minPrice: number;
     maxPrice: number;
+    checkIn?: string;
+    checkOut?: string;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/search/price`, { params });
   },
@@ -273,6 +278,8 @@ export const listingAPI = {
     latitude: number;
     longitude: number;
     radius: number;
+    checkIn?: string;
+    checkOut?: string;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/search/location`, { params });
   },

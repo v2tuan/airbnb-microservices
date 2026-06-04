@@ -14,6 +14,10 @@ interface SearchPageProps {
     q?: string;
     city?: string;
     country?: string;
+    checkin?: string;
+    checkout?: string;
+    checkIn?: string;
+    checkOut?: string;
     guests?: string;
     minPrice?: string;
     maxPrice?: string;
@@ -94,14 +98,52 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = await searchParams;
   const destination = query.city ?? query.q ?? "";
   const country = query.country;
+<<<<<<< HEAD
+  const checkIn = query.checkIn ?? query.checkin;
+  const checkOut = query.checkOut ?? query.checkout;
+  const maxGuests = parsePositiveNumber(query.guests);
+  const minPrice = parsePositiveNumber(query.minPrice);
+  const maxPrice = parsePositiveNumber(query.maxPrice);
+  const bedrooms = parsePositiveNumber(query.bedrooms);
+  const beds = parsePositiveNumber(query.beds);
+  const bathrooms = parsePositiveNumber(query.bathrooms);
+  const requestedSize = parsePositiveNumber(query.size);
+  const pageSize =
+    requestedSize && pageSizeOptions.includes(requestedSize)
+      ? requestedSize
+      : defaultPageSize;
+=======
   const maxGuests = query.guests ? Number(query.guests) : undefined;
   const minPrice = query.minPrice ? Number(query.minPrice) : undefined;
   const maxPrice = query.maxPrice ? Number(query.maxPrice) : undefined;
+>>>>>>> origin/master
 
   let listings: ListingResponse[] = [];
   let errorMessage = "";
 
   try {
+<<<<<<< HEAD
+    if (minPrice !== undefined && maxPrice !== undefined) {
+      const response = await withSearchTimeout(
+        listingAPI.searchByPriceRange({
+          minPrice,
+          maxPrice,
+          checkIn,
+          checkOut,
+        }),
+      );
+      listings = unwrapApiData(response.data);
+    } else {
+      const response = await withSearchTimeout(
+        listingAPI.searchListings({
+          city: destination || undefined,
+          country,
+          maxGuests,
+          checkIn,
+          checkOut,
+        }),
+      );
+=======
     if (Number.isFinite(minPrice) && Number.isFinite(maxPrice)) {
       const response = await listingAPI.searchByPriceRange({
         minPrice: minPrice as number,
@@ -114,6 +156,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         country,
         maxGuests,
       });
+>>>>>>> origin/master
       listings = unwrapApiData(response.data);
     }
   } catch {
@@ -126,6 +169,40 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       country,
       maxGuests,
   );
+<<<<<<< HEAD
+  const totalPages = Math.max(1, Math.ceil(visibleListings.length / pageSize));
+  const currentPage = Math.min(parsePage(query.page), totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedListings = visibleListings.slice(
+    startIndex,
+    startIndex + pageSize,
+  );
+  const pageNumbers = buildPageNumbers(currentPage, totalPages);
+
+  const baseQuery = {
+    q: query.q,
+    city: query.city,
+    country: query.country,
+    checkin: query.checkin,
+    checkout: query.checkout,
+    checkIn: query.checkIn,
+    checkOut: query.checkOut,
+    guests: query.guests,
+    minPrice: query.minPrice,
+    maxPrice: query.maxPrice,
+    roomType: query.roomType,
+    propertyType: query.propertyType,
+    amenity: query.amenity,
+    amenities: query.amenities,
+    bedrooms: query.bedrooms,
+    beds: query.beds,
+    bathrooms: query.bathrooms,
+    instantBook: query.instantBook,
+    size: pageSize,
+  };
+  const rangeStart = visibleListings.length === 0 ? 0 : startIndex + 1;
+  const rangeEnd = Math.min(startIndex + pageSize, visibleListings.length);
+=======
   const resultLabel = destination
       ? `Places in ${destination}`
       : "Places to stay";
@@ -133,6 +210,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       Number.isFinite(minPrice) && Number.isFinite(maxPrice)
           ? `${formatPrice(minPrice as number, "USD")} - ${formatPrice(maxPrice as number, "USD")}`
           : "Any price";
+>>>>>>> origin/master
 
   return (
       <main className="min-h-screen bg-white">

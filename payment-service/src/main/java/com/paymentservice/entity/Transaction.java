@@ -70,10 +70,21 @@ public class Transaction {
     private String description;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime initiatedAt = LocalDateTime.now();
+    private LocalDateTime initiatedAt;
 
     private LocalDateTime completedAt;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        if (initiatedAt == null) {
+            initiatedAt = now;
+        }
+        if (createdAt == null) {
+            createdAt = now;
+        }
+    }
 }

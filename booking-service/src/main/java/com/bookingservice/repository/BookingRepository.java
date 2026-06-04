@@ -18,7 +18,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
      * Tìm booking theo roomId và khoảng thời gian (để check conflict)
      */
     @Query("SELECT b FROM Booking b WHERE b.listingId = :roomId " +
-            "AND b.status IN ('PENDING_PAYMENT', 'PAID', 'CHECKED_IN') " +
+            "AND b.status IN ('PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT') " +
             "AND NOT (b.checkOutDate <= :checkIn OR b.checkInDate >= :checkOut)")
     List<Booking> findConflictingBookings(
             @Param("roomId") UUID roomId,
@@ -97,7 +97,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         OR (
             :type = 'CANCELLED'
             AND (
-                b.status = com.bookingservice.entity.BookingStatus.CANCELLED
+                b.status IN (
+                    com.bookingservice.entity.BookingStatus.CANCELLED_BY_GUEST,
+                    com.bookingservice.entity.BookingStatus.CANCELLED_BY_HOST,
+                    com.bookingservice.entity.BookingStatus.CANCELLED_BY_ADMIN
+                )
 
                 OR (
                     b.status = com.bookingservice.entity.BookingStatus.PENDING_PAYMENT
@@ -105,7 +109,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                 )
 
                 OR (
-                    b.status = BookingStatus.EXPIRED
+                    b.status = com.bookingservice.entity.BookingStatus.EXPIRED
                 )
             )
         )
@@ -114,7 +118,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             :type = 'UPCOMING'
             AND (
                 (
-                    b.status = com.bookingservice.entity.BookingStatus.PAID
+                    b.status IN (
+                        com.bookingservice.entity.BookingStatus.CONFIRMED,
+                        com.bookingservice.entity.BookingStatus.CHECKED_IN,
+                        com.bookingservice.entity.BookingStatus.CHECKED_OUT
+                    )
                     AND b.checkOutDate >= CURRENT_DATE
                 )
 
@@ -127,9 +135,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
         OR (
             :type = 'COMPLETED'
-            AND b.status IN (
-                com.bookingservice.entity.BookingStatus.PAID            )
-            AND b.checkOutDate < CURRENT_DATE
+            AND b.status = com.bookingservice.entity.BookingStatus.COMPLETED
         )
     )
     ORDER BY b.createdAt DESC

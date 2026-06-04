@@ -24,7 +24,7 @@ interface PaymentFormProps {
  * 2. User điền thông tin thẻ và bấm "Thanh toán"
  * 3. stripe.confirmPayment() gửi thông tin thẻ trực tiếp cho Stripe
  * 4. Stripe xử lý và gọi webhook về Payment Service
- * 5. Payment Service cập nhật trạng thái booking → PAID
+ * 5. Payment Service cập nhật payment PAID và booking → CONFIRMED
  *
  * Thẻ test của Stripe:
  * - Thành công: 4242 4242 4242 4242 (bất kỳ exp, CVC)
