@@ -188,6 +188,17 @@ function createPriceOverlay({
 
 export default function SearchMap({ destination, listings }: SearchMapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
+  const googleMapRef = useRef<{
+    fitBounds: (
+      bounds: unknown,
+      padding?:
+        | number
+        | { bottom: number; left: number; right: number; top: number },
+    ) => void;
+    setCenter: (position: { lat: number; lng: number }) => void;
+    setZoom: (zoom: number) => void;
+  } | null>(null);
+  const boundsKeyRef = useRef("");
   const [loadFailed, setLoadFailed] = useState(false);
   const [selectedListingId, setSelectedListingId] = useState<string | null>(
     null,
@@ -223,40 +234,60 @@ export default function SearchMap({ destination, listings }: SearchMapProps) {
 
     let overlays: Array<{ setMap: (map: unknown | null) => void }> = [];
     let cancelled = false;
+    const boundsKey = `${destination}:${mapListings
+      .map(
+        ({ listing, position }) =>
+          `${listing.listingId}:${position.lat}:${position.lng}`,
+      )
+      .join("|")}`;
 
     loadGoogleMaps()
       .then(() => {
         if (cancelled || !mapRef.current || !window.google?.maps) return;
 
         const fallback = getFallbackCenter(destination);
-        const map = new window.google.maps.Map(mapRef.current, {
-          center: { lat: fallback.lat, lng: fallback.lng },
-          clickableIcons: false,
-          disableDefaultUI: true,
-          fullscreenControl: true,
-          gestureHandling: "greedy",
-          mapTypeControl: false,
-          streetViewControl: false,
-          styles: [
-            {
-              featureType: "poi",
-              stylers: [{ visibility: "off" }],
-            },
-          ],
-          zoom: fallback.zoom,
-          zoomControl: true,
-        });
 
-        if (mapListings.length > 0) {
-          const bounds = new window.google.maps.LatLngBounds();
-
-          mapListings.forEach(({ position }) => {
-            bounds.extend(position);
+        if (!googleMapRef.current) {
+          googleMapRef.current = new window.google.maps.Map(mapRef.current, {
+            center: { lat: fallback.lat, lng: fallback.lng },
+            clickableIcons: false,
+            disableDefaultUI: true,
+            fullscreenControl: true,
+            gestureHandling: "greedy",
+            mapTypeControl: false,
+            streetViewControl: false,
+            styles: [
+              {
+                featureType: "poi",
+                stylers: [{ visibility: "off" }],
+              },
+            ],
+            zoom: fallback.zoom,
+            zoomControl: true,
           });
-          map.fitBounds(bounds, { bottom: 80, left: 80, right: 80, top: 80 });
-        } else {
-          map.setCenter({ lat: fallback.lat, lng: fallback.lng });
-          map.setZoom(fallback.zoom);
+        }
+
+        const map = googleMapRef.current;
+
+        if (boundsKeyRef.current !== boundsKey) {
+          boundsKeyRef.current = boundsKey;
+
+          if (mapListings.length > 0) {
+            const bounds = new window.google.maps.LatLngBounds();
+
+            mapListings.forEach(({ position }) => {
+              bounds.extend(position);
+            });
+            map.fitBounds(bounds, {
+              bottom: 80,
+              left: 80,
+              right: 80,
+              top: 80,
+            });
+          } else {
+            map.setCenter({ lat: fallback.lat, lng: fallback.lng });
+            map.setZoom(fallback.zoom);
+          }
         }
 
         overlays = mapListings
@@ -272,6 +303,15 @@ export default function SearchMap({ destination, listings }: SearchMapProps) {
             }),
           )
           .filter(Boolean) as Array<{ setMap: (map: unknown | null) => void }>;
+
+        const selectedMapItem = mapListings.find(
+          ({ listing }) => listing.listingId === selectedListingId,
+        );
+
+        if (selectedMapItem) {
+          map.setCenter(selectedMapItem.position);
+          map.setZoom(16);
+        }
       })
       .catch(() => setLoadFailed(true));
 
@@ -309,10 +349,7 @@ export default function SearchMap({ destination, listings }: SearchMapProps) {
 
       {selectedListing ? (
         <div className="absolute bottom-5 left-1/2 z-40 w-[min(340px,calc(100%-32px))] -translate-x-1/2">
-          <Link
-            href={`/rooms/${selectedListing.listingId}`}
-            className="group block overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10 transition hover:scale-[1.01]"
-          >
+          <div className="overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10 transition">
             <div className="grid grid-cols-[124px_1fr]">
               <div className="relative min-h-32 bg-neutral-100">
                 <Image
@@ -332,9 +369,12 @@ export default function SearchMap({ destination, listings }: SearchMapProps) {
                     ★ {resolveRating(selectedListing.listingId)}
                   </span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-sm text-neutral-600">
+                <Link
+                  href={`/rooms/${selectedListing.listingId}`}
+                  className="mt-1 block line-clamp-2 text-sm font-semibold text-neutral-900 underline-offset-2 hover:underline"
+                >
                   {selectedListing.title}
-                </p>
+                </Link>
                 <p className="mt-2 text-sm text-neutral-500">
                   {selectedListing.maxGuests} guests · {selectedListing.numBeds}{" "}
                   beds
@@ -350,7 +390,7 @@ export default function SearchMap({ destination, listings }: SearchMapProps) {
                 </p>
               </div>
             </div>
-          </Link>
+          </div>
           <button
             type="button"
             onClick={() => setSelectedListingId(null)}
