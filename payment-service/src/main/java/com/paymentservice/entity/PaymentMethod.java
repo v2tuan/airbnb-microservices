@@ -49,14 +49,36 @@ public class PaymentMethod {
     private String cardholderName;
 
     @Column(nullable = false)
-    private Boolean isDefault = false;
+    private Boolean isDefault;
 
     @Column(nullable = false)
-    private Boolean isVerified = false;
+    private Boolean isVerified;
 
     @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
 
     @Column(nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        if (isDefault == null) {
+            isDefault = false;
+        }
+        if (isVerified == null) {
+            isVerified = false;
+        }
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }

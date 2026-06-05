@@ -42,6 +42,8 @@ jwt:
 clients:
   rating-service:
     base-url: http://localhost:8888
+  booking-service:
+    base-url: http://localhost:8086/bookings
 
 logging:
   level:

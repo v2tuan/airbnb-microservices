@@ -1,4 +1,13 @@
-export type ReservationStatus = "pending_payment" | "confirmed" | "cancelled" | "completed";
+export type ReservationStatus =
+    | "PENDING_PAYMENT"
+    | "EXPIRED"
+    | "CONFIRMED"
+    | "CHECKED_IN"
+    | "CHECKED_OUT"
+    | "COMPLETED"
+    | "CANCELLED_BY_GUEST"
+    | "CANCELLED_BY_HOST"
+    | "CANCELLED_BY_ADMIN";
 export type PaymentStatus = "paid" | "pending" | "refunded";
 
 export interface Host {
@@ -87,7 +96,7 @@ const pendingPaymentExpiresAt = new Date(pendingPaymentCreatedAt.getTime() + 15 
 export const mockTrips: Trip[] = [
     {
         id: "trip-001",
-        status: "confirmed",
+        status: "CONFIRMED",
         confirmationCode: "HMABZXQ29",
         property: {
             id: "prop-001",
@@ -145,7 +154,7 @@ export const mockTrips: Trip[] = [
     },
     {
         id: "trip-002",
-        status: "confirmed",
+        status: "CONFIRMED",
         confirmationCode: "TKPRY7N44",
         property: {
             id: "prop-002",
@@ -202,7 +211,7 @@ export const mockTrips: Trip[] = [
     },
     {
         id: "trip-006",
-        status: "pending_payment",
+        status: "PENDING_PAYMENT",
         confirmationCode: "PND7V2Q91",
         createdAt: pendingPaymentCreatedAt.toISOString(),
         expiresAt: pendingPaymentExpiresAt.toISOString(),
@@ -260,7 +269,7 @@ export const mockTrips: Trip[] = [
     },
     {
         id: "trip-003",
-        status: "completed",
+        status: "COMPLETED",
         confirmationCode: "NZWXB3M81",
         property: {
             id: "prop-003",
@@ -316,7 +325,7 @@ export const mockTrips: Trip[] = [
     },
     {
         id: "trip-004",
-        status: "completed",
+        status: "COMPLETED",
         confirmationCode: "FQHTR6P55",
         property: {
             id: "prop-004",
@@ -371,7 +380,7 @@ export const mockTrips: Trip[] = [
     },
     {
         id: "trip-005",
-        status: "cancelled",
+        status: "CANCELLED_BY_GUEST",
         confirmationCode: "BVKWZ9L33",
         property: {
             id: "prop-005",

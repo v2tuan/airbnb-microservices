@@ -19,4 +19,4 @@ CREATE INDEX IF NOT EXISTS idx_bookings_expiry
 --         listing_id WITH =,
 --         daterange(check_in_date, check_out_date, '[)') WITH &&
 --     )
---     WHERE (status IN ('PENDING_PAYMENT', 'PAID', 'CHECKED_IN'));
+--     WHERE (status IN ('PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT'));

@@ -38,6 +38,7 @@ public class ListingResponse {
     BigDecimal longitude;
     ListingStatus status;
     Boolean instantBook;
+    String cancellationPolicyCode;
     LocalTime checkInStartTime;
     LocalTime checkInEndTime;
     LocalTime checkOutTime;

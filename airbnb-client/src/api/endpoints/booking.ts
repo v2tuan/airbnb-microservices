@@ -6,6 +6,13 @@ import type {
   BookingTripsResponse,
   CheckoutRequest,
   CheckoutResponse,
+  AdminComplaintDecision,
+  ComplaintResponse,
+  ComplaintStatus,
+  ComplaintType,
+  GuestCancellationQuoteResponse,
+  HostCancellationQuoteResponse,
+  HostCancellationReasonCode,
   HostReservationDetailResponse,
   HostReservationResponse,
   HostReservationsPageResponse,
@@ -61,6 +68,88 @@ export async function cancelBooking(
   const res = await apiClient.post(
     `${prefix}/bookings/${bookingId}/cancel`,
     { reason },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function requestCancellationQuote(
+  token: string | null,
+  bookingId: string,
+): Promise<ApiResponse<GuestCancellationQuoteResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/${bookingId}/cancellation-quotes`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function confirmCancellationQuote(
+  token: string | null,
+  bookingId: string,
+  quoteId: string,
+  reason: string,
+): Promise<ApiResponse<{ status: BookingStatus }>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/${bookingId}/cancel/confirm`,
+    { quoteId, reason },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function createComplaint(
+  token: string | null,
+  bookingId: string,
+  data: {
+    type: ComplaintType;
+    description: string;
+    evidenceUrls?: string[];
+  },
+): Promise<ApiResponse<ComplaintResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/${bookingId}/complaints`,
+    data,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function getMyComplaints(
+  token: string | null,
+): Promise<ApiResponse<ComplaintResponse[]>> {
+  const res = await apiClient.get(`${prefix}/bookings/me/complaints`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  return res.data;
+}
+
+export async function acceptComplaintHostResponse(
+  token: string | null,
+  complaintId: string,
+): Promise<ApiResponse<ComplaintResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/complaints/${complaintId}/accept`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function escalateComplaint(
+  token: string | null,
+  complaintId: string,
+): Promise<ApiResponse<ComplaintResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/complaints/${complaintId}/escalate`,
+    {},
     { headers: { Authorization: `Bearer ${token}` } },
   );
 
@@ -145,6 +234,152 @@ export async function updateHostReservationStatus(
   const res = await apiClient.patch(
     `${prefix}/bookings/host/reservations/${reservationId}/status`,
     data,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function requestHostCancellationQuote(
+  token: string | null,
+  reservationId: string,
+  reasonCode: HostCancellationReasonCode,
+): Promise<ApiResponse<HostCancellationQuoteResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/host/reservations/${reservationId}/cancellation-quotes`,
+    { reasonCode },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function confirmHostCancellationQuote(
+  token: string | null,
+  reservationId: string,
+  quoteId: string,
+  reason: string,
+): Promise<ApiResponse<HostReservationDetailResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/host/reservations/${reservationId}/cancel/confirm`,
+    { quoteId, reason },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function getHostComplaints(
+  token: string | null,
+): Promise<ApiResponse<ComplaintResponse[]>> {
+  const res = await apiClient.get(`${prefix}/bookings/host/complaints`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  return res.data;
+}
+
+export async function respondToComplaint(
+  token: string | null,
+  complaintId: string,
+  response: string,
+): Promise<ApiResponse<ComplaintResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/host/complaints/${complaintId}/respond`,
+    { response },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function getAdminComplaints(
+  token: string | null,
+  status?: ComplaintStatus,
+): Promise<ApiResponse<ComplaintResponse[]>> {
+  const res = await apiClient.get(`${prefix}/bookings/admin/complaints`, {
+    params: status ? { status } : undefined,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  return res.data;
+}
+
+export async function decideComplaint(
+  token: string | null,
+  complaintId: string,
+  data: {
+    decision: AdminComplaintDecision;
+    adminNote: string;
+    refundAmount?: number;
+  },
+): Promise<ApiResponse<ComplaintResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/admin/complaints/${complaintId}/decision`,
+    data,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function forceCancelBooking(
+  token: string | null,
+  bookingId: string,
+  data: {
+    reason: string;
+    adminNote: string;
+    refundAmount?: number;
+  },
+): Promise<ApiResponse<HostReservationDetailResponse>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/admin/bookings/${bookingId}/force-cancel`,
+    data,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function waiveHostPenalty(
+  token: string | null,
+  penaltyId: string,
+  reason: string,
+): Promise<ApiResponse<unknown>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/admin/host-penalties/${penaltyId}/waive`,
+    { reason },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function adminSuspendListing(
+  token: string | null,
+  listingId: string,
+  data: {
+    suspendedUntil?: string;
+    reason: string;
+  },
+): Promise<ApiResponse<void>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/admin/listings/${listingId}/suspend`,
+    data,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  return res.data;
+}
+
+export async function adminUnsuspendListing(
+  token: string | null,
+  listingId: string,
+  reason: string,
+): Promise<ApiResponse<void>> {
+  const res = await apiClient.post(
+    `${prefix}/bookings/admin/listings/${listingId}/unsuspend`,
+    { reason },
     { headers: { Authorization: `Bearer ${token}` } },
   );
 

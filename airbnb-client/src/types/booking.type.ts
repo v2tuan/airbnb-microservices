@@ -1,10 +1,52 @@
 export type BookingStatus =
   | "PENDING_PAYMENT"
-  | "PAID"
+  | "EXPIRED"
+  | "CONFIRMED"
   | "CHECKED_IN"
+  | "CHECKED_OUT"
   | "COMPLETED"
-  | "CANCELLED"
-  | "EXPIRED";
+  | "CANCELLED_BY_GUEST"
+  | "CANCELLED_BY_HOST"
+  | "CANCELLED_BY_ADMIN";
+
+export type PaymentLifecycleStatus =
+  | "PAYMENT_PENDING"
+  | "PAID"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_CANCELLED"
+  | "REFUND_PENDING"
+  | "PARTIALLY_REFUNDED"
+  | "REFUNDED"
+  | "REFUND_FAILED";
+
+export type HostCancellationReasonCode =
+  | "PROPERTY_DAMAGE"
+  | "PERSONAL_EMERGENCY"
+  | "DOUBLE_BOOKING"
+  | "UNAVAILABLE"
+  | "OTHER";
+
+export type ComplaintStatus =
+  | "WAITING_HOST_RESPONSE"
+  | "OPEN"
+  | "ESCALATED_TO_ADMIN"
+  | "RESOLVED"
+  | "REJECTED"
+  | "CLOSED";
+
+export type ComplaintType =
+  | "CANNOT_CHECK_IN"
+  | "NOT_AS_DESCRIBED"
+  | "UNCLEAN"
+  | "MISSING_AMENITY"
+  | "SAFETY_ISSUE";
+
+export type AdminComplaintDecision =
+  | "REJECT"
+  | "RESOLVE_NO_REFUND"
+  | "PARTIAL_REFUND"
+  | "FULL_REFUND"
+  | "SUSPEND_LISTING";
 
 export type BookingFilterType = "UPCOMING" | "COMPLETED" | "CANCELLED" | "ALL";
 
@@ -19,6 +61,7 @@ export interface BookingTripsResponse {
   createdAt: string;
   expiresAt: string;
   paidAt: string | null;
+  checkedOutAt?: string | null;
   currency: string;
   hostId: string | null;
   listingId: string;
@@ -57,6 +100,7 @@ export interface CheckoutResponse {
   publishableKey: string;
   totalAmount: number;
   currency: string;
+  paymentStatus: PaymentLifecycleStatus;
   expiresAt: string;
   message: string;
 }
@@ -77,6 +121,7 @@ export interface BookingDetailResponse {
   expiresAt: string;
   paidAt: string | null;
   checkedInAt: string | null;
+  checkedOutAt: string | null;
   completedAt: string | null;
   paymentIntentId: string | null;
   numAdults: number;
@@ -168,13 +213,67 @@ export interface BookingPaymentSummary {
   currency: string;
   refundPolicy?: string | null;
   stripePaymentIntentId?: string | null;
-  stripePaymentStatus?: string | null;
+  stripePaymentStatus?: PaymentLifecycleStatus | null;
 }
 
 export interface BookingCancellationPolicy {
   type: string;
   description: string;
   refundable: boolean;
+}
+
+export interface GuestCancellationQuoteResponse {
+  quoteId: string;
+  bookingId: string;
+  refundAmount: number;
+  nonRefundableAmount: number;
+  accommodationRefund: number;
+  cleaningFeeRefund: number;
+  serviceFeeRefund: number;
+  taxesRefund: number;
+  currency: string;
+  policyCode: "FLEXIBLE" | "MODERATE" | "STRICT" | string;
+  expiresAt: string;
+}
+
+export interface HostCancellationQuoteResponse {
+  quoteId: string;
+  bookingId: string;
+  reasonCode: HostCancellationReasonCode;
+  guestRefundAmount: number;
+  currency: string;
+  penaltyPoints: number;
+  thresholdResult: {
+    listingActivePenaltyCount: number;
+    hostActivePenaltyCount: number;
+    willSuspendListing: boolean;
+    listingSuspendedUntil?: string | null;
+    willMarkHostAdminReview: boolean;
+  };
+  expiresAt: string;
+}
+
+export interface ComplaintResponse {
+  complaintId: string;
+  bookingId: string;
+  guestId: string;
+  hostId: string;
+  listingId: string;
+  type: ComplaintType;
+  status: ComplaintStatus;
+  description: string;
+  evidenceUrls: string[];
+  hostResponse?: string | null;
+  hostRespondedAt?: string | null;
+  hostResponseDeadline: string;
+  escalatedAt?: string | null;
+  adminNote?: string | null;
+  adminDecision?: AdminComplaintDecision | null;
+  refundAmount?: number | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
 }
 
 export interface BookingReviewSummary {
@@ -211,6 +310,7 @@ export interface HostReservationResponse {
   expiresAt?: string | null;
   paidAt?: string | null;
   checkedInAt?: string | null;
+  checkedOutAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
   numAdults: number;
@@ -269,6 +369,7 @@ export interface HostReservationDetailResponse {
   expiresAt?: string | null;
   paidAt?: string | null;
   checkedInAt?: string | null;
+  checkedOutAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
   cancellationReason?: string | null;
