@@ -41,6 +41,7 @@ public class ListingResponse {
     LocalTime checkInStartTime;
     LocalTime checkInEndTime;
     LocalTime checkOutTime;
+    String cancellationPolicyCode;
     LocalDateTime suspendedUntil;
     String suspensionReason;
     

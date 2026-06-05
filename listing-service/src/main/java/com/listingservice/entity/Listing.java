@@ -40,6 +40,12 @@ public class Listing extends BaseEntity {
     
     @Column(nullable = false, columnDefinition = "TEXT")
     String description;
+
+    /**
+     * Cancellation policy snapshot used by future cancellation quote/refund calculation.
+     */
+    @Column(name = "cancellation_policy_code", length = 30)
+    private String cancellationPolicyCode = "FLEXIBLE";
     
     @Column(name = "property_type", nullable = false, length = 50)
     @Enumerated(EnumType.STRING)
