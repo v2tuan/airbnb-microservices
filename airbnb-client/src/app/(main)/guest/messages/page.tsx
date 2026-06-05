@@ -7,7 +7,6 @@ import {
   Archive,
   CircleDot,
   Link2,
-  LoaderCircle,
   MapPin,
   Search,
   Send,
@@ -54,11 +53,20 @@ type ListingPreview = {
   maxGuests: number;
 };
 
-const listingLinkPattern = /(?:https?:\/\/)?(?:[^\s/]+\/)?(?:rooms|listings)\/([A-Za-z0-9_-]+)/i;
+const listingLinkPattern =
+  /(?:https?:\/\/)?(?:[^/\s]+\/)*?(?:rooms|listings)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9_-]+)/i;
 
 const extractListingId = (value: string) => value.match(listingLinkPattern)?.[1] ?? null;
 
+const isUuidLike = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
 const extractListingTitle = (value: string) => {
+  const listingId = extractListingId(value);
+  if (listingId && isUuidLike(listingId)) {
+    return "View listing";
+  }
+
   const match = value.match(/\/([A-Za-z0-9_-]+)(?:\?|#|$)/);
   const raw = match?.[1] ?? "listing";
 
@@ -66,6 +74,50 @@ const extractListingTitle = (value: string) => {
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase())
     .trim();
+};
+
+const summarizeListingMessage = (value: string, listingTitle?: string | null) => {
+  const listingId = extractListingId(value);
+  if (!listingId) return value.trim();
+
+  if (listingTitle?.trim()) {
+    return listingTitle.trim();
+  }
+
+  return "Shared a listing";
+};
+
+const listingPreviewCache = new Map<string, ListingPreview>();
+
+const fetchListingPreview = async (
+  listingId: string,
+  fallbackTitle: string
+): Promise<ListingPreview> => {
+  const cached = listingPreviewCache.get(listingId);
+  if (cached) return cached;
+
+  try {
+    const response = await listingAPI.getRoomById(listingId);
+    const listing = unwrapApiData(response.data);
+
+    if (listing) {
+      const normalized = normalizeListingPreview(listing);
+      listingPreviewCache.set(listingId, normalized);
+      return normalized;
+    }
+  } catch {
+    // Fall back to a lightweight card when listing API is unavailable.
+  }
+
+  return {
+    listingId,
+    title: fallbackTitle,
+    city: "Open listing",
+    country: "",
+    basePrice: 0,
+    currency: "USD",
+    maxGuests: 0,
+  };
 };
 
 const formatCurrency = (amount: number, currency: string) => {
@@ -179,10 +231,53 @@ function ListingFrame({
   );
 }
 
+function ListingLinkPreview({
+  listingId,
+  fallbackTitle,
+  debounceMs = 0,
+}: {
+  listingId: string;
+  fallbackTitle: string;
+  debounceMs?: number;
+}) {
+  const [listing, setListing] = useState<ListingPreview | null>(
+    () => listingPreviewCache.get(listingId) ?? null
+  );
+  const [loading, setLoading] = useState(!listingPreviewCache.has(listingId));
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(!listingPreviewCache.has(listingId));
+
+    const timeout = window.setTimeout(() => {
+      void fetchListingPreview(listingId, fallbackTitle).then((preview) => {
+        if (!cancelled) {
+          setListing(preview);
+          setLoading(false);
+        }
+      });
+    }, debounceMs);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [listingId, fallbackTitle, debounceMs]);
+
+  return (
+    <ListingFrame
+      listing={listing}
+      fallbackTitle={fallbackTitle}
+      loading={loading}
+      href={`/rooms/${listingId}`}
+    />
+  );
+}
+
 export default function GuestMessagesPage() {
   const { user } = useAuth();
   const { socket } = useSocket();
-  const { conversations, loading: conversationsLoading } = useConversations();
+  const { conversations, loading: conversationsLoading, updateConversationLastMessage } = useConversations();
   const searchParams = useSearchParams();
   const params = useParams();
   const pathId = (params as any)?.id as string | undefined;
@@ -200,8 +295,6 @@ export default function GuestMessagesPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draftText, setDraftText] = useState("");
   const [isRemoteTyping, setIsRemoteTyping] = useState(false);
-  const [draftPreview, setDraftPreview] = useState<ListingPreview | null>(null);
-  const [draftPreviewLoading, setDraftPreviewLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   const draftListingId = extractListingId(draftText);
@@ -337,50 +430,6 @@ export default function GuestMessagesPage() {
     };
   }, [activeConversation.conversationId, draftText, socket]);
 
-  useEffect(() => {
-    if (!draftListingId) {
-      setDraftPreview(null);
-      setDraftPreviewLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setDraftPreviewLoading(true);
-
-    const timeout = window.setTimeout(async () => {
-      try {
-        const response = await listingAPI.getRoomById(draftListingId);
-        const listing = unwrapApiData(response.data);
-
-        if (!cancelled && listing) {
-          setDraftPreview(normalizeListingPreview(listing));
-          setDraftPreviewLoading(false);
-          return;
-        }
-      } catch {
-        // Use a fallback preview frame when the room cannot be resolved.
-      }
-
-      if (!cancelled) {
-        setDraftPreview({
-          listingId: draftListingId,
-          title: extractListingTitle(draftText),
-          city: "Open listing",
-          country: "",
-          basePrice: 0,
-          currency: "USD",
-          maxGuests: 0,
-        });
-        setDraftPreviewLoading(false);
-      }
-    }, 350);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [draftListingId, draftText]);
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -401,9 +450,18 @@ export default function GuestMessagesPage() {
       },
     ]);
 
+    if (draftListingId) {
+      void fetchListingPreview(draftListingId, extractListingTitle(text)).then((preview) => {
+        updateConversationLastMessage(
+          activeConversation.conversationId,
+          summarizeListingMessage(text, preview.title)
+        );
+      });
+    } else {
+      updateConversationLastMessage(activeConversation.conversationId, text);
+    }
+
     setDraftText("");
-    setDraftPreview(null);
-    setDraftPreviewLoading(false);
 
     // notify stop typing
     try {
@@ -481,8 +539,8 @@ export default function GuestMessagesPage() {
               </div>
 
               <div className="max-h-[48vh] overflow-y-auto lg:max-h-[60vh]">
-                {conversations.map((conversation, index) => {
-                  const isActive = index === 0;
+                {conversations.map((conversation) => {
+                  const isActive = conversation.conversationId === activeConversation.conversationId;
 
                   return (
                     <button
@@ -572,11 +630,19 @@ export default function GuestMessagesPage() {
                               <p className={`text-xs ${isGuestMessage ? "text-zinc-300" : "text-zinc-500"}`}>
                                 Shared a room link
                               </p>
-                              <ListingFrame
-                                listing={null}
+                              <ListingLinkPreview
+                                listingId={listingId}
                                 fallbackTitle={fallbackTitle}
-                                href={`/rooms/${listingId}`}
                               />
+                              <Link
+                                href={`/rooms/${listingId}`}
+                                className={`inline-flex items-center gap-1 text-xs font-medium underline-offset-2 hover:underline ${
+                                  isGuestMessage ? "text-rose-200 hover:text-white" : "text-rose-600 hover:text-rose-700"
+                                }`}
+                              >
+                                <Link2 className="h-3.5 w-3.5" />
+                                Open listing
+                              </Link>
                             </div>
                           ) : (
                             <p className="whitespace-pre-wrap leading-6">{message.text}</p>
@@ -595,11 +661,10 @@ export default function GuestMessagesPage() {
               <footer className="border-t border-zinc-200 p-4 sm:p-5">
                 {draftListingId ? (
                   <div className="mb-3">
-                    <ListingFrame
-                      listing={draftPreview}
-                      fallbackTitle={draftPreview?.title ?? extractListingTitle(draftText)}
-                      loading={draftPreviewLoading}
-                      href={draftPreview ? `/rooms/${draftPreview.listingId}` : undefined}
+                    <ListingLinkPreview
+                      listingId={draftListingId}
+                      fallbackTitle={extractListingTitle(draftText)}
+                      debounceMs={350}
                     />
                   </div>
                 ) : null}
@@ -628,8 +693,8 @@ export default function GuestMessagesPage() {
 
                 {draftListingId ? (
                   <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-                    {draftPreviewLoading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    {draftPreviewLoading ? "Loading room preview..." : "Room preview ready to send"}
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Room link detected — preview will be sent as a clickable listing card
                   </p>
                 ) : null}
               </footer>

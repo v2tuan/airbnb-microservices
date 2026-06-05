@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchConversations } from '@/api/message'
 import { userAPI } from '@/api/endpoints/user'
 import { useAuth } from '@/hooks/useAuth'
+import { useSocket } from '@/hooks/useSocket'
 
-type Conversation = {
+export type Conversation = {
   id: string
   conversationId: string
   partnerId: string
@@ -21,8 +22,17 @@ const getParticipantId = (participant: any) => {
   return participant._id ?? participant.id ?? ''
 }
 
+const formatConversationTime = (value?: string | Date) => {
+  const date = value ? new Date(value) : new Date()
+  if (Number.isNaN(date.getTime())) {
+    return String(value ?? '')
+  }
+  return date.toLocaleString()
+}
+
 export const useConversations = () => {
   const { user } = useAuth()
+  const { socket } = useSocket()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,6 +41,42 @@ export const useConversations = () => {
   const keycloakUserId = user?.keycloakUserId
   // Chat backend dùng `keycloakUserId` (JWT sub) để xác định participants,
   // nên tránh fallback sang `id` (pin UUID) để không match sai.
+
+  const updateConversationLastMessage = useCallback(
+    (conversationId: string, text: string, createdAt?: string | Date) => {
+      const preview = text.trim()
+      if (!conversationId || !preview) return
+
+      const time = formatConversationTime(createdAt)
+
+      setConversations((current) => {
+        const index = current.findIndex((item) => item.conversationId === conversationId)
+        if (index === -1) return current
+
+        const updated = {
+          ...current[index],
+          preview,
+          time,
+        }
+
+        const next = [...current]
+        next.splice(index, 1)
+        next.unshift(updated)
+        return next
+      })
+    },
+    []
+  )
+
+  const conversationIdsKey = useMemo(
+    () =>
+      conversations
+        .map((conversation) => conversation.conversationId)
+        .filter(Boolean)
+        .sort()
+        .join(','),
+    [conversations]
+  )
 
   const getParticipantProfile = async (participantId: string) => {
     const cached = profileCacheRef.current.get(participantId)
@@ -84,7 +130,7 @@ export const useConversations = () => {
               name: profile?.fullName || otherParticipant?.fullName || 'Unknown',
               avatar: profile?.avatarUrl || otherParticipant?.avatar || '',
               listing: 'Listing', // TODO: get from booking/listing
-              time: new Date(conv.updatedAt).toLocaleString(),
+              time: formatConversationTime(conv.updatedAt),
               preview: conv.lastMessage?.text || conv.lastMessage?.message?.text || 'No messages yet',
               unread: false // TODO: implement unread status
             }
@@ -113,6 +159,46 @@ export const useConversations = () => {
     }
   }, [keycloakUserId])
 
-  return { conversations, loading, error }
+  useEffect(() => {
+    if (!socket || !conversationIdsKey) return
+
+    const conversationIds = conversationIdsKey.split(',').filter(Boolean)
+
+    conversationIds.forEach((id) => {
+      socket.emit('conversation:join', { conversationId: id })
+    })
+
+    return () => {
+      conversationIds.forEach((id) => {
+        socket.emit('conversation:leave', { conversationId: id })
+      })
+    }
+  }, [socket, conversationIdsKey])
+
+  useEffect(() => {
+    if (!socket) return
+
+    const handleNewMessage = (payload: {
+      conversationId?: string
+      message?: { text?: string; createdAt?: string }
+    }) => {
+      const text = payload.message?.text?.trim() ?? ''
+      if (!payload.conversationId || !text) return
+
+      updateConversationLastMessage(
+        payload.conversationId,
+        text,
+        payload.message?.createdAt
+      )
+    }
+
+    socket.on('message:new', handleNewMessage)
+
+    return () => {
+      socket.off('message:new', handleNewMessage)
+    }
+  }, [socket, updateConversationLastMessage])
+
+  return { conversations, loading, error, updateConversationLastMessage }
 }
 
