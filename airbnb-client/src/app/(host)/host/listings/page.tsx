@@ -11,6 +11,7 @@ import {
   PowerOff,
   Trash2,
 } from "lucide-react";
+import { isAxiosError } from "axios";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -138,6 +139,14 @@ function isListingActive(item: HostListingItem) {
   return item.status === "ACTIVE";
 }
 
+function getActionErrorMessage(error: unknown, fallback: string) {
+  if (isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message ?? fallback;
+  }
+
+  return fallback;
+}
+
 function StatusBadge({ status }: { status?: ListingStatus }) {
   const meta = getStatusMeta(status);
 
@@ -249,6 +258,15 @@ export default function HostListingsPage() {
         await listingAPI.deactivateListing(token, item.id);
       }
       void loadListings();
+    } catch (error) {
+      window.alert(
+        getActionErrorMessage(
+          error,
+          nextAction === "activate"
+            ? "Unable to activate this listing."
+            : "Unable to deactivate this listing.",
+        ),
+      );
     } finally {
       setSavingId("");
     }
@@ -387,10 +405,11 @@ export default function HostListingsPage() {
                         <div className="flex items-center gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
                           <Link
                             href={`/host/listings/${item.id}`}
-                            className="flex size-9 items-center justify-center rounded-full bg-[#f2f2f2] text-[#222222] hover:bg-[#ebebeb]"
+                            className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f2f2f2] px-3 text-xs font-semibold text-[#222222] hover:bg-[#ebebeb]"
                             aria-label={`Edit ${getListingTitle(item)}`}
                           >
                             <Pencil className="size-4" />
+                            Edit
                           </Link>
                           <Link
                             href={`/host/reservations?listingId=${item.id}`}
@@ -424,7 +443,7 @@ export default function HostListingsPage() {
                             type="button"
                             onClick={() => void handleDelete(item.id)}
                             disabled={savingId === `delete-${item.id}`}
-                            className="flex size-9 items-center justify-center rounded-full bg-[#f2f2f2] text-[#c13515] hover:bg-[#ebebeb] disabled:opacity-60"
+                            className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f2f2f2] px-3 text-xs font-semibold text-[#c13515] hover:bg-[#ebebeb] disabled:opacity-60"
                             aria-label={`Delete ${getListingTitle(item)}`}
                           >
                             {savingId === `delete-${item.id}` ? (
@@ -432,6 +451,7 @@ export default function HostListingsPage() {
                             ) : (
                               <Trash2 className="size-4" />
                             )}
+                            Delete
                           </button>
                         </div>
                       </div>
