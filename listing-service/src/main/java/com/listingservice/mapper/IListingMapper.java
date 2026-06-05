@@ -23,6 +23,7 @@ public interface IListingMapper {
     @Mapping(target = "houseRules", ignore = true)
     @Mapping(target = "customPricing", ignore = true)
     @Mapping(target = "availabilityCalendar", ignore = true)
+    @Mapping(target = "cancellationPolicyCode", source = "cancellationPolicyCode", defaultValue = "FLEXIBLE")
     Listing toEntity(ListingCreationRequest request);
     
     @Mapping(target = "amenities", source = "listingAmenities", qualifiedByName = "toAmenityResponseList")

@@ -79,6 +79,7 @@ public enum ErrorCode {
     LONGITUDE_REQUIRED(2623, "Longitude is required", HttpStatus.BAD_REQUEST),
     LONGITUDE_INVALID(2624, "Longitude must be between -180 and 180", HttpStatus.BAD_REQUEST),
     HOST_ID_REQUIRED(2625, "Host ID is required", HttpStatus.BAD_REQUEST),
+    INVALID_CANCELLATION_POLICY(2626, "Cancellation policy must be FLEXIBLE, MODERATE, or STRICT", HttpStatus.BAD_REQUEST),
     
     // Amenity validation errors
     AMENITY_NAME_REQUIRED(2631, "Amenity name is required", HttpStatus.BAD_REQUEST),

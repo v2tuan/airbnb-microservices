@@ -1,4 +1,5 @@
 import type { AxiosRequestConfig, AxiosResponse } from "axios";
+import type { CancellationPolicyCode } from "@/lib/cancellation-policy";
 import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
@@ -128,6 +129,7 @@ export interface ListingResponse {
   longitude: number;
   status: ListingStatus;
   instantBook?: boolean;
+  cancellationPolicyCode?: CancellationPolicyCode;
   checkInStartTime?: string;
   checkInEndTime?: string;
   checkOutTime?: string;
@@ -179,6 +181,7 @@ export interface ListingMutationPayload {
   latitude: number;
   longitude: number;
   instantBook?: boolean;
+  cancellationPolicyCode?: CancellationPolicyCode;
   checkInStartTime: string;
   checkInEndTime?: string;
   checkOutTime: string;

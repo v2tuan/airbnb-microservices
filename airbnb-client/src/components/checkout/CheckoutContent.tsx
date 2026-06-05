@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatPrice } from "@/contants";
+import { getCancellationPolicyDetail } from "@/lib/cancellation-policy";
 import { stripePromise } from "@/lib/stripe";
 
 // ────────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ export interface RoomDetail {
   checkInStartTime?: string;
   checkInEndTime?: string;
   checkOutTime?: string;
+  cancellationPolicyCode?: string;
   houseRules?: {
     petsAllowed?: boolean;
     checkInFrom?: string;
@@ -349,6 +351,9 @@ export default function CheckoutContent({
     room.checkInEndTime ?? room.houseRules?.checkInTo,
   );
   const petsAllowed = !!room.houseRules?.petsAllowed;
+  const cancellationPolicy = getCancellationPolicyDetail(
+    room.cancellationPolicyCode,
+  );
 
   const updateIntent = (nextIntent: BookingIntent) => {
     setCurrentIntent(nextIntent);
@@ -604,15 +609,22 @@ export default function CheckoutContent({
               </div>
             </div>
 
-            {/* Non-refundable notice */}
+            {/* Cancellation policy */}
             <div className="mx-6 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-relaxed text-zinc-700">
-              Đặt phòng/đặt chỗ này không được hoàn tiền.{" "}
-              <a
-                href="/help/cancellation-policy"
-                className="underline font-medium hover:text-zinc-900"
-              >
-                Toàn bộ chính sách
-              </a>
+              <p className="font-semibold text-zinc-900">
+                {cancellationPolicy.label} cancellation
+              </p>
+              <p className="mt-1 text-zinc-600">
+                {cancellationPolicy.summary}
+              </p>
+              <ul className="mt-2 space-y-1 text-zinc-600">
+                {cancellationPolicy.rules.map((rule) => (
+                  <li key={rule} className="flex gap-2">
+                    <span className="mt-2 size-1 shrink-0 rounded-full bg-zinc-400" />
+                    <span>{rule}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
             <div className="mx-6 border-t border-zinc-200">

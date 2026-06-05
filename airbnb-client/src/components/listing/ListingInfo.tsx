@@ -1,4 +1,5 @@
 import { Calendar, DoorOpen, ShieldCheck } from "lucide-react";
+import { getCancellationPolicyDetail } from "@/lib/cancellation-policy";
 
 interface ListingData {
   propertyType: string;
@@ -7,6 +8,7 @@ interface ListingData {
   numBathrooms: number;
   maxGuests: number;
   description: string;
+  cancellationPolicyCode?: string;
 }
 
 export function ListingInfo({
@@ -17,6 +19,10 @@ export function ListingInfo({
   hostName?: string;
 }) {
   const displayPropertyType = data.propertyType.charAt(0) + data.propertyType.slice(1).toLowerCase()
+  const cancellationPolicy = getCancellationPolicyDetail(
+    data.cancellationPolicyCode,
+  );
+
   return (
     <div className="space-y-8">
       {/* title and keystats */}
@@ -56,8 +62,20 @@ export function ListingInfo({
         <div className="flex gap-4">
           <Calendar className="w-8 h-8 mt-1" />
           <div>
-            <h4 className="font-semibold text-zinc-900">Free cancellation for 48 hours</h4>
-            <p className="text-zinc-500 font-light text-sm">Get a full refund if you change your mind.</p>
+            <h4 className="font-semibold text-zinc-900">
+              {cancellationPolicy.label} cancellation
+            </h4>
+            <p className="text-zinc-500 font-light text-sm">
+              {cancellationPolicy.summary}
+            </p>
+            <ul className="mt-2 space-y-1 text-sm font-light leading-5 text-zinc-500">
+              {cancellationPolicy.rules.map((rule) => (
+                <li key={rule} className="flex gap-2">
+                  <span className="mt-2 size-1 shrink-0 rounded-full bg-zinc-400" />
+                  <span>{rule}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
