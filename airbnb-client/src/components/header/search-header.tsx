@@ -92,7 +92,7 @@ function FiltersButton({ onClick }: { onClick: () => void }) {
 
 type FilterState = {
   recommended: string[];
-  placeTypes: Array<"room" | "entire">;
+  placeType: "any" | "room" | "entire";
   priceMin: number;
   priceMax: number;
   bedrooms: number | null;
@@ -162,13 +162,6 @@ const PRICE_HISTOGRAM_BARS = Array.from({ length: 40 }, (_, index) => ({
   id: `price-bar-${index}`,
   height: Math.max(10, ((index * 37) % 91) + 10),
 }));
-const PRICE_MIN = 0;
-const PRICE_MAX = 50000000;
-const PRICE_STEP = 100000;
-const RECOMMENDED_AMENITY_LABELS: Record<string, string> = {
-  washer: "Washing machine",
-  parking: "Free parking",
-};
 
 function FilterDialog({
   open,
@@ -180,9 +173,9 @@ function FilterDialog({
   const router = useRouter();
   const [filters, setFilters] = useState<FilterState>({
     recommended: [],
-    placeTypes: [],
-    priceMin: PRICE_MIN,
-    priceMax: PRICE_MAX,
+    placeType: "any",
+    priceMin: 1300000,
+    priceMax: 32000000,
     bedrooms: null,
     beds: null,
     bathrooms: null,
@@ -207,15 +200,6 @@ function FilterDialog({
     }));
   };
 
-  const togglePlaceType = (type: "room" | "entire") => {
-    setFilters((f) => ({
-      ...f,
-      placeTypes: f.placeTypes.includes(type)
-        ? f.placeTypes.filter((value) => value !== type)
-        : [...f.placeTypes, type],
-    }));
-  };
-
   const stepStepper = (key: "bedrooms" | "beds" | "bathrooms", dir: 1 | -1) => {
     setFilters((f) => {
       const cur = f[key];
@@ -235,31 +219,12 @@ function FilterDialog({
       maximumFractionDigits: 0,
     }).format(n);
 
-  const priceMinPercent =
-    ((filters.priceMin - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)) * 100;
-  const priceMaxPercent =
-    ((filters.priceMax - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)) * 100;
-
-  const updatePriceMin = (value: number) => {
-    setFilters((f) => ({
-      ...f,
-      priceMin: Math.min(value, f.priceMax - PRICE_STEP),
-    }));
-  };
-
-  const updatePriceMax = (value: number) => {
-    setFilters((f) => ({
-      ...f,
-      priceMax: Math.max(value, f.priceMin + PRICE_STEP),
-    }));
-  };
-
   const clearAll = () =>
     setFilters({
       recommended: [],
-      placeTypes: [],
-      priceMin: PRICE_MIN,
-      priceMax: PRICE_MAX,
+      placeType: "any",
+      priceMin: 1300000,
+      priceMax: 32000000,
       bedrooms: null,
       beds: null,
       bathrooms: null,
@@ -269,12 +234,10 @@ function FilterDialog({
   const applyFilters = () => {
     const params = new URLSearchParams(window.location.search);
 
-    const roomTypes = filters.placeTypes
-      .map((type) => (type === "room" ? "PRIVATE_ROOM" : "ENTIRE_PLACE"))
-      .join(",");
-
-    if (roomTypes) {
-      params.set("roomType", roomTypes);
+    if (filters.placeType === "room") {
+      params.set("roomType", "PRIVATE_ROOM");
+    } else if (filters.placeType === "entire") {
+      params.set("roomType", "ENTIRE_PLACE");
     } else {
       params.delete("roomType");
     }
@@ -297,46 +260,7 @@ function FilterDialog({
       params.delete("bathrooms");
     }
 
-    if (filters.priceMin !== PRICE_MIN || filters.priceMax !== PRICE_MAX) {
-      params.set("minPrice", String(filters.priceMin));
-      params.set("maxPrice", String(filters.priceMax));
-    } else {
-      params.delete("minPrice");
-      params.delete("maxPrice");
-    }
-
-    if (filters.recommended.includes("pets")) {
-      params.set("petsAllowed", "true");
-    } else {
-      params.delete("petsAllowed");
-    }
-
-    if (filters.recommended.includes("free_cancel")) {
-      params.set("freeCancellation", "true");
-    } else {
-      params.delete("freeCancellation");
-    }
-
-    const selectedAmenities = [
-      ...filters.amenities
-        .map((id) => AMENITIES.find((item) => item.id === id)?.label)
-        .filter((label): label is string => Boolean(label)),
-      ...filters.recommended
-        .map((id) => RECOMMENDED_AMENITY_LABELS[id])
-        .filter((label): label is string => Boolean(label)),
-    ];
-    const uniqueAmenities = Array.from(new Set(selectedAmenities));
-
-    if (uniqueAmenities.length > 0) {
-      params.set("amenities", uniqueAmenities.join(","));
-    } else {
-      params.delete("amenities");
-    }
-
-    const queryString = params.toString();
-    router.replace(`/search${queryString ? `?${queryString}` : ""}`, {
-      scroll: false,
-    });
+    router.push(`/search?${params.toString()}`);
     onOpenChange(false);
   };
 
@@ -369,17 +293,12 @@ function FilterDialog({
                     className={cn(
                       "flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition",
                       active
-                        ? "border-gray-900 bg-gray-900 text-white shadow-sm"
+                        ? "border-gray-900 bg-gray-50"
                         : "border-gray-200 hover:border-gray-400",
                     )}
                   >
                     <span className="text-3xl leading-none">{item.icon}</span>
-                    <span
-                      className={cn(
-                        "text-xs font-medium leading-tight",
-                        active ? "text-white" : "text-gray-700",
-                      )}
-                    >
+                    <span className="text-xs font-medium text-gray-700 leading-tight">
                       {item.label}
                     </span>
                   </button>
@@ -396,36 +315,25 @@ function FilterDialog({
               Type of place
             </h2>
             <div className="flex rounded-full border border-gray-200 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setFilters((f) => ({ ...f, placeTypes: [] }))}
-                className={cn(
-                  "flex-1 py-3 text-sm font-semibold transition border-r border-gray-200",
-                  filters.placeTypes.length === 0
-                    ? "bg-gray-900 text-white"
-                    : "bg-white text-gray-700 hover:bg-gray-50",
-                )}
-              >
-                Any type
-              </button>
-              {(["room", "entire"] as const).map((type) => {
-                const active = filters.placeTypes.includes(type);
-                return (
-                  <button
-                    type="button"
-                    key={type}
-                    onClick={() => togglePlaceType(type)}
-                    className={cn(
-                      "flex-1 py-3 text-sm font-semibold transition border-r last:border-0 border-gray-200",
-                      active
-                        ? "bg-gray-900 text-white"
-                        : "bg-white text-gray-700 hover:bg-gray-50",
-                    )}
-                  >
-                    {type === "room" ? "Room" : "Entire home"}
-                  </button>
-                );
-              })}
+              {(["any", "room", "entire"] as const).map((type) => (
+                <button
+                  type="button"
+                  key={type}
+                  onClick={() => setFilters((f) => ({ ...f, placeType: type }))}
+                  className={cn(
+                    "flex-1 py-3 text-sm font-semibold transition border-r last:border-0 border-gray-200",
+                    filters.placeType === type
+                      ? "bg-gray-900 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-50",
+                  )}
+                >
+                  {type === "any"
+                    ? "Any type"
+                    : type === "room"
+                      ? "Room"
+                      : "Entire home"}
+                </button>
+              ))}
             </div>
           </section>
 
@@ -453,31 +361,10 @@ function FilterDialog({
             <div className="relative h-1 bg-gray-200 rounded-full mb-6">
               <div
                 className="absolute h-1 bg-gray-900 rounded-full"
-                style={{
-                  left: `${priceMinPercent}%`,
-                  right: `${100 - priceMaxPercent}%`,
-                }}
+                style={{ left: "0%", right: "0%" }}
               />
-              <input
-                type="range"
-                min={PRICE_MIN}
-                max={PRICE_MAX}
-                step={PRICE_STEP}
-                value={filters.priceMin}
-                onChange={(event) => updatePriceMin(Number(event.target.value))}
-                className="pointer-events-none absolute left-0 top-1/2 z-20 h-7 w-full -translate-y-1/2 appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
-                aria-label="Minimum price"
-              />
-              <input
-                type="range"
-                min={PRICE_MIN}
-                max={PRICE_MAX}
-                step={PRICE_STEP}
-                value={filters.priceMax}
-                onChange={(event) => updatePriceMax(Number(event.target.value))}
-                className="pointer-events-none absolute left-0 top-1/2 z-30 h-7 w-full -translate-y-1/2 appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-gray-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
-                aria-label="Maximum price"
-              />
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 h-7 w-7 rounded-full border border-gray-300 bg-white shadow-md cursor-pointer" />
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 h-7 w-7 rounded-full border border-gray-300 bg-white shadow-md cursor-pointer" />
             </div>
             <div className="flex gap-4">
               <div className="flex-1 rounded-xl border border-gray-300 px-4 py-3">
