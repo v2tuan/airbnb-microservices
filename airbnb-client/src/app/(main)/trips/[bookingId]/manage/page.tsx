@@ -1,5 +1,6 @@
 "use client";
 
+import { isAxiosError } from "axios";
 import {
   AlarmClock,
   AlertTriangle,
@@ -40,6 +41,17 @@ import type {
 } from "@/types/booking.type";
 
 const fallbackImage = "/header/home.png";
+
+function getApiErrorMessage(error: unknown) {
+  if (!isAxiosError(error)) return null;
+
+  const data = error.response?.data as
+    | { message?: string; detail?: string; error?: string }
+    | undefined;
+
+  return data?.message ?? data?.detail ?? data?.error ?? null;
+}
+
 const complaintTypes: Array<{ value: ComplaintType; label: string }> = [
   { value: "CANNOT_CHECK_IN", label: "Cannot check in" },
   { value: "NOT_AS_DESCRIBED", label: "Not as described" },
@@ -187,7 +199,10 @@ export default function ManageReservationPage() {
       setCancellationQuote(response.data);
     } catch (err) {
       console.error("Failed to load cancellation quote", err);
-      setQuoteError("Could not calculate the cancellation quote. Try again.");
+      setQuoteError(
+        getApiErrorMessage(err) ??
+          "Could not calculate the cancellation quote. Try again.",
+      );
       setCancellationQuote(null);
     } finally {
       setQuoteLoading(false);
@@ -240,7 +255,10 @@ export default function ManageReservationPage() {
       setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
-      setQuoteError("Cancellation failed. Request a new quote and try again.");
+      setQuoteError(
+        getApiErrorMessage(err) ??
+          "Cancellation failed. Request a new quote and try again.",
+      );
     } finally {
       setCancelSubmitting(false);
     }

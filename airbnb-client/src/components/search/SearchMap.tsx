@@ -69,6 +69,55 @@ function getFallbackCenter(destination: string) {
   return cityCenters[destination.trim().toLowerCase()] ?? cityCenters.vietnam;
 }
 
+function centerMapByDestination(
+  map: {
+    setCenter: (position: { lat: number; lng: number }) => void;
+    setZoom: (zoom: number) => void;
+  },
+  destination: string,
+  fallback: { lat: number; lng: number; zoom: number },
+  shouldIgnoreResult: () => boolean,
+) {
+  const keyword = destination.trim();
+
+  if (!keyword || keyword.toLowerCase() === "nearby") {
+    map.setCenter({ lat: fallback.lat, lng: fallback.lng });
+    map.setZoom(fallback.zoom);
+    return;
+  }
+
+  const googleMaps = window.google?.maps as any;
+
+  if (!googleMaps?.Geocoder) {
+    map.setCenter({ lat: fallback.lat, lng: fallback.lng });
+    map.setZoom(fallback.zoom);
+    return;
+  }
+
+  const geocoder = new googleMaps.Geocoder();
+
+  geocoder.geocode(
+    { address: keyword },
+    (
+      results: Array<{
+        geometry?: { location?: { lat: () => number; lng: () => number } };
+      }> | null,
+      status: string,
+    ) => {
+      const location = results?.[0]?.geometry?.location;
+
+      if (shouldIgnoreResult() || status !== "OK" || !location) {
+        map.setCenter({ lat: fallback.lat, lng: fallback.lng });
+        map.setZoom(fallback.zoom);
+        return;
+      }
+
+      map.setCenter({ lat: location.lat(), lng: location.lng() });
+      map.setZoom(9);
+    },
+  );
+}
+
 function getListingPosition(listing: ListingResponse) {
   if (
     !Number.isFinite(listing.latitude) ||
@@ -285,8 +334,12 @@ export default function SearchMap({ destination, listings }: SearchMapProps) {
               top: 80,
             });
           } else {
-            map.setCenter({ lat: fallback.lat, lng: fallback.lng });
-            map.setZoom(fallback.zoom);
+            centerMapByDestination(
+              map,
+              destination,
+              fallback,
+              () => cancelled,
+            );
           }
         }
 

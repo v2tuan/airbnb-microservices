@@ -1,5 +1,6 @@
 "use client";
 
+import { isAxiosError } from "axios";
 import {
   ArrowLeft,
   Calendar,
@@ -54,6 +55,16 @@ import type {
 } from "@/types/booking.type";
 
 const fallbackImage = "/header/home.png";
+
+function getApiErrorMessage(error: unknown) {
+  if (!isAxiosError(error)) return null;
+
+  const data = error.response?.data as
+    | { message?: string; detail?: string; error?: string }
+    | undefined;
+
+  return data?.message ?? data?.detail ?? data?.error ?? null;
+}
 
 const amenityIcons: Record<string, string> = {
   Pool: "🏊",
@@ -406,7 +417,10 @@ export default function BookingDetailPage() {
       setCancellationQuote(response.data);
     } catch (err) {
       console.error("Failed to load cancellation quote", err);
-      setQuoteError("Could not calculate the cancellation quote. Try again.");
+      setQuoteError(
+        getApiErrorMessage(err) ??
+          "Could not calculate the cancellation quote. Try again.",
+      );
       setCancellationQuote(null);
     } finally {
       setQuoteLoading(false);
@@ -459,7 +473,10 @@ export default function BookingDetailPage() {
       setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
-      setQuoteError("Cancellation failed. Request a new quote and try again.");
+      setQuoteError(
+        getApiErrorMessage(err) ??
+          "Cancellation failed. Request a new quote and try again.",
+      );
     } finally {
       setCancelSubmitting(false);
     }

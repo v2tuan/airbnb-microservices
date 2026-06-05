@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   type ListingResponse,
   listingAPI,
@@ -24,11 +25,18 @@ interface SearchPageProps {
     freeCancellation?: string;
     latitude?: string;
     longitude?: string;
+    locationKeyword?: string;
     radius?: string;
     checkIn?: string;
     checkOut?: string;
+    instantBook?: string;
+    page?: string;
   }>;
 }
+
+type SearchQuery = Awaited<SearchPageProps["searchParams"]>;
+
+const PAGE_SIZE = 12;
 
 const destinationAliases: Record<string, string> = {
   "da lat": "Dalat",
@@ -67,6 +75,7 @@ function filterListings(
   bathrooms: number | undefined,
   amenities: string[],
   petsAllowed: boolean,
+  instantBook: boolean,
 ) {
   const normalizedDestination = destination.trim().toLowerCase();
   const normalizedCountry = country?.trim().toLowerCase();
@@ -107,6 +116,7 @@ function filterListings(
       );
     const matchesPetsAllowed =
       !petsAllowed || listing.houseRules?.petsAllowed === true;
+    const matchesInstantBook = !instantBook || listing.instantBook === true;
 
     return (
       matchesDestination &&
@@ -119,9 +129,55 @@ function filterListings(
       matchesBeds &&
       matchesBathrooms &&
       matchesAmenities &&
-      matchesPetsAllowed
+      matchesPetsAllowed &&
+      matchesInstantBook
     );
   });
+}
+
+function getAmenities(query: SearchQuery) {
+  return query.amenities
+    ? query.amenities
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function buildSearchHref(
+  query: SearchQuery,
+  updates: Record<string, string | number | boolean | undefined | null>,
+) {
+  const params = new URLSearchParams();
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") {
+      params.delete(key);
+    } else {
+      params.set(key, String(value));
+    }
+  });
+
+  const queryString = params.toString();
+  return `/search${queryString ? `?${queryString}` : ""}`;
+}
+
+function getPaginationItems(currentPage: number, pageCount: number) {
+  const pages = new Set([
+    1,
+    pageCount,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+  ]);
+
+  return Array.from(pages)
+    .filter((page) => page >= 1 && page <= pageCount)
+    .sort((a, b) => a - b);
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
@@ -141,13 +197,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const bedrooms = query.bedrooms ? Number(query.bedrooms) : undefined;
   const beds = query.beds ? Number(query.beds) : undefined;
   const bathrooms = query.bathrooms ? Number(query.bathrooms) : undefined;
-  const amenities = query.amenities
-    ? query.amenities
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    : [];
+  const amenities = query.amenities ? getAmenities(query) : [];
   const petsAllowed = query.petsAllowed === "true";
+  const instantBook = query.instantBook === "true";
+  const requestedPage = query.page ? Number(query.page) : 1;
   const latitude = query.latitude ? Number(query.latitude) : undefined;
   const longitude = query.longitude ? Number(query.longitude) : undefined;
   const radius = query.radius ? Number(query.radius) : 25;
@@ -231,7 +284,19 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     bathrooms,
     amenities,
     petsAllowed,
+    instantBook,
   );
+  const pageCount = Math.max(1, Math.ceil(visibleListings.length / PAGE_SIZE));
+  const currentPage = Math.min(
+    Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1),
+    pageCount,
+  );
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const paginatedListings = visibleListings.slice(
+    pageStart,
+    pageStart + PAGE_SIZE,
+  );
+  const paginationItems = getPaginationItems(currentPage, pageCount);
   const resultLabel = destination
     ? `Places in ${destination}`
     : hasNearbySearch
@@ -241,120 +306,20 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     Number.isFinite(minPrice) && Number.isFinite(maxPrice)
       ? `${formatPrice(minPrice as number, "USD")} - ${formatPrice(maxPrice as number, "USD")}`
       : "Any price";
-  const mapDestination = hasNearbySearch ? "Nearby" : destination;
+  const mapDestination = hasNearbySearch
+    ? "Nearby"
+    : query.locationKeyword ?? destination;
 
   return (
-    <main className="min-h-screen bg-white">
-      {/*<div className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">*/}
-      {/*  <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-3 px-4 py-3 sm:px-8 xl:px-10">*/}
-      {/*    <form*/}
-      {/*      action="/search"*/}
-      {/*      className="mx-auto grid w-full max-w-4xl gap-1 rounded-full border border-neutral-200 bg-white p-1.5 shadow-sm md:grid-cols-[minmax(0,1.25fr)_minmax(0,0.65fr)_minmax(0,0.8fr)_auto]"*/}
-      {/*    >*/}
-      {/*      <label className="min-w-0 rounded-full px-4 py-2 transition hover:bg-neutral-50">*/}
-      {/*        <span className="block text-[11px] font-bold leading-none text-neutral-950">*/}
-      {/*          Where*/}
-      {/*        </span>*/}
-      {/*        <input*/}
-      {/*          name="city"*/}
-      {/*          defaultValue={destination}*/}
-      {/*          placeholder="Search destinations"*/}
-      {/*          className="mt-0.5 w-full bg-transparent text-[13px] text-neutral-700 outline-none placeholder:text-neutral-400"*/}
-      {/*        />*/}
-      {/*      </label>*/}
-
-      {/*      <label className="min-w-0 rounded-full px-4 py-2 transition hover:bg-neutral-50">*/}
-      {/*        <span className="block text-[11px] font-bold leading-none text-neutral-950">*/}
-      {/*          Guests*/}
-      {/*        </span>*/}
-      {/*        <input*/}
-      {/*          name="guests"*/}
-      {/*          defaultValue={query.guests ?? ""}*/}
-      {/*          inputMode="numeric"*/}
-      {/*          placeholder="Add guests"*/}
-      {/*          className="mt-0.5 w-full bg-transparent text-[13px] text-neutral-700 outline-none placeholder:text-neutral-400"*/}
-      {/*        />*/}
-      {/*      </label>*/}
-
-      {/*      <div className="grid min-w-0 grid-cols-2 gap-2 rounded-full px-4 py-2 transition hover:bg-neutral-50">*/}
-      {/*        <label>*/}
-      {/*          <span className="block text-[11px] font-bold leading-none text-neutral-950">*/}
-      {/*            Min*/}
-      {/*          </span>*/}
-      {/*          <input*/}
-      {/*            name="minPrice"*/}
-      {/*            defaultValue={query.minPrice ?? ""}*/}
-      {/*            inputMode="numeric"*/}
-      {/*            placeholder="$0"*/}
-      {/*            className="mt-0.5 w-full bg-transparent text-[13px] text-neutral-700 outline-none placeholder:text-neutral-400"*/}
-      {/*          />*/}
-      {/*        </label>*/}
-      {/*        <label>*/}
-      {/*          <span className="block text-[11px] font-bold leading-none text-neutral-950">*/}
-      {/*            Max*/}
-      {/*          </span>*/}
-      {/*          <input*/}
-      {/*            name="maxPrice"*/}
-      {/*            defaultValue={query.maxPrice ?? ""}*/}
-      {/*            inputMode="numeric"*/}
-      {/*            placeholder="$500"*/}
-      {/*            className="mt-0.5 w-full bg-transparent text-[13px] text-neutral-700 outline-none placeholder:text-neutral-400"*/}
-      {/*          />*/}
-      {/*        </label>*/}
-      {/*      </div>*/}
-
-      {/*      <button*/}
-      {/*        type="submit"*/}
-      {/*        className="inline-flex size-11 items-center justify-center rounded-full bg-rose-500 text-white transition hover:bg-rose-600 md:w-11"*/}
-      {/*        aria-label="Search"*/}
-      {/*      >*/}
-      {/*        <Search className="size-4" />*/}
-      {/*      </button>*/}
-      {/*    </form>*/}
-
-      {/*    <div className="flex items-center gap-2 overflow-x-auto pb-0.5">*/}
-      {/*      <button*/}
-      {/*        type="button"*/}
-      {/*        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 text-xs font-semibold text-neutral-900 shadow-sm"*/}
-      {/*      >*/}
-      {/*        <SlidersHorizontal className="size-3.5" />*/}
-      {/*        Filters*/}
-      {/*      </button>*/}
-      {/*      {quickDestinations.map((city) => (*/}
-      {/*        <Link*/}
-      {/*          key={city}*/}
-      {/*          href={buildSearchHref({ city, guests: maxGuests })}*/}
-      {/*          className={`inline-flex h-8 shrink-0 items-center rounded-full border px-3 text-xs font-semibold transition ${*/}
-      {/*            destination.toLowerCase() === city.toLowerCase()*/}
-      {/*              ? "border-neutral-950 bg-neutral-950 text-white"*/}
-      {/*              : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-950"*/}
-      {/*          }`}*/}
-      {/*        >*/}
-      {/*          {city}*/}
-      {/*        </Link>*/}
-      {/*      ))}*/}
-      {/*      <Link*/}
-      {/*        href={buildSearchHref({*/}
-      {/*          city: destination,*/}
-      {/*          guests: maxGuests,*/}
-      {/*          minPrice: 0,*/}
-      {/*          maxPrice: 100,*/}
-      {/*        })}*/}
-      {/*        className="inline-flex h-8 shrink-0 items-center rounded-full border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-950"*/}
-      {/*      >*/}
-      {/*        Under $100*/}
-      {/*      </Link>*/}
-      {/*    </div>*/}
-      {/*  </div>*/}
-      {/*</div>*/}
-
+    <main className="min-h-screen bg-white pt-[164px]">
       <div className="mx-auto grid w-full max-w-[1760px] gap-10 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,46vw)] xl:px-10">
         {/* Left: Listings */}
         <section>
           {/* Result meta */}
           <div className="mb-5">
             <p className="text-sm text-neutral-500">
-              {visibleListings.length} stays ·{" "}
+              {visibleListings.length} stays
+              {pageCount > 1 ? ` · Page ${currentPage} of ${pageCount}` : ""} ·{" "}
               <span className="font-medium text-neutral-700">{priceLabel}</span>
               {maxGuests ? ` · ${maxGuests} guests` : ""}
               {hasDateRange ? ` · ${checkIn} - ${checkOut}` : ""}
@@ -378,20 +343,98 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 3xl:grid-cols-3">
-              {visibleListings.map((listing) => (
-                <SearchListingCard key={listing.listingId} listing={listing} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 3xl:grid-cols-3">
+                {paginatedListings.map((listing) => (
+                  <SearchListingCard
+                    key={listing.listingId}
+                    listing={listing}
+                  />
+                ))}
+              </div>
+
+              {pageCount > 1 ? (
+                <nav
+                  aria-label="Search results pagination"
+                  className="mt-10 flex items-center justify-center gap-2"
+                >
+                  <Link
+                    href={buildSearchHref(query, {
+                      page: currentPage > 2 ? currentPage - 1 : null,
+                    })}
+                    scroll={false}
+                    aria-disabled={currentPage === 1}
+                    className={`inline-flex h-10 items-center rounded-full border px-4 text-sm font-semibold transition ${
+                      currentPage === 1
+                        ? "pointer-events-none border-neutral-200 text-neutral-300"
+                        : "border-neutral-300 text-neutral-800 hover:border-neutral-950"
+                    }`}
+                  >
+                    Previous
+                  </Link>
+
+                  {paginationItems.map((pageNumber, index) => {
+                    const previousPage = paginationItems[index - 1];
+                    const showGap =
+                      previousPage !== undefined &&
+                      pageNumber - previousPage > 1;
+
+                    return (
+                      <span
+                        key={pageNumber}
+                        className="inline-flex items-center gap-2"
+                      >
+                        {showGap ? (
+                          <span className="px-1 text-sm text-neutral-400">
+                            ...
+                          </span>
+                        ) : null}
+                        <Link
+                          href={buildSearchHref(query, {
+                            page: pageNumber === 1 ? null : pageNumber,
+                          })}
+                          scroll={false}
+                          aria-current={
+                            pageNumber === currentPage ? "page" : undefined
+                          }
+                          className={`inline-flex size-10 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                            pageNumber === currentPage
+                              ? "border-neutral-950 bg-neutral-950 text-white"
+                              : "border-neutral-300 text-neutral-800 hover:border-neutral-950"
+                          }`}
+                        >
+                          {pageNumber}
+                        </Link>
+                      </span>
+                    );
+                  })}
+
+                  <Link
+                    href={buildSearchHref(query, {
+                      page: currentPage + 1,
+                    })}
+                    scroll={false}
+                    aria-disabled={currentPage === pageCount}
+                    className={`inline-flex h-10 items-center rounded-full border px-4 text-sm font-semibold transition ${
+                      currentPage === pageCount
+                        ? "pointer-events-none border-neutral-200 text-neutral-300"
+                        : "border-neutral-300 text-neutral-800 hover:border-neutral-950"
+                    }`}
+                  >
+                    Next
+                  </Link>
+                </nav>
+              ) : null}
+            </>
           )}
         </section>
 
         {/* Right: Map */}
         <aside className="hidden lg:block">
-          <div className="sticky top-[112px] h-[calc(100vh-136px)] overflow-hidden rounded-2xl border border-neutral-200 shadow-sm">
+          <div className="sticky top-[180px] h-[calc(100vh-204px)] overflow-hidden rounded-2xl border border-neutral-200 shadow-sm">
             <SearchMap
               destination={mapDestination}
-              listings={visibleListings}
+              listings={paginatedListings}
             />
           </div>
         </aside>

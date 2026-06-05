@@ -36,6 +36,7 @@ import { uploadAPI } from "@/api/endpoints/upload";
 import AmenityPicker from "@/components/listing/AmenityPicker";
 import LocationPickerMap from "@/components/listing/LocationPickerMap";
 import { formatPrice } from "@/contants";
+import { CANCELLATION_POLICY_DETAILS } from "@/lib/cancellation-policy";
 import { hasRealmRole } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
@@ -166,6 +167,8 @@ const roomOptions: Array<{
   },
 ];
 
+const cancellationPolicyOptions = Object.values(CANCELLATION_POLICY_DETAILS);
+
 const initialForm: ListingMutationPayload = {
   title: "",
   description: "",
@@ -183,6 +186,7 @@ const initialForm: ListingMutationPayload = {
   latitude: 10.762622,
   longitude: 106.660172,
   instantBook: false,
+  cancellationPolicyCode: "FLEXIBLE",
   checkInStartTime: "",
   checkInEndTime: "",
   checkOutTime: "",
@@ -876,6 +880,52 @@ export default function NewListingPage() {
                     <Check className="size-5 text-neutral-950" />
                   ) : null}
                 </button>
+
+                <div className="rounded-2xl border border-neutral-200 p-6">
+                  <p className="text-base font-semibold text-neutral-950">
+                    Cancellation policy
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Choose the refund rule guests see before booking.
+                  </p>
+                  <div className="mt-5 grid gap-3">
+                    {cancellationPolicyOptions.map((option) => {
+                      const active = form.cancellationPolicyCode === option.code;
+
+                      return (
+                        <button
+                          key={option.code}
+                          type="button"
+                          onClick={() =>
+                            update("cancellationPolicyCode", option.code)
+                          }
+                          className={`flex items-center justify-between rounded-xl border p-4 text-left transition ${
+                            active
+                              ? "border-neutral-950 bg-neutral-50"
+                              : "border-neutral-200 hover:border-neutral-950"
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-neutral-950">
+                              {option.label}
+                            </span>
+                            <ul className="mt-2 space-y-1 text-sm leading-5 text-neutral-500">
+                              {option.rules.map((rule) => (
+                                <li key={rule} className="flex gap-2">
+                                  <span className="mt-2 size-1 shrink-0 rounded-full bg-neutral-400" />
+                                  <span>{rule}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </span>
+                          {active ? (
+                            <Check className="size-5 text-neutral-950" />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <div className="rounded-2xl bg-neutral-50 p-5">
                   <p className="text-sm font-semibold text-neutral-950">

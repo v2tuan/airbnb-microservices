@@ -54,6 +54,7 @@ import { uploadAPI } from "@/api/endpoints/upload";
 import AmenityPicker from "@/components/listing/AmenityPicker";
 import LocationPickerMap from "@/components/listing/LocationPickerMap";
 import { formatPrice } from "@/contants";
+import { CANCELLATION_POLICY_DETAILS } from "@/lib/cancellation-policy";
 import { hasRealmRole } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
@@ -99,6 +100,8 @@ const roomOptions: Array<{
     description: "Guests sleep in a shared area.",
   },
 ];
+
+const cancellationPolicyOptions = Object.values(CANCELLATION_POLICY_DETAILS);
 
 const houseRuleOptions = [
   { field: "partiesAllowed", label: "Events allowed" },
@@ -184,6 +187,7 @@ function toListingForm(listing: ListingResponse): ListingMutationPayload {
     latitude: listing.latitude ?? 10.762622,
     longitude: listing.longitude ?? 106.660172,
     instantBook: !!listing.instantBook,
+    cancellationPolicyCode: listing.cancellationPolicyCode ?? "FLEXIBLE",
     checkInStartTime: listing.checkInStartTime ?? "",
     checkInEndTime: listing.checkInEndTime ?? "",
     checkOutTime: listing.checkOutTime ?? "",
@@ -917,6 +921,49 @@ export default function EditListingPage() {
                         ))}
                       </select>
                     </Field>
+                    <div className="md:col-span-2">
+                      <h3 className="text-lg font-semibold text-[#222222]">
+                        Cancellation policy
+                      </h3>
+                      <p className="mt-1 text-sm text-[#6a6a6a]">
+                        Choose the refund rule guests see before booking.
+                      </p>
+                      <div className="mt-4 grid gap-3">
+                        {cancellationPolicyOptions.map((option) => {
+                          const active =
+                            form.cancellationPolicyCode === option.code;
+
+                          return (
+                            <button
+                              key={option.code}
+                              type="button"
+                              onClick={() =>
+                                updateForm(
+                                  "cancellationPolicyCode",
+                                  option.code,
+                                )
+                              }
+                              className={`flex items-center justify-between rounded-[14px] py-4 ${optionClass(active)}`}
+                            >
+                              <span className="min-w-0">
+                                <span className="block font-semibold text-[#222222]">
+                                  {option.label}
+                                </span>
+                                <ul className="mt-2 space-y-1 text-sm leading-5 text-[#6a6a6a]">
+                                  {option.rules.map((rule) => (
+                                    <li key={rule} className="flex gap-2">
+                                      <span className="mt-2 size-1 shrink-0 rounded-full bg-[#929292]" />
+                                      <span>{rule}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </span>
+                              {active ? <Check className="size-5" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="rounded-[14px] border border-[#dddddd] px-5">
                       <Stepper
                         label="Guests"

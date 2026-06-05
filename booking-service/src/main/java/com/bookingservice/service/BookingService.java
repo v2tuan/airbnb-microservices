@@ -1593,14 +1593,24 @@ public class BookingService {
     private BookingDetailResponse.CancellationPolicy buildCancellationPolicy(Booking booking) {
         boolean refundable = booking.getStatus() == BookingStatus.CONFIRMED
                 || booking.getStatus() == BookingStatus.PENDING_PAYMENT;
+        String policyCode = normalizeCancellationPolicyCode(booking.getCancellationPolicyCode());
 
         return BookingDetailResponse.CancellationPolicy.builder()
-                .type(refundable ? booking.getCancellationPolicyCode() : "Not refundable")
+                .type(refundable ? policyCode : "Not refundable")
                 .description(refundable
-                        ? "Cancel before check-in to request a refund according to the host policy."
+                        ? cancellationPolicyDescription(policyCode)
                         : "This reservation is no longer eligible for automatic refund.")
                 .refundable(refundable)
                 .build();
+    }
+
+    private String cancellationPolicyDescription(String policyCode) {
+        return switch (normalizeCancellationPolicyCode(policyCode)) {
+            case "FLEXIBLE" -> "At least 24 hours before check-in: 100% accommodation, cleaning fee, and service fee are refunded. Less than 24 hours before check-in: unused nights excluding the first night and cleaning fee are refunded; service fee is not refunded.";
+            case "MODERATE" -> "At least 5 days before check-in: 100% accommodation, cleaning fee, and service fee are refunded. At least 24 hours and less than 5 days before check-in: 50% accommodation and 100% cleaning fee are refunded; service fee is not refunded. Less than 24 hours before check-in: cleaning fee only is refunded.";
+            case "STRICT" -> "At least 7 days before check-in: 50% accommodation and 100% cleaning fee are refunded; service fee is not refunded. Less than 7 days before check-in: cleaning fee only is refunded.";
+            default -> "Cancel before check-in to request a refund according to the host policy.";
+        };
     }
 
     private BookingDetailResponse.ReviewSummary buildReviewSummary(Booking booking) {

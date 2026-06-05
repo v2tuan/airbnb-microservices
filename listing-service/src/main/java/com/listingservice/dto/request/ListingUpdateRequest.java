@@ -58,6 +58,9 @@ public class ListingUpdateRequest {
     @DecimalMin(value = "-180.0", message = "LONGITUDE_INVALID")
     @DecimalMax(value = "180.0", message = "LONGITUDE_INVALID")
     BigDecimal longitude;
+
+    @Pattern(regexp = "FLEXIBLE|MODERATE|STRICT", message = "INVALID_CANCELLATION_POLICY")
+    String cancellationPolicyCode;
     
     Boolean instantBook;
 
