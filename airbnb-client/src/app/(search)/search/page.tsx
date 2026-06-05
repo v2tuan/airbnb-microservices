@@ -19,6 +19,9 @@ interface SearchPageProps {
     bedrooms?: string;
     beds?: string;
     bathrooms?: string;
+    amenities?: string;
+    petsAllowed?: string;
+    freeCancellation?: string;
     latitude?: string;
     longitude?: string;
     radius?: string;
@@ -58,13 +61,16 @@ function filterListings(
   maxGuests: number | undefined,
   minPrice: number | undefined,
   maxPrice: number | undefined,
-  roomType: string | undefined,
+  roomTypes: string[],
   bedrooms: number | undefined,
   beds: number | undefined,
   bathrooms: number | undefined,
+  amenities: string[],
+  petsAllowed: boolean,
 ) {
   const normalizedDestination = destination.trim().toLowerCase();
   const normalizedCountry = country?.trim().toLowerCase();
+  const normalizedAmenities = amenities.map((amenity) => amenity.toLowerCase());
 
   return listings.filter((listing) => {
     const basePrice = listing.pricing?.basePrice;
@@ -85,10 +91,22 @@ function filterListings(
     const matchesMaxPrice =
       !Number.isFinite(maxPrice) ||
       (typeof basePrice === "number" && basePrice <= (maxPrice as number));
-    const matchesRoomType = !roomType || listing.roomType === roomType;
+    const matchesRoomType =
+      roomTypes.length === 0 || roomTypes.includes(listing.roomType);
     const matchesBedrooms = !bedrooms || listing.numBedrooms >= bedrooms;
     const matchesBeds = !beds || listing.numBeds >= beds;
     const matchesBathrooms = !bathrooms || listing.numBathrooms >= bathrooms;
+    const listingAmenities =
+      listing.amenities?.map((amenity) => amenity.name.toLowerCase()) ?? [];
+    const matchesAmenities =
+      normalizedAmenities.length === 0 ||
+      normalizedAmenities.every((selectedAmenity) =>
+        listingAmenities.some((listingAmenity) =>
+          listingAmenity.includes(selectedAmenity),
+        ),
+      );
+    const matchesPetsAllowed =
+      !petsAllowed || listing.houseRules?.petsAllowed === true;
 
     return (
       matchesDestination &&
@@ -99,7 +117,9 @@ function filterListings(
       matchesRoomType &&
       matchesBedrooms &&
       matchesBeds &&
-      matchesBathrooms
+      matchesBathrooms &&
+      matchesAmenities &&
+      matchesPetsAllowed
     );
   });
 }
@@ -112,10 +132,22 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const maxGuests = query.guests ? Number(query.guests) : undefined;
   const minPrice = query.minPrice ? Number(query.minPrice) : undefined;
   const maxPrice = query.maxPrice ? Number(query.maxPrice) : undefined;
-  const roomType = query.roomType;
+  const roomTypes = query.roomType
+    ? query.roomType
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [];
   const bedrooms = query.bedrooms ? Number(query.bedrooms) : undefined;
   const beds = query.beds ? Number(query.beds) : undefined;
   const bathrooms = query.bathrooms ? Number(query.bathrooms) : undefined;
+  const amenities = query.amenities
+    ? query.amenities
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [];
+  const petsAllowed = query.petsAllowed === "true";
   const latitude = query.latitude ? Number(query.latitude) : undefined;
   const longitude = query.longitude ? Number(query.longitude) : undefined;
   const radius = query.radius ? Number(query.radius) : 25;
@@ -193,10 +225,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     maxGuests,
     minPrice,
     maxPrice,
-    roomType,
+    roomTypes,
     bedrooms,
     beds,
     bathrooms,
+    amenities,
+    petsAllowed,
   );
   const resultLabel = destination
     ? `Places in ${destination}`
