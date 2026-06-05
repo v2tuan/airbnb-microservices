@@ -43,6 +43,14 @@ public interface AvailabilityCalendarRepository extends JpaRepository<Availabili
         @Param("endDate") LocalDate endDate,
         @Param("numberOfDays") long numberOfDays
     );
+
+    @Query("SELECT COUNT(ac) > 0 FROM AvailabilityCalendar ac WHERE ac.listing.listingId = :listingId " +
+           "AND ac.date BETWEEN :startDate AND :endDate AND ac.isAvailable = false")
+    boolean hasBlockedDateInRange(
+        @Param("listingId") UUID listingId,
+        @Param("startDate") LocalDate startDate,
+        @Param("endDate") LocalDate endDate
+    );
     
     // Xóa theo listing
     void deleteByListingListingId(UUID listingId);

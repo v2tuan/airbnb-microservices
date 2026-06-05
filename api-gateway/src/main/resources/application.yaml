@@ -33,6 +33,7 @@ spring:
                 allowed-origin-patterns:
                   - "http://localhost:5173"
                   - "http://localhost:3000"
+                  - "http://localhost:3001"
                 allowed-methods:
                   - GET
                   - POST

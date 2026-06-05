@@ -1,7 +1,15 @@
-import type { AxiosResponse } from "axios";
+import type { AxiosRequestConfig, AxiosResponse } from "axios";
 import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
+type PublicRequestConfig = AxiosRequestConfig & {
+  _skipAuth?: boolean;
+  _skipAuthRefresh?: boolean;
+};
+const publicRequest: PublicRequestConfig = {
+  _skipAuth: true,
+  _skipAuthRefresh: true,
+};
 
 export type PropertyType =
   | "APARTMENT"
@@ -235,23 +243,24 @@ export const listingAPI = {
   ): Promise<AxiosResponse<ApiResponse<HomeSectionResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/sections`, {
       params: { limit },
+      ...publicRequest,
     });
   },
 
   getRoomById: (
     id: string,
   ): Promise<AxiosResponse<ApiResponse<ListingResponse>>> => {
-    return apiClient.get(`${prefix}/listings/${id}`);
+    return apiClient.get(`${prefix}/listings/${id}`, publicRequest);
   },
 
   getAllListings: (): Promise<
     AxiosResponse<ApiResponse<ListingResponse[]>>
   > => {
-    return apiClient.get(`${prefix}/listings`);
+    return apiClient.get(`${prefix}/listings`, publicRequest);
   },
 
   getAmenities: (): Promise<AxiosResponse<ApiResponse<AmenityResponse[]>>> => {
-    return apiClient.get(`${prefix}/amenities`);
+    return apiClient.get(`${prefix}/amenities`, publicRequest);
   },
 
   searchListings: (params: {
@@ -259,14 +268,20 @@ export const listingAPI = {
     country?: string;
     maxGuests?: number;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
-    return apiClient.get(`${prefix}/listings/search`, { params });
+    return apiClient.get(`${prefix}/listings/search`, {
+      params,
+      ...publicRequest,
+    });
   },
 
   searchByPriceRange: (params: {
     minPrice: number;
     maxPrice: number;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
-    return apiClient.get(`${prefix}/listings/search/price`, { params });
+    return apiClient.get(`${prefix}/listings/search/price`, {
+      params,
+      ...publicRequest,
+    });
   },
 
   searchByLocation: (params: {
@@ -274,7 +289,10 @@ export const listingAPI = {
     longitude: number;
     radius: number;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
-    return apiClient.get(`${prefix}/listings/search/location`, { params });
+    return apiClient.get(`${prefix}/listings/search/location`, {
+      params,
+      ...publicRequest,
+    });
   },
 
   getListingDetail: (
@@ -288,7 +306,10 @@ export const listingAPI = {
       pets?: number;
     },
   ): Promise<AxiosResponse<any>> => {
-    return apiClient.get(`${prefix}/listings/${id}/detail`, { params });
+    return apiClient.get(`${prefix}/listings/${id}/detail`, {
+      params,
+      ...publicRequest,
+    });
   },
 
   getListingsByHost: (
@@ -445,6 +466,19 @@ export const listingAPI = {
       payload,
       withAuth(token),
     );
+  },
+
+  checkAvailability: (
+    listingId: string,
+    params: {
+      startDate: string;
+      endDate: string;
+    },
+  ): Promise<AxiosResponse<ApiResponse<boolean>>> => {
+    return apiClient.get(`${prefix}/listings/${listingId}/availability/check`, {
+      params,
+      ...publicRequest,
+    });
   },
 };
 

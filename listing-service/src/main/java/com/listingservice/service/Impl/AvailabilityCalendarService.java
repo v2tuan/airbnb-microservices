@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
@@ -77,10 +76,8 @@ public class AvailabilityCalendarService implements IAvailabilityCalendarService
             throw new AppException(ErrorCode.LISTING_NOT_FOUND);
         }
         
-        long numberOfDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        
-        boolean isAvailable = availabilityCalendarRepository.areAllDatesAvailable(
-                listingId, startDate, endDate, numberOfDays
+        boolean isAvailable = !availabilityCalendarRepository.hasBlockedDateInRange(
+                listingId, startDate, endDate
         );
         
         log.info("Availability check result: {}", isAvailable);

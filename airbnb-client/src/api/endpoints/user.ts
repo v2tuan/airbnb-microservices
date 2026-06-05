@@ -1,7 +1,15 @@
-import type { AxiosResponse } from "axios";
+import type { AxiosRequestConfig, AxiosResponse } from "axios";
 import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
+type PublicRequestConfig = AxiosRequestConfig & {
+  _skipAuth?: boolean;
+  _skipAuthRefresh?: boolean;
+};
+const publicRequest: PublicRequestConfig = {
+  _skipAuth: true,
+  _skipAuthRefresh: true,
+};
 
 export interface HostInfoDTO {
   id?: string;
@@ -80,10 +88,13 @@ export interface PublicProfileResponse {
 export const userAPI = {
   getPublicProfileById: (
     id: string,
-    params?: { reviewPage?: number; listingPage?: number }
+    params?: { reviewPage?: number; listingPage?: number },
   ): Promise<AxiosResponse<PublicUserProfile>> => {
     return apiClient
-      .get<HostProfileResponseDTO>(`${prefix}/profile/${id}`, { params })
+      .get<HostProfileResponseDTO>(`${prefix}/profile/${id}`, {
+        params,
+        ...publicRequest,
+      })
       .then((response) => {
         const host = response.data?.host;
 
@@ -104,8 +115,11 @@ export const userAPI = {
 
   getPublicProfilePageData: (
     id: string,
-    params?: { reviewPage?: number; listingPage?: number }
+    params?: { reviewPage?: number; listingPage?: number },
   ): Promise<AxiosResponse<PublicProfilePageData>> => {
-    return apiClient.get<PublicProfilePageData>(`${prefix}/profile/${id}`, { params });
+    return apiClient.get<PublicProfilePageData>(`${prefix}/profile/${id}`, {
+      params,
+      ...publicRequest,
+    });
   },
 };
