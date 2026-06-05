@@ -66,6 +66,15 @@ public class BookingController {
                 .build());
     }
 
+    @GetMapping("/availability/active-bookings")
+    public ResponseEntity<ApiResponse<Boolean>> hasActiveBookings(@RequestParam UUID listingId) {
+        return ResponseEntity.ok(ApiResponse.<Boolean>builder()
+                .success(true)
+                .message("Active bookings checked")
+                .data(bookingService.hasActiveBookings(listingId))
+                .build());
+    }
+
     @PostMapping
     public ResponseEntity<CreateBookingResponse> createBooking(
             @Valid @RequestBody CreateBookingRequest request) {

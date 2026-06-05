@@ -109,6 +109,23 @@ public class BookingService {
         return bookingRepository.findConflictingBookings(listingId, checkIn, checkOut).isEmpty();
     }
 
+    @Transactional(readOnly = true)
+    public boolean hasActiveBookings(UUID listingId) {
+        if (listingId == null) {
+            return false;
+        }
+
+        return bookingRepository.existsByListingIdAndStatusIn(
+                listingId,
+                List.of(
+                        BookingStatus.PENDING_PAYMENT,
+                        BookingStatus.CONFIRMED,
+                        BookingStatus.CHECKED_IN,
+                        BookingStatus.CHECKED_OUT
+                )
+        );
+    }
+
     @Transactional
     public CreateBookingResponse createBooking(CreateBookingRequest request) {
         Jwt jwt = currentJwt();

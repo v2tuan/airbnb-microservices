@@ -42,5 +42,29 @@ public class AvailabilityClient {
       return true;
     }
   }
+
+  public boolean hasActiveBookings(UUID listingId) {
+    if (listingId == null) {
+      return false;
+    }
+
+    try {
+      ApiResponse<Boolean> response = RestClient.builder()
+          .baseUrl(bookingServiceBaseUrl)
+          .build()
+          .get()
+          .uri(uriBuilder -> uriBuilder
+              .path("/availability/active-bookings")
+              .queryParam("listingId", listingId)
+              .build())
+          .retrieve()
+          .body(new ParameterizedTypeReference<ApiResponse<Boolean>>() {});
+
+      return response != null && Boolean.TRUE.equals(response.getData());
+    } catch (Exception ex) {
+      log.warn("Failed to check active bookings for listingId={}. Blocking deactivation for safety.", listingId, ex);
+      return true;
+    }
+  }
 }
 

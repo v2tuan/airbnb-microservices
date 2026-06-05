@@ -144,6 +144,10 @@ export interface ListingItemResponse {
   title: string;
   thumbnailUrl?: string;
   city?: string;
+  country?: string;
+  propertyType?: PropertyType;
+  status?: ListingStatus;
+  createdAt?: string;
   shortFeatures?: string;
   avgRating?: number;
   reviewCount?: number;

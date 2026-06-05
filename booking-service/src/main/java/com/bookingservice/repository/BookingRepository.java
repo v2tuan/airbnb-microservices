@@ -49,6 +49,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByGuestId(UUID guestId);
 
+    boolean existsByListingIdAndStatusIn(UUID listingId, List<BookingStatus> statuses);
+
     /**
      * Query list reservation theo một listing cho admin scope.
      * Sắp xếp check-in mới nhất trước, sau đó createdAt để host/admin dễ đọc lịch sử đặt phòng.
