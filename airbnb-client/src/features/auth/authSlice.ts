@@ -1,10 +1,12 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import authAPI from "@/api/endpoints/auth";
 import { authStorage, type StoredAuthUser } from "@/lib/auth-storage";
+import { parseJwt } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
 interface User extends StoredAuthUser {
   id?: string;
+  keycloakUserId?: string;
   email?: string;
   name?: string;
 }
@@ -37,6 +39,11 @@ type UnknownRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is UnknownRecord => {
   return typeof value === "object" && value !== null;
+};
+
+const decodeKeycloakUserIdFromToken = (token?: string | null): string | null => {
+  if (!token) return null;
+  return parseJwt(token)?.sub ?? null;
 };
 
 const getRecordValue = (source: UnknownRecord | null, key: string) => {
@@ -237,6 +244,13 @@ const authSlice = createSlice({
       state.token = token;
       state.user = user;
       state.isAuthenticated = !!token;
+
+      // `/me` của user-service hiện không trả `keycloakUserId`, nên fallback quan
+      // trọng là lấy từ JWT `sub` (Keycloak subject) để khớp `senderId` trong chat.
+      const keycloakUserId = decodeKeycloakUserIdFromToken(token);
+      if (state.user && keycloakUserId) {
+        state.user.keycloakUserId = keycloakUserId;
+      }
     },
 
     clearAuthMessages: (state) => {
@@ -277,6 +291,13 @@ const authSlice = createSlice({
         state.user = normalized.user;
         state.token = normalized.token;
         state.isAuthenticated = !!normalized.token;
+
+        if (state.user && normalized.token) {
+          const keycloakUserId = decodeKeycloakUserIdFromToken(normalized.token);
+          if (keycloakUserId) {
+            state.user.keycloakUserId = keycloakUserId;
+          }
+        }
       })
       .addCase(loginThunk.rejected, (state, action) => {
         state.loading = false;
@@ -301,6 +322,13 @@ const authSlice = createSlice({
           state.user = normalized.user;
           state.token = normalized.token;
           state.isAuthenticated = true;
+
+          if (state.user) {
+            const keycloakUserId = decodeKeycloakUserIdFromToken(normalized.token);
+            if (keycloakUserId) {
+              state.user.keycloakUserId = keycloakUserId;
+            }
+          }
         }
       })
       .addCase(registerThunk.rejected, (state, action) => {
@@ -328,6 +356,12 @@ const authSlice = createSlice({
         if (normalized.token) {
           state.token = normalized.token;
         }
+
+        // Token refresh có thể đổi access token mới => decode lại `sub`.
+        const keycloakUserId = decodeKeycloakUserIdFromToken(state.token);
+        if (state.user && keycloakUserId) {
+          state.user.keycloakUserId = keycloakUserId;
+        }
         state.isAuthenticated = !!state.token;
       })
       .addCase(refreshThunk.rejected, (state, action) => {
@@ -340,6 +374,9 @@ const authSlice = createSlice({
         const payload = isRecord(action.payload) ? action.payload : null;
         const profile = getRecordValue(payload, "data") ?? payload;
         if (profile) {
+          const tokenArg = action.meta.arg as string | undefined;
+          const decodedKeycloakUserId = decodeKeycloakUserIdFromToken(tokenArg);
+
           // /me là nguồn profile detail không phải lúc nào cũng có trong token
           // response. Persist merged user giúp behavior sau reload nhất quán với
           // UI hiện tại trong memory.
@@ -350,6 +387,14 @@ const authSlice = createSlice({
           state.user = {
             ...state.user,
             id: getStringValue(profile, "userId") ?? state.user?.id,
+            keycloakUserId:
+              getStringValue(profile, "keycloakUserId") ??
+              decodedKeycloakUserId ??
+              state.user?.keycloakUserId ??
+              // fallback cuối chỉ dùng nếu decode JWT thất bại (tránh làm sai khi
+              // message-service dùng keycloak UUID thật).
+              getStringValue(profile, "userId") ??
+              state.user?.id,
             email: getStringValue(profile, "email") ?? state.user?.email,
             name:
               (fullName ?? `${firstName} ${lastName}`.trim()) ||

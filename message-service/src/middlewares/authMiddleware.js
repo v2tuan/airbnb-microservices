@@ -2,25 +2,17 @@ import { StatusCodes } from 'http-status-codes'
 import { env } from '~/config/environment'
 import { JwtProvider } from '~/providers/JwtProvider'
 import ApiError from '~/utils/ApiError'
+import { authenticateRequest } from '~/services/authService'
 
 const isAuthorized = async (req, res, next) => {
-  let clientAccessToken = req.cookies?.accessToken
-
-  if (!clientAccessToken) {
-    const authHeader = req.headers.authorization
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      clientAccessToken = authHeader.substring(7)
-    }
-  }
-
-  if (!clientAccessToken) {
-    next(new ApiError(StatusCodes.NOT_ACCEPTABLE, 'Unauthorized: {Token not found}'))
-    return
-  }
-
   try {
-    const accessTokenDecoded = await JwtProvider.verifyToken(clientAccessToken, env.ACCESS_TOKEN_SECRET_SIGNATURE)
-    req.jwtDecoded = accessTokenDecoded
+    const auth = await authenticateRequest(req)
+
+    if (!auth) {
+      next(new ApiError(StatusCodes.NOT_ACCEPTABLE, 'Unauthorized: {Token not found}'))
+      return
+    }
+
     next()
   } catch (error) {
     if (error?.message?.includes('jwt expired')) {
@@ -33,24 +25,15 @@ const isAuthorized = async (req, res, next) => {
 }
 
 const isOptionallyAuthorized = async (req, res, next) => {
-  let clientAccessToken = req.cookies?.accessToken
-
-  if (!clientAccessToken) {
-    const authHeader = req.headers.authorization
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      clientAccessToken = authHeader.substring(7)
-    }
-  }
-
-  if (!clientAccessToken) {
-    req.jwtDecoded = null
-    next()
-    return
-  }
-
   try {
-    const accessTokenDecoded = await JwtProvider.verifyToken(clientAccessToken, env.ACCESS_TOKEN_SECRET_SIGNATURE)
-    req.jwtDecoded = accessTokenDecoded
+    const auth = await authenticateRequest(req)
+
+    if (!auth) {
+      req.jwtDecoded = null
+      next()
+      return
+    }
+
     next()
   } catch (error) {
     req.jwtDecoded = null

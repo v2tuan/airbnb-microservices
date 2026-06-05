@@ -28,7 +28,7 @@ const sendMessage = async ({ conversationId, senderId, text, files = [], io }) =
   try {
     const conversation = await conversationModel.findOne({
       _id: conversationId,
-      participants: senderId
+      participants: String(senderId)
     })
 
     if (!conversation) {
@@ -77,7 +77,7 @@ const sendMessage = async ({ conversationId, senderId, text, files = [], io }) =
 
     const message = await messageModel.create({
       conversationId,
-      senderId,
+      senderId: String(senderId),
       text: trimmedText || undefined,
       attachments: attachments.length ? attachments : undefined,
       messageType
@@ -108,7 +108,7 @@ const toggleReaction = async ({ messageId, userId, emoji, io }) => {
 
   const conversation = await conversationModel.findOne({
     _id: message.conversationId,
-    participants: userId
+    participants: String(userId)
   })
   if (!conversation) {
     throw new ApiError(StatusCodes.FORBIDDEN, 'You are not a participant of this conversation')
@@ -122,7 +122,7 @@ const toggleReaction = async ({ messageId, userId, emoji, io }) => {
   if (reactionIdx !== -1) {
     reactions.splice(reactionIdx, 1)
   } else {
-    reactions.push({ userId, emoji, createdAt: new Date() })
+    reactions.push({ userId: String(userId), emoji, createdAt: new Date() })
   }
 
   message.reactions = reactions
@@ -143,7 +143,7 @@ const getMessages = async ({ conversationId, userId, page = 1, limit = 50 }) => 
   try {
     const conversation = await conversationModel.findOne({
       _id: conversationId,
-      participants: userId
+      participants: String(userId)
     })
 
     if (!conversation) {
@@ -154,7 +154,7 @@ const getMessages = async ({ conversationId, userId, page = 1, limit = 50 }) => 
 
     const messages = await messageModel.find({
       conversationId,
-      'deletedFor.userId': { $ne: userId }
+      'deletedFor.userId': { $ne: String(userId) }
     })
       .populate('senderId', '_id userName fullName avatar')
       .sort({ createdAt: -1 })
@@ -163,7 +163,7 @@ const getMessages = async ({ conversationId, userId, page = 1, limit = 50 }) => 
 
     const total = await messageModel.countDocuments({
       conversationId,
-      'deletedFor.userId': { $ne: userId }
+      'deletedFor.userId': { $ne: String(userId) }
     })
 
     return {
@@ -188,7 +188,7 @@ const deleteForUser = async ({ messageId, userId }) => {
 
   const conversation = await conversationModel.findOne({
     _id: message.conversationId,
-    participants: userId
+    participants: String(userId)
   })
   if (!conversation) {
     throw new ApiError(StatusCodes.FORBIDDEN, 'You are not a participant of this conversation')
@@ -197,7 +197,7 @@ const deleteForUser = async ({ messageId, userId }) => {
   const deletedFor = message.deletedFor || []
   const already = deletedFor.some((d) => String(d.userId) === String(userId))
   if (!already) {
-    deletedFor.push({ userId, deletedAt: new Date() })
+    deletedFor.push({ userId: String(userId), deletedAt: new Date() })
     message.deletedFor = deletedFor
     await message.save()
   }
@@ -230,14 +230,14 @@ const recallMessage = async ({ messageId, userId, io }) => {
 
 const getMedia = async ({ conversationId, userId, type = 'image', page = 1, limit = 12 }) => {
   try {
-    const conv = await conversationModel.findOne({ _id: conversationId, participants: userId })
+    const conv = await conversationModel.findOne({ _id: conversationId, participants: String(userId) })
     if (!conv) {
       throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found or you are not a participant')
     }
 
     const matchBase = {
       conversationId: new mongoose.Types.ObjectId(conversationId),
-      'deletedFor.userId': { $ne: new mongoose.Types.ObjectId(userId) }
+      'deletedFor.userId': { $ne: String(userId) }
     }
 
     const countAgg = await messageModel.aggregate([

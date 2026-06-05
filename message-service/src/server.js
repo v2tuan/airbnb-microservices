@@ -1,12 +1,10 @@
 import express from 'express'
 import http from 'http'
 import exitHook from 'async-exit-hook'
-import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import mongoose from 'mongoose'
 import { APIs_V1 } from './routes/v1'
 import { env } from './config/environment'
-import { corsOptions } from './config/cors'
 import { errorHandlingMiddleware } from '~/middlewares/exampleMiddleware'
 import { initSocket } from './sockets'
 
@@ -29,7 +27,6 @@ const START_SERVER = () => {
   })
 
   app.use(express.json({ limit: '20mb' }))
-  app.use(cors(corsOptions))
   app.use(cookieParser())
   app.use('/V1', APIs_V1)
   app.use(errorHandlingMiddleware)
@@ -39,8 +36,13 @@ const START_SERVER = () => {
       console.log(`Production: Hello ${env.AUTHOR}, I am running at Port: ${process.env.PORT}/`)
     })
   } else {
-    server.listen(env.LOCAL_DEV_APP_PORT, env.LOCAL_DEV_APP_HOST, () => {
-      console.log(`LocalDev: Hello ${env.AUTHOR}, I am running at http://${env.LOCAL_DEV_APP_HOST}:${env.LOCAL_DEV_APP_PORT}/`)
+    // If LOCAL_DEV_APP_HOST is 'localhost', using it as hostname may bind to IPv6 ::1 only on some systems.
+    // Passing undefined as hostname causes Node to listen on all interfaces (0.0.0.0), which accepts 127.0.0.1 and ::1.
+    const hostToUse = env.LOCAL_DEV_APP_HOST === 'localhost' ? undefined : env.LOCAL_DEV_APP_HOST
+
+    server.listen(env.LOCAL_DEV_APP_PORT, hostToUse, () => {
+      const hostLog = hostToUse ?? '0.0.0.0'
+      console.log(`LocalDev: Hello ${env.AUTHOR}, I am running at http://${hostLog}:${env.LOCAL_DEV_APP_PORT}/`)
       console.log('Socket.IO is ready for realtime chat')
     })
   }

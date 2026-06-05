@@ -8,8 +8,7 @@ const messageSchema = new mongoose.Schema({
     index: true
   },
   senderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: String,
     required: true
   },
   text: {
@@ -41,8 +40,7 @@ const messageSchema = new mongoose.Schema({
   reactions: [
     {
       userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        type: String,
         required: true
       },
       emoji: {
@@ -58,8 +56,7 @@ const messageSchema = new mongoose.Schema({
   deletedFor: [
     {
       userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        type: String,
         required: true
       },
       deletedAt: {

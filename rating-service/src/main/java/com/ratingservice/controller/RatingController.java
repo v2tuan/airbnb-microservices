@@ -42,6 +42,11 @@ public class RatingController {
     return ResponseEntity.ok(ratingService.getAverageRating(listingId));
   }
 
+  @GetMapping("/listing/{listingId}/summary")
+  public ResponseEntity<Map<String, Object>> getListingRatingSummary(@PathVariable String listingId) {
+    return ResponseEntity.ok(ratingService.getListingRatingSummary(listingId));
+  }
+
   @PutMapping("/{id}")
   public ResponseEntity<RatingDTO> updateRating(
       @PathVariable String id,

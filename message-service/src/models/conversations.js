@@ -8,8 +8,7 @@ const conversationSchema = new mongoose.Schema({
     required: true
   },
   participants: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: String,
     required: true
   }],
   lastMessage: {
@@ -24,8 +23,7 @@ const conversationSchema = new mongoose.Schema({
       default: []
     },
     senderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
       default: null
     },
     createdAt: { type: Date, default: null }

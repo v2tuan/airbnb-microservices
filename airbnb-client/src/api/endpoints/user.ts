@@ -13,6 +13,7 @@ const publicRequest: PublicRequestConfig = {
 
 export interface HostInfoDTO {
   id?: string;
+  keycloakUserId?: string;
   fullName?: string;
   avatarUrl?: string;
   isSuperhost?: boolean;
@@ -33,6 +34,7 @@ export interface HostStatsDTO {
 export interface HostReviewItemDTO {
   id?: string;
   listingId?: string;
+  listingTitle?: string;
   reviewerName?: string;
   reviewerAvatarUrl?: string;
   reviewerLocation?: string;
@@ -100,6 +102,7 @@ export const userAPI = {
 
         const normalized: PublicUserProfile = {
           userId: host?.id,
+          keycloakUserId: host?.keycloakUserId ?? host?.id,
           fullName: host?.fullName,
           avatarUrl: host?.avatarUrl,
           superHost: host?.isSuperhost,

@@ -1,7 +1,14 @@
 import apiClient from './client'
 
-export const sendMessage = (payload: any) => apiClient.post('/V1/messages', payload)
+const prefix = process.env.NEXT_PUBLIC_PREFIX ?? ''
 
-export const fetchConversations = (userId: string) => apiClient.get(`/V1/conversations?userId=${userId}`)
+export const sendMessage = (payload: any) => apiClient.post(`${prefix}/messages`, payload)
 
-export const fetchMessages = (conversationId: string) => apiClient.get(`/V1/messages?conversationId=${conversationId}`)
+// Backend lấy userId từ JWT token, không cần pass userId
+export const fetchConversations = () => apiClient.get(`${prefix}/conversations`)
+
+export const fetchMessages = (conversationId: string) => apiClient.get(`${prefix}/messages/${conversationId}`)
+
+export const createOrGetConversation = (otherUserId: string) => apiClient.post(`${prefix}/conversations`, { otherUserId })
+
+export const fetchConversationById = (conversationId: string) => apiClient.get(`${prefix}/conversations/${conversationId}`)
