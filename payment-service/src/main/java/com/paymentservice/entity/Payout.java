@@ -71,8 +71,9 @@ public class Payout {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> payoutDetails;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
-    private String status; // PENDING, SCHEDULED, PROCESSING, COMPLETED, FAILED
+    private PayoutStatus status; // Vòng đời payout được chuẩn hóa trong PayoutStatus.
 
     @Column(columnDefinition = "TEXT")
     private String failureReason;

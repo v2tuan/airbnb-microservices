@@ -5,6 +5,7 @@ import com.paymentservice.dto.response.RefundResponse;
 import com.paymentservice.entity.Payment;
 import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
+import com.paymentservice.entity.PayoutStatus;
 import com.paymentservice.entity.Refund;
 import com.paymentservice.entity.RefundBusinessCause;
 import com.paymentservice.entity.RefundStatus;
@@ -217,7 +218,7 @@ public class RefundService {
     private void handleTransferReversalIfNeeded(UUID bookingId, long refundAmount, Refund refund) throws StripeException {
         List<Payout> payouts = payoutRepository.findByBookingId(bookingId);
         Payout completedPayout = payouts.stream()
-                .filter(payout -> "COMPLETED".equals(payout.getStatus()))
+                .filter(payout -> payout.getStatus() == PayoutStatus.COMPLETED)
                 .findFirst()
                 .orElse(null);
 
@@ -232,7 +233,7 @@ public class RefundService {
                 .putMetadata("refundId", refund.getRefundId().toString())
                 .build());
         completedPayout.setStripeTransferReversalId(reversal.getId());
-        completedPayout.setStatus("REVERSED");
+        completedPayout.setStatus(PayoutStatus.REVERSED);
         payoutRepository.save(completedPayout);
     }
 

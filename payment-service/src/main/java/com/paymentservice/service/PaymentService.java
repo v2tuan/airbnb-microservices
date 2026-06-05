@@ -12,6 +12,7 @@ import com.paymentservice.entity.Payment;
 import com.paymentservice.entity.PaymentAuditLog;
 import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
+import com.paymentservice.entity.PayoutStatus;
 import com.paymentservice.entity.StripeWebhookEvent;
 import com.paymentservice.entity.Transaction;
 import com.paymentservice.entity.WebhookEventStatus;
@@ -174,11 +175,20 @@ public class PaymentService {
 
         // Nếu trạng thái là đã paid sẵn rồi thì chỉ cập nhật thông tin payment thôi không xử lý gì thêm
         boolean alreadyPaid = payment.getStatus() == PaymentStatus.PAID;
+        // Charge là object Stripe tạo ra sau khi PaymentIntent thanh toán thành công.
+        // Payout cần chargeId để lấy balance_transaction và biết Stripe đã settle tiền ra currency nào.
+        String latestChargeId = latestChargeId(paymentIntent);
         if (!alreadyPaid) {
             payment.setStatus(PaymentStatus.PAID);
             payment.setSucceededAt(LocalDateTime.now());
             payment.setStripeEventId(eventId);
             payment.setWebhookPayload(rawPayload);
+            // Lưu chargeId sớm để PayoutService không phải retrieve PaymentIntent lại nếu không cần.
+            payment.setStripeChargeId(latestChargeId);
+            paymentRepository.save(payment);
+        } else if (payment.getStripeChargeId() == null && latestChargeId != null) {
+            // Trường hợp webhook gửi lại hoặc payment đã PAID trước đó nhưng DB thiếu chargeId.
+            payment.setStripeChargeId(latestChargeId);
             paymentRepository.save(payment);
         }
 
@@ -213,7 +223,7 @@ public class PaymentService {
                     .hostEarnings(BigDecimal.valueOf(payment.getHostAmount()))
                     .currency(payment.getCurrency())
                     .payoutMethod("STRIPE_CONNECT")
-                    .status("PENDING_CHECKIN")
+                    .status(PayoutStatus.PENDING_CHECKIN)
                     .scheduledAt(booking.getCheckInDate().atStartOfDay().plusDays(1))
                     .build());
         }
@@ -285,6 +295,20 @@ public class PaymentService {
                 || status == PaymentStatus.PARTIALLY_REFUNDED
                 || status == PaymentStatus.REFUNDED
                 || status == PaymentStatus.REFUND_FAILED;
+    }
+
+    /**
+     * Lấy latest_charge từ PaymentIntent.
+     *
+     * Stripe webhook thường trả latest_charge dạng String id.
+     * Nếu object đã được expand thì fallback sang latestChargeObject.getId().
+     */
+    private String latestChargeId(PaymentIntent paymentIntent) {
+        String latestChargeId = paymentIntent.getLatestCharge();
+        if ((latestChargeId == null || latestChargeId.isBlank()) && paymentIntent.getLatestChargeObject() != null) {
+            latestChargeId = paymentIntent.getLatestChargeObject().getId();
+        }
+        return latestChargeId;
     }
 
     private boolean registerWebhookEvent(String type, String paymentIntentId, String eventId, String payload) {
