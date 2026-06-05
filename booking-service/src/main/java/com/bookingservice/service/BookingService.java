@@ -27,6 +27,7 @@ import com.bookingservice.entity.BookingCancellationQuote;
 import com.bookingservice.entity.BookingStatus;
 import com.bookingservice.entity.ComplaintStatus;
 import com.bookingservice.entity.HostCancellationQuote;
+import com.bookingservice.exception.BusinessException;
 import com.bookingservice.repository.BookingCancellationQuoteRepository;
 import com.bookingservice.repository.BookingComplaintRepository;
 import com.bookingservice.repository.BookingRepository;
@@ -36,13 +37,11 @@ import com.bookingservice.repository.client.PaymentClient;
 import com.bookingservice.repository.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -132,7 +131,7 @@ public class BookingService {
         UUID guestId = UUID.fromString(jwt.getSubject());
 
         if (!request.getCheckOutDate().isAfter(request.getCheckInDate())) {
-            throw new IllegalArgumentException("Check-out date must be after check-in date");
+            throw BusinessException.badRequest("Check-out date must be after check-in date");
         }
 
         // Lock listing ngăn double booking
@@ -146,7 +145,7 @@ public class BookingService {
         List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(
                 request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate());
         if (!conflictingBookings.isEmpty()) {
-            throw new IllegalStateException("Listing is not available for the selected dates");
+            throw BusinessException.conflict("Listing is not available for the selected dates");
         }
 
         int totalNights = (int) ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
@@ -191,9 +190,9 @@ public class BookingService {
     @Transactional
     public BookingResponse updateBookingStatus(UUID bookingId, UpdateBookingStatusRequest request) {
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
         if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cancellation quote is required");
+            throw BusinessException.conflict("Host cancellation quote is required");
         }
 
         if (booking.getStatus() == request.getStatus()) {
@@ -239,7 +238,7 @@ public class BookingService {
     public BookingResponse getBooking(UUID bookingId) {
         return bookingRepository.findById(bookingId)
                 .map(this::mapToResponse)
-                .orElseThrow(() -> new RuntimeException("Booking not found: " + bookingId));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
     }
 
     @Transactional(readOnly = true)
@@ -247,10 +246,10 @@ public class BookingService {
         Jwt jwt = currentJwt();
         UUID guestId = UUID.fromString(jwt.getSubject());
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
 
         if (!booking.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            throw BusinessException.notFound("Booking not found");
         }
 
         ListingResponse listing = listingClient
@@ -265,10 +264,10 @@ public class BookingService {
     public BookingResponse cancelMyBooking(UUID bookingId, CancelBookingRequest request) {
         UUID guestId = UUID.fromString(currentJwt().getSubject());
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
 
         if (!booking.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            throw BusinessException.notFound("Booking not found");
         }
 
         if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
@@ -281,7 +280,7 @@ public class BookingService {
         }
 
         if (booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote is required");
+            throw BusinessException.conflict("Cancellation quote is required");
         }
 
         booking.setStatus(BookingStatus.EXPIRED);
@@ -295,7 +294,7 @@ public class BookingService {
     public GuestCancellationQuoteResponse requestGuestCancellationQuote(UUID bookingId) {
         UUID guestId = UUID.fromString(currentJwt().getSubject());
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
 
         // Kiểm tra xem guest có đủ điều kiện hủy phòng hay không
         validateGuestCancellationEligibility(booking, guestId);
@@ -329,21 +328,21 @@ public class BookingService {
         LocalDateTime now = LocalDateTime.now();
 
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
         validateGuestCancellationEligibility(booking, guestId);
 
         BookingCancellationQuote quote = cancellationQuoteRepository
                 .findByQuoteIdAndBookingIdForUpdate(request.getQuoteId(), bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found"));
+                .orElseThrow(() -> BusinessException.notFound("Cancellation quote not found"));
 
         if (!quote.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found");
+            throw BusinessException.notFound("Cancellation quote not found");
         }
         if (quote.getConfirmedAt() != null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has already been used");
+            throw BusinessException.conflict("Cancellation quote has already been used");
         }
         if (!quote.getExpiresAt().isAfter(now)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has expired");
+            throw BusinessException.conflict("Cancellation quote has expired");
         }
 
         booking.setStatus(BookingStatus.CANCELLED_BY_GUEST);
@@ -382,7 +381,7 @@ public class BookingService {
         UUID hostId = UUID.fromString(jwt.getSubject());
         LocalDateTime now = LocalDateTime.now();
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+                .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
 
         validateHostCancellationEligibility(booking, hostId, jwt);
 
@@ -416,22 +415,22 @@ public class BookingService {
         UUID hostId = UUID.fromString(jwt.getSubject());
         LocalDateTime now = LocalDateTime.now();
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+                .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
 
         validateHostCancellationEligibility(booking, hostId, jwt);
 
         HostCancellationQuote quote = hostCancellationQuoteRepository
                 .findByQuoteIdAndBookingIdForUpdate(request.getQuoteId(), bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found"));
+                .orElseThrow(() -> BusinessException.notFound("Cancellation quote not found"));
 
         if (!quote.getHostId().equals(booking.getHostId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Cancellation quote not found");
+            throw BusinessException.notFound("Cancellation quote not found");
         }
         if (quote.getConfirmedAt() != null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has already been used");
+            throw BusinessException.conflict("Cancellation quote has already been used");
         }
         if (!quote.getExpiresAt().isAfter(now)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cancellation quote has expired");
+            throw BusinessException.conflict("Cancellation quote has expired");
         }
 
         booking.setStatus(BookingStatus.CANCELLED_BY_HOST);
@@ -509,7 +508,7 @@ public class BookingService {
         };
 
         if (!isValid) {
-            throw new IllegalStateException("Invalid booking transition from " + currentStatus + " to " + newStatus);
+            throw BusinessException.unprocessable("Invalid booking transition from " + currentStatus + " to " + newStatus);
         }
     }
 
@@ -521,36 +520,36 @@ public class BookingService {
 
     private void validateListingApproval(ListingResponse listing, CreateBookingRequest request) {
         if (listing == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+            throw BusinessException.notFound("Listing not found");
         }
         if (listing.getStatus() == ListingStatus.SUSPENDED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing is suspended");
+            throw BusinessException.conflict("Listing is suspended");
         }
         if (listing.getStatus() != ListingStatus.ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing is not active");
+            throw BusinessException.conflict("Listing is not active");
         }
         if (listing.getHostId() == null || listing.getHostId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing host is not payout eligible");
+            throw BusinessException.conflict("Listing host is not payout eligible");
         }
         if (listing.getPricing() == null || listing.getPricing().getBasePrice() == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing pricing is not configured");
+            throw BusinessException.conflict("Listing pricing is not configured");
         }
         if (listing.getMaxGuests() == null || listing.getMaxGuests() <= 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing capacity is not configured");
+            throw BusinessException.conflict("Listing capacity is not configured");
         }
 
         int stayingGuests = adultCount(request.getNumberOfAdults()) + safeCount(request.getNumberOfChildren());
         if (stayingGuests <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one adult or child is required");
+            throw BusinessException.badRequest("At least one adult or child is required");
         }
         if (stayingGuests > listing.getMaxGuests()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Guest count exceeds listing capacity");
+            throw BusinessException.badRequest("Guest count exceeds listing capacity");
         }
 
         int pets = safeCount(request.getNumberOfPets());
         boolean petsAllowed = listing.getHouseRules() != null && Boolean.TRUE.equals(listing.getHouseRules().getPetsAllowed());
         if (pets > 0 && !petsAllowed) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pets are not allowed for this listing");
+            throw BusinessException.badRequest("Pets are not allowed for this listing");
         }
     }
 
@@ -604,42 +603,42 @@ public class BookingService {
 
     private void validateGuestCancellationEligibility(Booking booking, UUID guestId) {
         if (!booking.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            throw BusinessException.notFound("Booking not found");
         }
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled");
+            throw BusinessException.conflict("Booking cannot be cancelled");
         }
         if (booking.getCheckedInAt() != null || !LocalDate.now().isBefore(booking.getCheckInDate())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Guest cancellation is not available after check-in");
+            throw BusinessException.conflict("Guest cancellation is not available after check-in");
         }
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid booking is required before cancellation");
+            throw BusinessException.conflict("Paid booking is required before cancellation");
         }
         if (complaintRepository.existsByBookingIdAndStatusIn(
                 booking.getBookingId(),
                 List.of(ComplaintStatus.ESCALATED_TO_ADMIN))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking has an active complaint escalated to admin");
+            throw BusinessException.conflict("Booking has an active complaint escalated to admin");
         }
     }
 
     private void validateHostCancellationEligibility(Booking booking, UUID hostId, Jwt jwt) {
         boolean admin = isAdmin(jwt);
         if (!admin && !booking.getHostId().equals(hostId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found");
+            throw BusinessException.notFound("Reservation not found");
         }
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reservation cannot be cancelled by host");
+            throw BusinessException.conflict("Reservation cannot be cancelled by host");
         }
         if (booking.getCheckedInAt() != null || !LocalDate.now().isBefore(booking.getCheckInDate())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cancellation is not available after check-in");
+            throw BusinessException.conflict("Host cancellation is not available after check-in");
         }
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Paid reservation is required before cancellation");
+            throw BusinessException.conflict("Paid reservation is required before cancellation");
         }
         if (complaintRepository.existsByBookingIdAndStatusIn(
                 booking.getBookingId(),
                 List.of(ComplaintStatus.ESCALATED_TO_ADMIN))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reservation has an active complaint escalated to admin");
+            throw BusinessException.conflict("Reservation has an active complaint escalated to admin");
         }
     }
 
@@ -677,7 +676,7 @@ public class BookingService {
                             .build()
             );
             publishListingEvent("LISTING_SUSPENDED", quote.getListingId(), quote.getHostId());
-        } catch (Exception exception) {
+        } catch (RuntimeException exception) {
             log.warn("Failed to suspend listing {} after host penalty threshold", quote.getListingId(), exception);
         }
     }
@@ -774,7 +773,7 @@ public class BookingService {
         String listingCurrency = listing.getPricing() != null ? normalizeCurrency(listing.getPricing().getCurrency()) : null;
         String requestedCurrency = normalizeCurrency(request.getCurrency());
         if (listingCurrency != null && requestedCurrency != null && !listingCurrency.equals(requestedCurrency)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Requested currency does not match listing pricing currency");
+            throw BusinessException.badRequest("Requested currency does not match listing pricing currency");
         }
         if (listingCurrency != null) {
             return listingCurrency;
@@ -865,12 +864,12 @@ public class BookingService {
                 .getData();
 
         if (listing == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+            throw BusinessException.notFound("Listing not found");
         }
 
         UUID hostId = UUID.fromString(listing.getHostId());
         if (!admin && !hostId.toString().equals(jwt.getSubject())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot manage reservations for this listing");
+            throw BusinessException.forbidden("You cannot manage reservations for this listing");
         }
 
         List<Booking> bookings = findReservationsForListing(listingId, admin ? null : hostId, statuses);
@@ -970,7 +969,7 @@ public class BookingService {
     public ReservationDetailResponse getReservationDetail(UUID reservationId) {
         Jwt jwt = currentJwt();
         Booking booking = bookingRepository.findById(reservationId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+                .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
 
         ensureCanManageReservation(jwt, booking);
 
@@ -992,12 +991,12 @@ public class BookingService {
     public ReservationDetailResponse updateReservationStatus(UUID reservationId, UpdateBookingStatusRequest request) {
         Jwt jwt = currentJwt();
         Booking booking = bookingRepository.findByIdForUpdate(reservationId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reservation not found"));
+                .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
 
         ensureCanManageReservation(jwt, booking);
         validateReservationManagementStatus(request.getStatus());
         if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Host cancellation quote is required");
+            throw BusinessException.conflict("Host cancellation quote is required");
         }
 
         // Chỉ đổi status khi status mới khác status hiện tại; nếu trùng, vẫn cho phép cập nhật reason/timestamp liên quan.
@@ -1046,12 +1045,12 @@ public class BookingService {
         if (listingId != null) {
             ListingResponse listing = listingClient.getListingById(bearerToken, listingId).getData();
             if (listing == null) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+                throw BusinessException.notFound("Listing not found");
             }
 
             UUID listingHostId = UUID.fromString(listing.getHostId());
             if (!admin && !listingHostId.equals(currentUserId)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot manage reservations for this listing");
+                throw BusinessException.forbidden("You cannot manage reservations for this listing");
             }
 
             return List.of(listing);
@@ -1677,7 +1676,7 @@ public class BookingService {
 
         try {
             return userClient.getPublicUser(hostId.toString());
-        } catch (Exception exception) {
+        } catch (RuntimeException exception) {
             log.warn("Failed to fetch host profile for {}", hostId, exception);
             return null;
         }
@@ -1690,7 +1689,7 @@ public class BookingService {
 
         try {
             return userClient.getPublicUser(guestId.toString());
-        } catch (Exception exception) {
+        } catch (RuntimeException exception) {
             log.warn("Failed to fetch guest profile for {}", guestId, exception);
             return null;
         }
@@ -1722,17 +1721,14 @@ public class BookingService {
         }
 
         if (booking.getHostId() == null || !booking.getHostId().toString().equals(jwt.getSubject())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot manage this reservation");
+            throw BusinessException.forbidden("You cannot manage this reservation");
         }
     }
 
     private void validateReservationManagementStatus(BookingStatus status) {
         // CONFIRMED/EXPIRED thuộc payment/expiry flow, không cho host tự set từ dashboard để tránh lệch với Stripe/webhook.
         if (status == BookingStatus.CONFIRMED || status == BookingStatus.EXPIRED) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Reservation management cannot set payment-owned status: " + status
-            );
+            throw BusinessException.badRequest("Reservation management cannot set payment-owned status: " + status);
         }
     }
 

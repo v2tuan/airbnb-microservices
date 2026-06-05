@@ -31,7 +31,7 @@ export async function checkout(
   token: string | null,
   data: CheckoutRequest,
 ): Promise<CheckoutResponse> {
-  const res = await apiClient.post(`${prefix}/payments/checkout`, data, {
+  const res = await apiClient.post<CheckoutResponse>(`${prefix}/payments/checkout`, data, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return res.data;
@@ -41,7 +41,7 @@ export async function getMyBookings(
   token: string | null,
   type: BookingFilterType = "ALL",
 ): Promise<ApiResponse<BookingTripsResponse[]>> {
-  const res = await apiClient.get(`${prefix}/bookings/me`, {
+  const res = await apiClient.get<ApiResponse<BookingTripsResponse[]>>(`${prefix}/bookings/me`, {
     params: { type },
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -53,7 +53,7 @@ export async function getBookingDetail(
   token: string | null,
   bookingId: string,
 ): Promise<ApiResponse<BookingDetailResponse>> {
-  const res = await apiClient.get(`${prefix}/bookings/${bookingId}/detail`, {
+  const res = await apiClient.get<ApiResponse<BookingDetailResponse>>(`${prefix}/bookings/${bookingId}/detail`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -65,7 +65,7 @@ export async function cancelBooking(
   bookingId: string,
   reason: string,
 ): Promise<ApiResponse<{ status: BookingStatus }>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<{ status: BookingStatus }>>(
     `${prefix}/bookings/${bookingId}/cancel`,
     { reason },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -78,7 +78,7 @@ export async function requestCancellationQuote(
   token: string | null,
   bookingId: string,
 ): Promise<ApiResponse<GuestCancellationQuoteResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<GuestCancellationQuoteResponse>>(
     `${prefix}/bookings/${bookingId}/cancellation-quotes`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -93,7 +93,7 @@ export async function confirmCancellationQuote(
   quoteId: string,
   reason: string,
 ): Promise<ApiResponse<{ status: BookingStatus }>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<{ status: BookingStatus }>>(
     `${prefix}/bookings/${bookingId}/cancel/confirm`,
     { quoteId, reason },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -111,7 +111,7 @@ export async function createComplaint(
     evidenceUrls?: string[];
   },
 ): Promise<ApiResponse<ComplaintResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<ComplaintResponse>>(
     `${prefix}/bookings/${bookingId}/complaints`,
     data,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -123,7 +123,7 @@ export async function createComplaint(
 export async function getMyComplaints(
   token: string | null,
 ): Promise<ApiResponse<ComplaintResponse[]>> {
-  const res = await apiClient.get(`${prefix}/bookings/me/complaints`, {
+  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(`${prefix}/bookings/me/complaints`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -134,7 +134,7 @@ export async function acceptComplaintHostResponse(
   token: string | null,
   complaintId: string,
 ): Promise<ApiResponse<ComplaintResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<ComplaintResponse>>(
     `${prefix}/bookings/complaints/${complaintId}/accept`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -147,7 +147,7 @@ export async function escalateComplaint(
   token: string | null,
   complaintId: string,
 ): Promise<ApiResponse<ComplaintResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<ComplaintResponse>>(
     `${prefix}/bookings/complaints/${complaintId}/escalate`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -173,7 +173,7 @@ export async function getHostReservationsByListing(
   });
 
   const query = params.toString();
-  const res = await apiClient.get(
+  const res = await apiClient.get<ApiResponse<HostReservationResponse[]>>(
     `${prefix}/bookings/host/listings/${listingId}/reservations${query ? `?${query}` : ""}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
@@ -203,7 +203,7 @@ export async function getHostReservations(
   params.set("page", String(query.page));
   params.set("size", String(query.size));
 
-  const res = await apiClient.get(
+  const res = await apiClient.get<ApiResponse<HostReservationsPageResponse>>(
     `${prefix}/bookings/host/reservations?${params.toString()}`,
     {
       signal,
@@ -218,7 +218,7 @@ export async function getHostReservationDetail(
   token: string | null,
   reservationId: string,
 ): Promise<ApiResponse<HostReservationDetailResponse>> {
-  const res = await apiClient.get(
+  const res = await apiClient.get<ApiResponse<HostReservationDetailResponse>>(
     `${prefix}/bookings/host/reservations/${reservationId}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
@@ -231,7 +231,7 @@ export async function updateHostReservationStatus(
   reservationId: string,
   data: UpdateReservationStatusRequest,
 ): Promise<ApiResponse<HostReservationDetailResponse>> {
-  const res = await apiClient.patch(
+  const res = await apiClient.patch<ApiResponse<HostReservationDetailResponse>>(
     `${prefix}/bookings/host/reservations/${reservationId}/status`,
     data,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -245,7 +245,7 @@ export async function requestHostCancellationQuote(
   reservationId: string,
   reasonCode: HostCancellationReasonCode,
 ): Promise<ApiResponse<HostCancellationQuoteResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<HostCancellationQuoteResponse>>(
     `${prefix}/bookings/host/reservations/${reservationId}/cancellation-quotes`,
     { reasonCode },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -260,7 +260,7 @@ export async function confirmHostCancellationQuote(
   quoteId: string,
   reason: string,
 ): Promise<ApiResponse<HostReservationDetailResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<HostReservationDetailResponse>>(
     `${prefix}/bookings/host/reservations/${reservationId}/cancel/confirm`,
     { quoteId, reason },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -272,7 +272,7 @@ export async function confirmHostCancellationQuote(
 export async function getHostComplaints(
   token: string | null,
 ): Promise<ApiResponse<ComplaintResponse[]>> {
-  const res = await apiClient.get(`${prefix}/bookings/host/complaints`, {
+  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(`${prefix}/bookings/host/complaints`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -284,7 +284,7 @@ export async function respondToComplaint(
   complaintId: string,
   response: string,
 ): Promise<ApiResponse<ComplaintResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<ComplaintResponse>>(
     `${prefix}/bookings/host/complaints/${complaintId}/respond`,
     { response },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -297,7 +297,7 @@ export async function getAdminComplaints(
   token: string | null,
   status?: ComplaintStatus,
 ): Promise<ApiResponse<ComplaintResponse[]>> {
-  const res = await apiClient.get(`${prefix}/bookings/admin/complaints`, {
+  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(`${prefix}/bookings/admin/complaints`, {
     params: status ? { status } : undefined,
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -314,7 +314,7 @@ export async function decideComplaint(
     refundAmount?: number;
   },
 ): Promise<ApiResponse<ComplaintResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<ComplaintResponse>>(
     `${prefix}/bookings/admin/complaints/${complaintId}/decision`,
     data,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -332,7 +332,7 @@ export async function forceCancelBooking(
     refundAmount?: number;
   },
 ): Promise<ApiResponse<HostReservationDetailResponse>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<HostReservationDetailResponse>>(
     `${prefix}/bookings/admin/bookings/${bookingId}/force-cancel`,
     data,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -346,7 +346,7 @@ export async function waiveHostPenalty(
   penaltyId: string,
   reason: string,
 ): Promise<ApiResponse<unknown>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<unknown>>(
     `${prefix}/bookings/admin/host-penalties/${penaltyId}/waive`,
     { reason },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -363,7 +363,7 @@ export async function adminSuspendListing(
     reason: string;
   },
 ): Promise<ApiResponse<void>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<void>>(
     `${prefix}/bookings/admin/listings/${listingId}/suspend`,
     data,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -377,7 +377,7 @@ export async function adminUnsuspendListing(
   listingId: string,
   reason: string,
 ): Promise<ApiResponse<void>> {
-  const res = await apiClient.post(
+  const res = await apiClient.post<ApiResponse<void>>(
     `${prefix}/bookings/admin/listings/${listingId}/unsuspend`,
     { reason },
     { headers: { Authorization: `Bearer ${token}` } },

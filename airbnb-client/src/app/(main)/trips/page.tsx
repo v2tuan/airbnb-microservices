@@ -8,6 +8,7 @@ import { TripCardSkeleton } from "@/components/trips/SkeletonLoader";
 import { TripsCard } from "@/components/trips/TripsCard";
 import type { RootState } from "@/store";
 import type { BookingTripsResponse } from "@/types/booking.type";
+import { extractApiErrorMessage } from "@/types/api.type";
 
 type TripsTab = "UPCOMING" | "COMPLETED" | "CANCELLED";
 type EmptyStateType = "upcoming" | "completed" | "cancelled";
@@ -30,6 +31,7 @@ export default function TripsPage() {
   const [loading, setLoading] = useState(true);
 
   const [trips, setTrips] = useState<BookingTripsResponse[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const token = useSelector((state: RootState) => state.auth.token);
 
@@ -37,6 +39,7 @@ export default function TripsPage() {
     async function fetchBookings() {
       try {
         setLoading(true);
+        setErrorMessage(null);
 
         if (!token) return;
 
@@ -45,6 +48,7 @@ export default function TripsPage() {
         setTrips(response.data);
       } catch (error) {
         console.error("Failed to fetch bookings", error);
+        setErrorMessage(extractApiErrorMessage(error, "Could not load your trips. Please try again."));
       } finally {
         setLoading(false);
       }
@@ -113,6 +117,10 @@ export default function TripsPage() {
             {[1, 2, 3].map((i) => (
               <TripCardSkeleton key={i} />
             ))}
+          </div>
+        ) : errorMessage ? (
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm font-medium text-red-700">
+            {errorMessage}
           </div>
         ) : trips.length === 0 ? (
           <EmptyState type={emptyStateTypeByTab[activeTab]} />

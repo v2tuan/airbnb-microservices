@@ -33,6 +33,7 @@ import { TripDetailSkeleton } from "@/components/trips/SkeletonLoader";
 import { usePaymentCountdown } from "@/components/trips/usePaymentCountdown";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { RootState } from "@/store";
+import { extractApiErrorMessage } from "@/types/api.type";
 import type {
   BookingDetailResponse,
   BookingStatus,
@@ -107,6 +108,7 @@ export default function ManageReservationPage() {
   const [booking, setBooking] = useState<BookingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [notesSaved, setNotesSaved] = useState(false);
@@ -136,6 +138,7 @@ export default function ManageReservationPage() {
 
       try {
         setLoading(true);
+        setErrorMessage(null);
         const response = await getBookingDetail(token, params.bookingId);
         if (!cancelled) {
           setBooking(response.data);
@@ -145,7 +148,10 @@ export default function ManageReservationPage() {
         }
       } catch (err) {
         console.error("Failed to fetch booking detail", err);
-        if (!cancelled) setError(true);
+        if (!cancelled) {
+          setError(true);
+          setErrorMessage(extractApiErrorMessage(err, "This reservation does not exist or is not available for your account."));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -199,10 +205,7 @@ export default function ManageReservationPage() {
       setCancellationQuote(response.data);
     } catch (err) {
       console.error("Failed to load cancellation quote", err);
-      setQuoteError(
-        getApiErrorMessage(err) ??
-          "Could not calculate the cancellation quote. Try again.",
-      );
+      setQuoteError(extractApiErrorMessage(err, "Could not calculate the cancellation quote. Try again."));
       setCancellationQuote(null);
     } finally {
       setQuoteLoading(false);
@@ -232,6 +235,7 @@ export default function ManageReservationPage() {
       setCancelRequestSent(true);
     } catch (err) {
       console.error("Failed to expire pending booking", err);
+      setQuoteError(extractApiErrorMessage(err, "Cancellation failed. Please try again."));
     }
   };
 
@@ -255,6 +259,7 @@ export default function ManageReservationPage() {
       setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
+      setQuoteError(extractApiErrorMessage(err, "Cancellation failed. Request a new quote and try again."));
       setQuoteError(
         getApiErrorMessage(err) ??
           "Cancellation failed. Request a new quote and try again.",
@@ -278,7 +283,7 @@ export default function ManageReservationPage() {
       setComplaintMessage("Complaint submitted. The host has 24 hours to respond.");
     } catch (err) {
       console.error("Failed to submit complaint", err);
-      setComplaintMessage("Unable to submit complaint. You may already have an active complaint.");
+      setComplaintMessage(extractApiErrorMessage(err, "Unable to submit complaint. You may already have an active complaint."));
     } finally {
       setComplaintSubmitting(false);
     }
@@ -300,6 +305,9 @@ export default function ManageReservationPage() {
             <h1 className="font-display text-2xl font-semibold text-slate-900">
               Booking not found
             </h1>
+            <p className="mt-3 text-sm text-slate-500">
+              {errorMessage ?? "This reservation does not exist or is not available for your account."}
+            </p>
             <Link
               href="/trips"
               className="mt-6 inline-flex rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white"
@@ -730,6 +738,11 @@ export default function ManageReservationPage() {
               >
                 Cancel this reservation
               </button>
+              {quoteError && !cancelOpen ? (
+                <p className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-700">
+                  {quoteError}
+                </p>
+              ) : null}
               {cancelRequestSent ? (
                 <p className="mt-3 text-sm font-medium text-emerald-600">
                   Reservation cancelled.

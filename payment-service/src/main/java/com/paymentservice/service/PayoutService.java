@@ -7,6 +7,7 @@ import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
 import com.paymentservice.entity.PayoutStatus;
 import com.paymentservice.event.PayoutCompletedEvent;
+import com.paymentservice.exception.BusinessException;
 import com.paymentservice.repository.PaymentRepository;
 import com.paymentservice.repository.PayoutRepository;
 import com.paymentservice.repository.client.BookingClient;
@@ -202,12 +203,12 @@ public class PayoutService {
         Charge charge = retrieveChargeWithBalanceTransaction(payment);
         BalanceTransaction balanceTransaction = charge.getBalanceTransactionObject();
         if (balanceTransaction == null) {
-            throw new IllegalStateException("Stripe charge " + charge.getId() + " does not have an expanded balance transaction");
+            throw BusinessException.unprocessable("Stripe charge does not have an expanded balance transaction");
         }
 
         long transferAmount = calculateHostSettlementAmount(payment, payout, balanceTransaction);
         if (transferAmount <= 0) {
-            throw new IllegalStateException("Calculated Stripe transfer amount must be positive");
+            throw BusinessException.unprocessable("Calculated Stripe transfer amount must be positive");
         }
 
         return new StripeTransferPlan(
@@ -228,11 +229,11 @@ public class PayoutService {
      */
     private Payment loadPaymentForPayout(Payout payout) {
         if (payout.getPaymentId() == null) {
-            throw new IllegalStateException("Payment record is required for Stripe Connect multi-currency payout");
+            throw BusinessException.unprocessable("Payment record is required for Stripe Connect multi-currency payout");
         }
 
         return paymentRepository.findById(payout.getPaymentId())
-                .orElseThrow(() -> new IllegalStateException("Payment record not found for payout"));
+                .orElseThrow(() -> BusinessException.notFound("Payment record not found for payout"));
     }
 
     /**
@@ -256,7 +257,7 @@ public class PayoutService {
                 chargeId = paymentIntent.getLatestChargeObject().getId();
             }
             if (chargeId == null || chargeId.isBlank()) {
-                throw new IllegalStateException("PaymentIntent " + payment.getStripePaymentIntentId() + " does not have a latest charge");
+                throw BusinessException.unprocessable("PaymentIntent does not have a latest charge");
             }
 
             payment.setStripeChargeId(chargeId);
@@ -283,7 +284,7 @@ public class PayoutService {
     private long calculateHostSettlementAmount(Payment payment, Payout payout, BalanceTransaction balanceTransaction) {
         long paidAmount = payment.getAmount() == null ? 0L : payment.getAmount();
         if (paidAmount <= 0) {
-            throw new IllegalStateException("Payment amount must be positive for payout conversion");
+            throw BusinessException.unprocessable("Payment amount must be positive for payout conversion");
         }
 
         return BigDecimal.valueOf(balanceTransaction.getNet())

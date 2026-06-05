@@ -12,6 +12,7 @@ import com.paymentservice.entity.RefundStatus;
 import com.paymentservice.entity.Transaction;
 import com.paymentservice.event.RefundCompletedEvent;
 import com.paymentservice.event.RefundFailedEvent;
+import com.paymentservice.exception.BusinessException;
 import com.paymentservice.mapper.RefundMapper;
 import com.paymentservice.repository.PaymentRepository;
 import com.paymentservice.repository.PayoutRepository;
@@ -54,7 +55,7 @@ public class RefundService {
                 .filter(transaction -> "PAYMENT".equals(transaction.getTransactionType()))
                 .filter(transaction -> "COMPLETED".equals(transaction.getStatus()))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Completed payment transaction not found for booking"));
+                .orElseThrow(() -> BusinessException.notFound("Completed payment transaction not found for booking"));
         return processRefund(
                 originalTransaction,
                 request.getRefundAmount(),
@@ -74,9 +75,9 @@ public class RefundService {
             UUID businessCauseId
     ) {
         Payment payment = paymentRepository.findByBookingId(originalTransaction.getBookingId())
-                .orElseThrow(() -> new RuntimeException("Payment not found for booking"));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found for booking"));
         if (refundRepository.existsByBusinessCauseAndBusinessCauseId(businessCause, businessCauseId)) {
-            throw new RuntimeException("Refund already exists for business cause");
+            throw BusinessException.conflict("Refund already exists for business cause");
         }
 
         long refundAmount = toMinorUnitAmount(requestedRefundAmount);
@@ -84,7 +85,7 @@ public class RefundService {
         long remainingRefundable = payment.getAmount() - alreadyRefunded;
         if (refundAmount <= 0 || refundAmount > remainingRefundable) {
             log.error("refundAmount" + refundAmount + " remainingRefundable" + remainingRefundable);
-            throw new RuntimeException("Refund amount exceeds remaining refundable paid amount");
+            throw BusinessException.unprocessable("Refund amount exceeds remaining refundable paid amount");
         }
 
         Transaction refundTransaction = transactionRepository.save(Transaction.builder()
@@ -239,7 +240,7 @@ public class RefundService {
 
     public void updateRefundStatus(UUID refundId, String newStatus) {
         Refund refund = refundRepository.findById(refundId)
-                .orElseThrow(() -> new RuntimeException("Refund not found"));
+                .orElseThrow(() -> BusinessException.notFound("Refund not found"));
 
         RefundStatus status = RefundStatus.valueOf(newStatus);
         refund.setStatus(status);
@@ -256,7 +257,7 @@ public class RefundService {
     @Transactional(readOnly = true)
     public RefundResponse getRefund(UUID refundId) {
         Refund refund = refundRepository.findById(refundId)
-                .orElseThrow(() -> new RuntimeException("Refund not found"));
+                .orElseThrow(() -> BusinessException.notFound("Refund not found"));
         return refundMapper.toResponse(refund);
     }
 
@@ -278,8 +279,8 @@ public class RefundService {
     private RefundBusinessCause resolveBusinessCause(String businessCause) {
         try {
             return RefundBusinessCause.valueOf(businessCause);
-        } catch (Exception ex) {
-            throw new IllegalArgumentException("Unsupported refund business cause: " + businessCause);
+        } catch (IllegalArgumentException ex) {
+            throw BusinessException.badRequest("Unsupported refund business cause: " + businessCause);
         }
     }
 
@@ -287,7 +288,7 @@ public class RefundService {
         try {
             return requestedRefundAmount.longValueExact();
         } catch (ArithmeticException ex) {
-            throw new IllegalArgumentException("Refund amount must be an exact minor-unit amount", ex);
+            throw BusinessException.badRequest("Refund amount must be an exact minor-unit amount");
         }
     }
 }

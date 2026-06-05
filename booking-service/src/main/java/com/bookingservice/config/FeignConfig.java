@@ -1,17 +1,14 @@
-package com.paymentservice.config;
+package com.bookingservice.config;
 
+import com.bookingservice.exception.BusinessException;
+import com.bookingservice.exception.ErrorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.paymentservice.exception.BusinessException;
-import com.paymentservice.exception.ErrorResponse;
 import feign.Response;
-import feign.RequestInterceptor;
 import feign.codec.ErrorDecoder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,21 +17,6 @@ import java.io.InputStream;
 @Slf4j
 public class FeignConfig {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-
-    @Bean
-    public RequestInterceptor requestInterceptor() {
-        return requestTemplate -> {
-            ServletRequestAttributes attrs =
-                    (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-
-            if (attrs != null) {
-                String token = attrs.getRequest().getHeader("Authorization");
-                if (token != null) {
-                    requestTemplate.header("Authorization", token);
-                }
-            }
-        };
-    }
 
     @Bean
     public ErrorDecoder feignErrorDecoder() {

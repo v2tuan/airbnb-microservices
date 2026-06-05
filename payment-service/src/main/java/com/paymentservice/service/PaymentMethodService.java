@@ -3,6 +3,7 @@ package com.paymentservice.service;
 import com.paymentservice.dto.request.CreatePaymentMethodRequest;
 import com.paymentservice.dto.response.PaymentMethodResponse;
 import com.paymentservice.entity.PaymentMethod;
+import com.paymentservice.exception.BusinessException;
 import com.paymentservice.mapper.PaymentMethodMapper;
 import com.paymentservice.repository.PaymentMethodRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class PaymentMethodService {
     public PaymentMethodResponse createPaymentMethod(UUID userId, CreatePaymentMethodRequest request) {
         // Check if payment method already exists
         if (paymentMethodRepository.existsByUserIdAndToken(userId, request.getToken())) {
-            throw new RuntimeException("Payment method already exists for this user");
+            throw BusinessException.conflict("Payment method already exists for this user");
         }
 
         // If isDefault is true, unset other default methods
@@ -75,7 +76,7 @@ public class PaymentMethodService {
      */
     public PaymentMethodResponse getPaymentMethod(UUID paymentMethodId) {
         PaymentMethod paymentMethod = paymentMethodRepository.findById(paymentMethodId)
-            .orElseThrow(() -> new RuntimeException("Payment method not found"));
+            .orElseThrow(() -> BusinessException.notFound("Payment method not found"));
         return paymentMethodMapper.toResponse(paymentMethod);
     }
 
@@ -84,7 +85,7 @@ public class PaymentMethodService {
      */
     public void deletePaymentMethod(UUID paymentMethodId) {
         PaymentMethod paymentMethod = paymentMethodRepository.findById(paymentMethodId)
-            .orElseThrow(() -> new RuntimeException("Payment method not found"));
+            .orElseThrow(() -> BusinessException.notFound("Payment method not found"));
         paymentMethodRepository.delete(paymentMethod);
     }
 
@@ -101,10 +102,10 @@ public class PaymentMethodService {
 
         // Set new default
         PaymentMethod paymentMethod = paymentMethodRepository.findById(paymentMethodId)
-            .orElseThrow(() -> new RuntimeException("Payment method not found"));
+            .orElseThrow(() -> BusinessException.notFound("Payment method not found"));
 
         if (!paymentMethod.getUserId().equals(userId)) {
-            throw new RuntimeException("Payment method does not belong to this user");
+            throw BusinessException.forbidden("Payment method does not belong to this user");
         }
 
         paymentMethod.setIsDefault(true);

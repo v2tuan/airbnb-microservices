@@ -11,6 +11,7 @@ import {BookingIntent} from "@/components/checkout/CheckoutContent";
 import {checkout} from "@/api/endpoints/booking";
 import {useSelector} from "react-redux";
 import type {RootState} from "@/store";
+import { extractApiErrorMessage } from "@/types/api.type";
 
 type CardFormProps = {
     roomId: string
@@ -32,7 +33,11 @@ export default function PaymentForm({roomId, bookingIntent} : CardFormProps) {
         setError(null)
 
         // Stripe.js chưa load xong
-        if (!stripe || !elements) return;
+        if (!stripe || !elements) {
+            setError("Payment form is still loading. Please try again.");
+            setLoading(false);
+            return;
+        }
 
         try {
             const resp = await checkout(token, {
@@ -74,8 +79,8 @@ export default function PaymentForm({roomId, bookingIntent} : CardFormProps) {
                     setError('Đã có lỗi xảy ra. Vui lòng thử lại.');
                 }
             }
-        } catch (err: any) {
-            setError(err.message || 'Đã có lỗi xảy ra');
+        } catch (err: unknown) {
+            setError(extractApiErrorMessage(err, "Payment could not be started. Please try again."));
         }
         finally {
             setLoading(false);

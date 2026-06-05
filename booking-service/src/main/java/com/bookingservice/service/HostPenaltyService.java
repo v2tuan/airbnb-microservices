@@ -5,15 +5,14 @@ import com.bookingservice.entity.HostCancellationQuote;
 import com.bookingservice.entity.HostPenalty;
 import com.bookingservice.entity.HostPenaltyStatus;
 import com.bookingservice.dto.response.HostPenaltyResponse;
+import com.bookingservice.exception.BusinessException;
 import com.bookingservice.repository.HostPenaltyRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -71,9 +70,9 @@ public class HostPenaltyService {
     public HostPenaltyResponse waivePenalty(UUID penaltyId, String reason) {
         requireAdmin();
         HostPenalty penalty = hostPenaltyRepository.findById(penaltyId)
-                .orElseThrow(() -> new IllegalArgumentException("Host penalty not found"));
+                .orElseThrow(() -> BusinessException.notFound("Host penalty not found"));
         if (penalty.getStatus() != HostPenaltyStatus.ACTIVE) {
-            throw new IllegalStateException("Only active penalties can be waived");
+            throw BusinessException.conflict("Only active penalties can be waived");
         }
         penalty.setStatus(HostPenaltyStatus.WAIVED);
         penalty.setWaivedAt(LocalDateTime.now());
@@ -121,14 +120,14 @@ public class HostPenaltyService {
         Jwt jwt = (Jwt) authentication.getPrincipal();
         Object realmAccess = jwt.getClaims().get("realm_access");
         if (!(realmAccess instanceof Map<?, ?> realmAccessMap)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role is required");
+            throw BusinessException.forbidden("Admin role is required");
         }
         Object roles = realmAccessMap.get("roles");
         if (!(roles instanceof Collection<?> roleCollection) || roleCollection.stream()
                 .filter(String.class::isInstance)
                 .map(String.class::cast)
                 .noneMatch(role -> role.equals("ADMIN") || role.equals("ROLE_ADMIN"))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role is required");
+            throw BusinessException.forbidden("Admin role is required");
         }
     }
 

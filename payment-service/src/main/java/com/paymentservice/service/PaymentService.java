@@ -17,6 +17,7 @@ import com.paymentservice.entity.StripeWebhookEvent;
 import com.paymentservice.entity.Transaction;
 import com.paymentservice.entity.WebhookEventStatus;
 import com.paymentservice.event.PaymentSucceededEvent;
+import com.paymentservice.exception.BusinessException;
 import com.paymentservice.mapper.BookingMapper;
 import com.paymentservice.repository.PaymentAuditLogRepository;
 import com.paymentservice.repository.PaymentRepository;
@@ -76,7 +77,7 @@ public class PaymentService {
         // Lấy Stripe account id của host
         String hostStripeAccountId = userClient.getStripeAccountId(booking.getHostId()).getData();
         if (hostStripeAccountId == null || hostStripeAccountId.isBlank()) {
-            throw new IllegalStateException("Host has not completed Stripe Connect onboarding");
+            throw BusinessException.conflict("Host has not completed Stripe Connect onboarding");
         }
 
         long amount = booking.getTotalAmount();
@@ -157,7 +158,7 @@ public class PaymentService {
                 default -> log.debug("Ignoring Stripe event type={}", eventType);
             }
             markWebhookProcessed(stripeEventId);
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             markWebhookFailed(stripeEventId, ex.getMessage());
             throw ex;
         }
@@ -165,7 +166,7 @@ public class PaymentService {
 
     private void handlePaymentSucceeded(PaymentIntent paymentIntent, UUID bookingId, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
-                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found"));
 
         if (payment.getStatus() != PaymentStatus.PAID && isPaidOrRefundStatus(payment.getStatus())) {
             log.warn("Ignoring succeeded event for refunded payment paymentId={} status={}",
@@ -244,7 +245,7 @@ public class PaymentService {
 
     private void handlePaymentFailed(PaymentIntent paymentIntent, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
-                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found"));
         if (isPaidOrRefundStatus(payment.getStatus())) {
             log.warn("Ignoring failed event for already settled payment paymentId={} status={}",
                     payment.getId(), payment.getStatus());
@@ -259,7 +260,7 @@ public class PaymentService {
 
     private void handlePaymentCancelled(PaymentIntent paymentIntent, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
-                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found"));
         if (isPaidOrRefundStatus(payment.getStatus())) {
             log.warn("Ignoring cancelled event for already settled payment paymentId={} status={}",
                     payment.getId(), payment.getStatus());
@@ -277,7 +278,7 @@ public class PaymentService {
             return current;
         }
         if (current.getStatus() != BookingStatus.PENDING_PAYMENT) {
-            throw new IllegalStateException("Cannot confirm booking " + bookingId + " from status " + current.getStatus());
+            throw BusinessException.unprocessable("Cannot confirm booking from status " + current.getStatus());
         }
 
         return bookingServiceClient.updateBookingStatus(
