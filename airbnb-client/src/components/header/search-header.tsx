@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import {
@@ -169,6 +169,108 @@ const RECOMMENDED_AMENITY_LABELS: Record<string, string> = {
   washer: "Washing machine",
   parking: "Free parking",
 };
+
+const QUICK_FILTERS = [
+  { label: "Washer", type: "amenity", value: "Washing machine" },
+  { label: "Wifi", type: "amenity", value: "Wifi" },
+  { label: "Instant Book", type: "instantBook", value: "true" },
+  { label: "Free parking", type: "amenity", value: "Free parking" },
+  { label: "Air conditioning", type: "amenity", value: "Air conditioning" },
+  { label: "TV", type: "amenity", value: "TV" },
+  { label: "Allows pets", type: "petsAllowed", value: "true" },
+  { label: "1+ bathrooms", type: "bathrooms", value: "1" },
+  { label: "Gym", type: "amenity", value: "Gym" },
+  { label: "Iron", type: "amenity", value: "Iron" },
+] as const;
+
+function getQueryAmenities(searchParams: URLSearchParams) {
+  const value = searchParams.get("amenities");
+
+  return value
+    ? value
+        .split(",")
+        .map((amenity) => amenity.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function buildQuickFilterHref(
+  searchParams: URLSearchParams,
+  filter: (typeof QUICK_FILTERS)[number],
+) {
+  const params = new URLSearchParams(searchParams);
+  params.delete("page");
+
+  if (filter.type === "amenity") {
+    const amenities = getQueryAmenities(searchParams);
+    const active = amenities.some(
+      (amenity) => amenity.toLowerCase() === filter.value.toLowerCase(),
+    );
+    const nextAmenities = active
+      ? amenities.filter(
+          (amenity) => amenity.toLowerCase() !== filter.value.toLowerCase(),
+        )
+      : [...amenities, filter.value];
+
+    if (nextAmenities.length > 0) {
+      params.set("amenities", nextAmenities.join(","));
+    } else {
+      params.delete("amenities");
+    }
+  } else if (params.get(filter.type) === filter.value) {
+    params.delete(filter.type);
+  } else {
+    params.set(filter.type, filter.value);
+  }
+
+  const queryString = params.toString();
+  return `/search${queryString ? `?${queryString}` : ""}`;
+}
+
+function isQuickFilterActive(
+  searchParams: URLSearchParams,
+  filter: (typeof QUICK_FILTERS)[number],
+) {
+  if (filter.type === "amenity") {
+    return getQueryAmenities(searchParams).some(
+      (amenity) => amenity.toLowerCase() === filter.value.toLowerCase(),
+    );
+  }
+
+  return searchParams.get(filter.type) === filter.value;
+}
+
+function QuickFilterBar() {
+  const searchParams = useSearchParams();
+  const params = useMemo(
+    () => new URLSearchParams(searchParams.toString()),
+    [searchParams],
+  );
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1760px] items-center gap-2.5 overflow-x-auto px-4 pb-3 pt-1 sm:justify-center sm:px-8 xl:px-10">
+      {QUICK_FILTERS.map((filter) => {
+        const active = isQuickFilterActive(params, filter);
+
+        return (
+          <Link
+            key={`${filter.type}-${filter.value}`}
+            href={buildQuickFilterHref(params, filter)}
+            scroll={false}
+            className={cn(
+              "inline-flex h-9 shrink-0 items-center rounded-full border px-3.5 text-[13px] font-medium transition",
+              active
+                ? "border-neutral-950 bg-white text-neutral-950"
+                : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-950",
+            )}
+          >
+            {filter.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 function FilterDialog({
   open,
@@ -646,11 +748,11 @@ function SearchHeader() {
       <header
         ref={headerRef}
         className={cn(
-          "fixed top-0 left-0 right-0 w-full bg-gray-50 z-40 border-b md:px-3 lg:px-10 transition-all duration-300 py-7",
+          "fixed top-0 left-0 right-0 z-40 w-full border-b bg-gray-50 transition-all duration-300 md:px-3 lg:px-10",
         )}
       >
         {/* Top row */}
-        <div className="relative mx-auto px-4 flex items-center justify-between">
+        <div className="relative mx-auto flex items-center justify-between px-4 py-7">
           {/* Logo */}
           <div className="shrink-0">
             <Logo />
@@ -739,6 +841,8 @@ function SearchHeader() {
             <UserMenu />
           </div>
         </div>
+
+        {!showFullSearch ? <QuickFilterBar /> : null}
 
         {/* Expanded Search Bar */}
         <div
