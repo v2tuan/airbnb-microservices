@@ -13,13 +13,199 @@ interface SearchBarProps {
   className?: string;
 }
 
-const destinations = [
-  { label: "Da Nang", value: "Da Nang" },
-  { label: "Ho Chi Minh", value: "Ho Chi Minh" },
-  { label: "Ha Noi", value: "Hanoi" },
-  { label: "Nha Trang", value: "Nha Trang" },
-  { label: "Da Lat", value: "Dalat" },
-  { label: "Phu Quoc", value: "Phu Quoc" },
+type Destination = {
+  label: string;
+  value: string;
+  googleKeyword: string;
+  image?: string;
+};
+
+const destinations: Destination[] = [
+  {
+    label: "Đà Nẵng",
+    value: "Da Nang",
+    googleKeyword: "Thành phố Đà Nẵng, Việt Nam",
+    image:
+      "https://images.unsplash.com/photo-1537953773345-d172ccf13cf1?w=400&q=80&auto=format&fit=crop",
+  },
+  {
+    label: "Hồ Chí Minh",
+    value: "Ho Chi Minh",
+    googleKeyword: "Thành phố Hồ Chí Minh, Việt Nam",
+    image:
+      "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&q=80&auto=format&fit=crop",
+  },
+  {
+    label: "Hà Nội",
+    value: "Hanoi",
+    googleKeyword: "Thành phố Hà Nội, Việt Nam",
+    image:
+      "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?w=400&q=80&auto=format&fit=crop",
+  },
+  {
+    label: "Khánh Hòa",
+    value: "Khanh Hoa",
+    googleKeyword: "Tỉnh Khánh Hòa, Việt Nam",
+    image:
+      "https://images.unsplash.com/photo-1510414842594-a61c69b5ae57?w=400&q=80&auto=format&fit=crop",
+  },
+  {
+    label: "Lâm Đồng",
+    value: "Lam Dong",
+    googleKeyword: "Tỉnh Lâm Đồng, Việt Nam",
+    image:
+      "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=80&auto=format&fit=crop",
+  },
+  {
+    label: "An Giang",
+    value: "An Giang",
+    googleKeyword: "Tỉnh An Giang, Việt Nam",
+    image:
+      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80&auto=format&fit=crop",
+  },
+];
+
+const moreDestinations: Destination[] = [
+  {
+    label: "Huế",
+    value: "Hue",
+    googleKeyword: "Thành phố Huế, Việt Nam",
+  },
+  {
+    label: "Hải Phòng",
+    value: "Hai Phong",
+    googleKeyword: "Thành phố Hải Phòng, Việt Nam",
+  },
+  {
+    label: "Cần Thơ",
+    value: "Can Tho",
+    googleKeyword: "Thành phố Cần Thơ, Việt Nam",
+  },
+  {
+    label: "Lai Châu",
+    value: "Lai Chau",
+    googleKeyword: "Tỉnh Lai Châu, Việt Nam",
+  },
+  {
+    label: "Điện Biên",
+    value: "Dien Bien",
+    googleKeyword: "Tỉnh Điện Biên, Việt Nam",
+  },
+  {
+    label: "Sơn La",
+    value: "Son La",
+    googleKeyword: "Tỉnh Sơn La, Việt Nam",
+  },
+  {
+    label: "Lạng Sơn",
+    value: "Lang Son",
+    googleKeyword: "Tỉnh Lạng Sơn, Việt Nam",
+  },
+  {
+    label: "Quảng Ninh",
+    value: "Quang Ninh",
+    googleKeyword: "Tỉnh Quảng Ninh, Việt Nam",
+  },
+  {
+    label: "Thanh Hóa",
+    value: "Thanh Hoa",
+    googleKeyword: "Tỉnh Thanh Hóa, Việt Nam",
+  },
+  {
+    label: "Nghệ An",
+    value: "Nghe An",
+    googleKeyword: "Tỉnh Nghệ An, Việt Nam",
+  },
+  {
+    label: "Hà Tĩnh",
+    value: "Ha Tinh",
+    googleKeyword: "Tỉnh Hà Tĩnh, Việt Nam",
+  },
+  {
+    label: "Cao Bằng",
+    value: "Cao Bang",
+    googleKeyword: "Tỉnh Cao Bằng, Việt Nam",
+  },
+  {
+    label: "Tuyên Quang",
+    value: "Tuyen Quang",
+    googleKeyword: "Tỉnh Tuyên Quang, Việt Nam",
+  },
+  {
+    label: "Lào Cai",
+    value: "Lao Cai",
+    googleKeyword: "Tỉnh Lào Cai, Việt Nam",
+  },
+  {
+    label: "Thái Nguyên",
+    value: "Thai Nguyen",
+    googleKeyword: "Tỉnh Thái Nguyên, Việt Nam",
+  },
+  {
+    label: "Phú Thọ",
+    value: "Phu Tho",
+    googleKeyword: "Tỉnh Phú Thọ, Việt Nam",
+  },
+  {
+    label: "Bắc Ninh",
+    value: "Bac Ninh",
+    googleKeyword: "Tỉnh Bắc Ninh, Việt Nam",
+  },
+  {
+    label: "Hưng Yên",
+    value: "Hung Yen",
+    googleKeyword: "Tỉnh Hưng Yên, Việt Nam",
+  },
+  {
+    label: "Ninh Bình",
+    value: "Ninh Binh",
+    googleKeyword: "Tỉnh Ninh Bình, Việt Nam",
+  },
+  {
+    label: "Quảng Trị",
+    value: "Quang Tri",
+    googleKeyword: "Tỉnh Quảng Trị, Việt Nam",
+  },
+  {
+    label: "Quảng Ngãi",
+    value: "Quang Ngai",
+    googleKeyword: "Tỉnh Quảng Ngãi, Việt Nam",
+  },
+  {
+    label: "Gia Lai",
+    value: "Gia Lai",
+    googleKeyword: "Tỉnh Gia Lai, Việt Nam",
+  },
+  {
+    label: "Đắk Lắk",
+    value: "Dak Lak",
+    googleKeyword: "Tỉnh Đắk Lắk, Việt Nam",
+  },
+  {
+    label: "Đồng Nai",
+    value: "Dong Nai",
+    googleKeyword: "Tỉnh Đồng Nai, Việt Nam",
+  },
+  {
+    label: "Tây Ninh",
+    value: "Tay Ninh",
+    googleKeyword: "Tỉnh Tây Ninh, Việt Nam",
+  },
+  {
+    label: "Vĩnh Long",
+    value: "Vinh Long",
+    googleKeyword: "Tỉnh Vĩnh Long, Việt Nam",
+  },
+  {
+    label: "Đồng Tháp",
+    value: "Dong Thap",
+    googleKeyword: "Tỉnh Đồng Tháp, Việt Nam",
+  },
+  {
+    label: "Cà Mau",
+    value: "Ca Mau",
+    googleKeyword: "Tỉnh Cà Mau, Việt Nam",
+  },
 ];
 
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -114,6 +300,7 @@ export default function SearchBar({ className }: SearchBarProps) {
   );
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
+  const [locationKeyword, setLocationKeyword] = useState("");
   const [guests, setGuests] = useState<GuestCounts>({
     adults: 1,
     children: 0,
@@ -124,6 +311,7 @@ export default function SearchBar({ className }: SearchBarProps) {
     "idle" | "loading" | "error"
   >("idle");
   const [locationError, setLocationError] = useState("");
+  const [showMoreDestinations, setShowMoreDestinations] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -152,6 +340,10 @@ export default function SearchBar({ className }: SearchBarProps) {
 
     if (destination) {
       query.set("q", destination);
+    }
+
+    if (locationKeyword) {
+      query.set("locationKeyword", locationKeyword);
     }
 
     const stayGuests = countStayGuests(guests);
@@ -218,6 +410,7 @@ export default function SearchBar({ className }: SearchBarProps) {
         query.set("latitude", String(position.coords.latitude));
         query.set("longitude", String(position.coords.longitude));
         query.set("radius", "25");
+        query.set("locationKeyword", "Vị trí hiện tại, Việt Nam");
 
         const stayGuests = countStayGuests(guests);
 
@@ -247,6 +440,7 @@ export default function SearchBar({ className }: SearchBarProps) {
         }
 
         setWhere("Nearby");
+        setLocationKeyword("Vị trí hiện tại, Việt Nam");
         setLocationStatus("idle");
         router.push(`/search?${query.toString()}`);
       },
@@ -260,6 +454,12 @@ export default function SearchBar({ className }: SearchBarProps) {
         timeout: 10000,
       },
     );
+  };
+
+  const selectDestination = (city: Destination) => {
+    setWhere(city.value);
+    setLocationKeyword(city.googleKeyword);
+    setActiveTab("who");
   };
 
   return (
@@ -296,7 +496,10 @@ export default function SearchBar({ className }: SearchBarProps) {
             <input
               placeholder="Search destinations"
               value={where}
-              onChange={(event) => setWhere(event.target.value)}
+              onChange={(event) => {
+                setWhere(event.target.value);
+                setLocationKeyword("");
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") handleSearch();
               }}
@@ -361,7 +564,7 @@ export default function SearchBar({ className }: SearchBarProps) {
         {/* PANELS (Dropdowns) — absolute positioned, never clipped */}
         <div className="absolute top-[80px] left-0 right-0 z-30">
           {activeTab === "where" && (
-            <div className="absolute left-0 w-[400px] bg-white rounded-3xl shadow-2xl border p-8 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="absolute left-0 max-h-[min(78vh,720px)] w-[460px] overflow-y-auto bg-white rounded-3xl shadow-2xl border p-8 animate-in fade-in slide-in-from-top-2 duration-300">
               <p className="font-bold mb-4">Search by region</p>
               <button
                 type="button"
@@ -398,17 +601,45 @@ export default function SearchBar({ className }: SearchBarProps) {
                   <button
                     type="button"
                     key={city.value}
-                    onClick={() => {
-                      setWhere(city.value);
-                      setActiveTab("who");
-                    }}
-                    className="flex flex-col gap-2 text-left"
+                    onClick={() => selectDestination(city)}
+                    className="group flex flex-col gap-2 text-left"
                   >
-                    <div className="aspect-square bg-gray-100 rounded-xl border hover:border-black transition cursor-pointer" />
+                    <div className="aspect-square overflow-hidden rounded-xl border bg-gray-100 transition group-hover:border-black">
+                      <img
+                        src={city.image}
+                        alt={city.label}
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    </div>
                     <span className="text-xs text-center">{city.label}</span>
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => setShowMoreDestinations((value) => !value)}
+                className="mt-6 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-900 transition hover:border-gray-900 hover:bg-gray-50"
+              >
+                {showMoreDestinations
+                  ? "Show fewer destinations"
+                  : "Show more destinations in Vietnam"}
+              </button>
+              {showMoreDestinations ? (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {moreDestinations.map((city) => (
+                    <button
+                      type="button"
+                      key={city.value}
+                      onClick={() => selectDestination(city)}
+                      className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 text-left text-sm font-medium text-gray-800 transition hover:border-gray-900 hover:bg-gray-50"
+                    >
+                      <MapPin className="size-4 shrink-0 text-gray-500" />
+                      <span>{city.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
 

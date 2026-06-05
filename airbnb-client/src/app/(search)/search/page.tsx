@@ -25,6 +25,7 @@ interface SearchPageProps {
     freeCancellation?: string;
     latitude?: string;
     longitude?: string;
+    locationKeyword?: string;
     radius?: string;
     checkIn?: string;
     checkOut?: string;
@@ -305,7 +306,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     Number.isFinite(minPrice) && Number.isFinite(maxPrice)
       ? `${formatPrice(minPrice as number, "USD")} - ${formatPrice(maxPrice as number, "USD")}`
       : "Any price";
-  const mapDestination = hasNearbySearch ? "Nearby" : destination;
+  const mapDestination = hasNearbySearch
+    ? "Nearby"
+    : query.locationKeyword ?? destination;
 
   return (
     <main className="min-h-screen bg-white pt-[164px]">
