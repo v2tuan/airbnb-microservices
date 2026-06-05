@@ -257,6 +257,11 @@ export default function HostListingsPage() {
       } else {
         await listingAPI.deactivateListing(token, item.id);
       }
+      window.alert(
+        nextAction === "activate"
+          ? "Listing activated successfully."
+          : "Listing deactivated successfully.",
+      );
       void loadListings();
     } catch (error) {
       window.alert(
@@ -462,20 +467,20 @@ export default function HostListingsPage() {
             </table>
           </div>
         ) : (
-          <section className="mt-20 grid gap-x-8 gap-y-12 md:grid-cols-2 xl:grid-cols-3">
+          <section className="mt-10 grid gap-x-4 gap-y-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {items.map((item) => (
               <article key={item.id} className="group">
                 <Link href={`/host/listings/${item.id}`} className="block">
-                  <div className="relative aspect-square overflow-hidden rounded-[14px] bg-[#dddddd]">
+                  <div className="relative aspect-[5/3] overflow-hidden rounded-[10px] bg-[#dddddd]">
                     <ListingImage item={item} />
-                    <div className="absolute top-5 left-5">
+                    <div className="absolute left-2.5 top-2.5">
                       <StatusPill status={item.status} />
                     </div>
                   </div>
-                  <h2 className="mt-5 line-clamp-1 text-lg font-semibold text-[#222222]">
+                  <h2 className="mt-2.5 line-clamp-1 text-[15px] font-semibold text-[#222222]">
                     {getListingTitle(item)}
                   </h2>
-                  <p className="mt-2 line-clamp-1 text-base text-[#6a6a6a]">
+                  <p className="mt-0.5 line-clamp-1 text-[13px] text-[#6a6a6a]">
                     {getListingType(item)}
                     {item.location || item.city
                       ? ` in ${item.location || item.city}`
@@ -483,19 +488,19 @@ export default function HostListingsPage() {
                   </p>
                 </Link>
 
-                <div className="mt-4 flex flex-wrap gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
+                <div className="mt-2.5 flex flex-wrap gap-1.5 opacity-100 transition md:opacity-0 md:group-hover:opacity-100">
                   <Link
                     href={`/host/listings/${item.id}`}
-                    className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f2f2f2] px-4 text-sm font-semibold text-[#222222] hover:bg-[#ebebeb]"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#f2f2f2] px-2.5 text-[11px] font-semibold text-[#222222] hover:bg-[#ebebeb]"
                   >
-                    <Pencil className="size-4" />
+                    <Pencil className="size-3.5" />
                     Edit
                   </Link>
                   <Link
                     href={`/host/reservations?listingId=${item.id}`}
-                    className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f2f2f2] px-4 text-sm font-semibold text-[#222222] hover:bg-[#ebebeb]"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#f2f2f2] px-2.5 text-[11px] font-semibold text-[#222222] hover:bg-[#ebebeb]"
                   >
-                    <CalendarCheck className="size-4" />
+                    <CalendarCheck className="size-3.5" />
                     Booking
                   </Link>
                   <button
@@ -505,15 +510,15 @@ export default function HostListingsPage() {
                       savingId === `activate-${item.id}` ||
                       savingId === `deactivate-${item.id}`
                     }
-                    className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f2f2f2] px-4 text-sm font-semibold text-[#222222] hover:bg-[#ebebeb] disabled:opacity-60"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#f2f2f2] px-2.5 text-[11px] font-semibold text-[#222222] hover:bg-[#ebebeb] disabled:opacity-60"
                   >
                     {savingId === `activate-${item.id}` ||
                     savingId === `deactivate-${item.id}` ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <Loader2 className="size-3.5 animate-spin" />
                     ) : isListingActive(item) ? (
-                      <PowerOff className="size-4" />
+                      <PowerOff className="size-3.5" />
                     ) : (
-                      <Power className="size-4" />
+                      <Power className="size-3.5" />
                     )}
                     {isListingActive(item) ? "Deactive" : "Active"}
                   </button>
@@ -521,12 +526,12 @@ export default function HostListingsPage() {
                     type="button"
                     onClick={() => void handleDelete(item.id)}
                     disabled={savingId === `delete-${item.id}`}
-                    className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f2f2f2] px-4 text-sm font-semibold text-[#c13515] hover:bg-[#ebebeb] disabled:opacity-60"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#f2f2f2] px-2.5 text-[11px] font-semibold text-[#c13515] hover:bg-[#ebebeb] disabled:opacity-60"
                   >
                     {savingId === `delete-${item.id}` ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <Loader2 className="size-3.5 animate-spin" />
                     ) : (
-                      <Trash2 className="size-4" />
+                      <Trash2 className="size-3.5" />
                     )}
                     Delete
                   </button>
