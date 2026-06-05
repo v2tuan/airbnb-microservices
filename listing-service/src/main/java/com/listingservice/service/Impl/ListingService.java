@@ -207,10 +207,6 @@ public class ListingService implements IListingService {
         Listing listing = listingRepository.findById(listingId)
                 .orElseThrow(() -> new AppException(ErrorCode.LISTING_NOT_FOUND));
 
-        if (availabilityClient.hasActiveBookings(listingId)) {
-            throw new AppException(ErrorCode.LISTING_HAS_ACTIVE_BOOKINGS);
-        }
-
         listing.setStatus(ListingStatus.INACTIVE);
         listingRepository.save(listing);
 
@@ -324,10 +320,6 @@ public class ListingService implements IListingService {
                 .title(listing.getTitle())
                 .thumbnailUrl(resolveCoverImageUrl(listing))
                 .city(listing.getCity())
-                .country(listing.getCountry())
-                .propertyType(listing.getPropertyType())
-                .status(listing.getStatus())
-                .createdAt(listing.getCreatedAt())
                 .shortFeatures(buildShortFeatures(listing))
                 .avgRating(resolveBasicRating(listing).doubleValue())
                 .reviewCount(0L) // TODO: Fetch từ rating-service khi cần
