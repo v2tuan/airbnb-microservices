@@ -6,7 +6,7 @@ const findOrCreateDirectConversation = async (userId1, userId2) => {
   try {
     let conversation = await conversationModel.findOne({
       type: 'direct',
-      participants: { $all: [userId1, userId2], $size: 2 }
+      participants: { $all: [String(userId1), String(userId2)], $size: 2 }
     })
       .populate('participants', '_id userName fullName avatar isOnline lastActiveAt')
       .populate('lastMessage.senderId', '_id userName fullName avatar isOnline lastActiveAt')
@@ -17,7 +17,7 @@ const findOrCreateDirectConversation = async (userId1, userId2) => {
 
     conversation = await conversationModel.create({
       type: 'direct',
-      participants: [userId1, userId2]
+      participants: [String(userId1), String(userId2)]
     })
 
     conversation = await conversation.populate('participants', '_id userName fullName avatar isOnline lastActiveAt')
@@ -29,7 +29,7 @@ const findOrCreateDirectConversation = async (userId1, userId2) => {
 
 const getUserConversations = async (userId) => {
   try {
-    return await conversationModel.find({ participants: userId })
+    return await conversationModel.find({ participants: String(userId) })
       .populate('participants', '_id userName fullName avatar isOnline lastActiveAt')
       .populate('lastMessage.senderId', '_id userName fullName avatar isOnline lastActiveAt')
       .sort({ updatedAt: -1 })
@@ -42,7 +42,7 @@ const getConversationById = async (conversationId, userId) => {
   try {
     const conversation = await conversationModel.findOne({
       _id: conversationId,
-      participants: userId
+      participants: String(userId)
     })
       .populate('participants', '_id userName fullName avatar isOnline lastActiveAt')
       .populate('lastMessage.senderId', '_id userName fullName avatar isOnline lastActiveAt')

@@ -31,6 +31,7 @@ export interface AuthResponse {
 
 export interface MeResponse {
   userId?: string;
+  keycloakUserId?: string;
   fullName?: string;
   firstName?: string;
   lastName?: string;

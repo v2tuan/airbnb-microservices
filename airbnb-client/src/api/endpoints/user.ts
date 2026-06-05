@@ -5,6 +5,7 @@ const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
 
 export interface HostInfoDTO {
   id?: string;
+  keycloakUserId?: string;
   fullName?: string;
   avatarUrl?: string;
   isSuperhost?: boolean;
@@ -90,6 +91,7 @@ export const userAPI = {
 
         const normalized: PublicUserProfile = {
           userId: host?.id,
+          keycloakUserId: host?.keycloakUserId ?? host?.id,
           fullName: host?.fullName,
           avatarUrl: host?.avatarUrl,
           superHost: host?.isSuperhost,

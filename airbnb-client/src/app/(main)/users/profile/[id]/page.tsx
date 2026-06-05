@@ -15,6 +15,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { type PublicProfilePageData, userAPI } from "@/api/endpoints/user";
+import SendMessageButton from '@/components/messages/SendMessageButton'
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -635,13 +636,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#ff385c] px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-[#e61e4d]"
-                >
-                  Send message
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                <SendMessageButton otherUserId={profile.host.keycloakUserId ?? id} />
 
                 <p className="mt-4 text-center text-xs leading-6 text-zinc-500">
                   This button is visual only for now. The page layout is ready

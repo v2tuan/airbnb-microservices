@@ -30,7 +30,7 @@ const sendMessage = async (req, res, next) => {
       (id) => String(id) !== String(senderId)
     )
 
-    const sender = await userModel.findById(senderId).select('fullName userName').lean()
+    const sender = await userModel.findOne({ keycloakUserId: senderId }).select('fullName userName').lean()
     const senderName = sender?.fullName || sender?.userName || 'Someone'
 
     if (recipients.length > 0) {

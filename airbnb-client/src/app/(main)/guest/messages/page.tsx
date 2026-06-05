@@ -17,11 +17,17 @@ import {
   Users,
 } from "lucide-react";
 import { listingAPI, type ListingResponse, unwrapApiData } from "@/api/endpoints/listing";
+import { fetchMessages } from "@/api/message";
+import { useAuth } from "@/hooks/useAuth";
 import { useSocket } from "@/hooks/useSocket";
+import { useConversations } from "@/hooks/useConversations";
+import { sendMessage } from "@/api/message";
+import { useSearchParams, useParams } from "next/navigation";
 
 type Conversation = {
   id: string;
   conversationId: string;
+  partnerId?: string;
   name: string;
   avatar: string;
   listing: string;
@@ -47,73 +53,6 @@ type ListingPreview = {
   currency: string;
   maxGuests: number;
 };
-
-const conversations: Conversation[] = [
-  {
-    id: "c1",
-    conversationId: "c1",
-    name: "Lina Trinh",
-    avatar: "LT",
-    listing: "Modern loft in District 1",
-    time: "2m ago",
-    preview: "Sure, early check-in at 1pm works for you.",
-    unread: true,
-  },
-  {
-    id: "c2",
-    conversationId: "c2",
-    name: "Aiden Park",
-    avatar: "AP",
-    listing: "Ocean-view apartment",
-    time: "1h ago",
-    preview: "I've shared the self check-in guide and parking map.",
-  },
-  {
-    id: "c3",
-    conversationId: "c3",
-    name: "Mia Nguyen",
-    avatar: "MN",
-    listing: "Cozy studio near Ben Thanh",
-    time: "Yesterday",
-    preview: "Thanks for staying, let me know if you need a late checkout.",
-  },
-  {
-    id: "c4",
-    conversationId: "c4",
-    name: "Noah Kim",
-    avatar: "NK",
-    listing: "Sunlit penthouse",
-    time: "Apr 22",
-    preview: "Can you confirm the Wi-Fi speed for work calls?",
-  },
-];
-
-const initialMessages: ChatMessage[] = [
-  {
-    id: "m1",
-    sender: "host",
-    text: "Hi! Looking forward to your trip. Let me know your arrival time and I will prepare the keys.",
-    createdAt: "09:12",
-  },
-  {
-    id: "m2",
-    sender: "guest",
-    text: "Thanks Lina. I land at 12:15 and should reach your place around 1pm.",
-    createdAt: "09:13",
-  },
-  {
-    id: "m3",
-    sender: "host",
-    text: "Perfect. I enabled early check-in for you and sent the exact pin location above.",
-    createdAt: "09:14",
-  },
-  {
-    id: "m4",
-    sender: "guest",
-    text: "https://example.com/rooms/demo-loft-301",
-    createdAt: "09:15",
-  },
-];
 
 const listingLinkPattern = /(?:https?:\/\/)?(?:[^\s/]+\/)?(?:rooms|listings)\/([A-Za-z0-9_-]+)/i;
 
@@ -241,16 +180,89 @@ function ListingFrame({
 }
 
 export default function GuestMessagesPage() {
+  const { user } = useAuth();
   const { socket } = useSocket();
-  const activeConversation = conversations[0];
+  const { conversations, loading: conversationsLoading } = useConversations();
+  const searchParams = useSearchParams();
+  const params = useParams();
+  const pathId = (params as any)?.id as string | undefined;
+  const qConversationId = searchParams?.get("conversationId");
 
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  // prefer path param if present, otherwise fallback to query param
+  const conversationId = pathId ?? qConversationId ?? null;
+
+  const activeConversation = conversationId
+    ? conversations.find(c => c.conversationId === conversationId) ||
+      { id: conversationId, conversationId: conversationId, partnerId: undefined, name: "Conversation", avatar: "", listing: "", time: "", preview: "" }
+    : conversations[0] ||
+      { id: "empty", conversationId: "empty", partnerId: undefined, name: "No conversations", avatar: "", listing: "", time: "", preview: "" };
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draftText, setDraftText] = useState("");
   const [isRemoteTyping, setIsRemoteTyping] = useState(false);
   const [draftPreview, setDraftPreview] = useState<ListingPreview | null>(null);
   const [draftPreviewLoading, setDraftPreviewLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   const draftListingId = extractListingId(draftText);
+
+  const formatMessageTime = (value?: string | Date) => {
+    if (!value) return "";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const currentUserIds = new Set([user?.keycloakUserId].filter(Boolean).map(String));
+
+  const isOwnMessage = (senderId?: string) => {
+    if (!senderId) return false;
+    return currentUserIds.has(String(senderId));
+  };
+
+  const resolveSenderRole = (senderId?: string) => (isOwnMessage(senderId) ? "guest" : "host");
+
+  useEffect(() => {
+    // Để match sender chính xác, cần có keycloakUserId (JWT sub).
+    if (!conversationId || !user?.keycloakUserId) {
+      setMessages([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadMessages = async () => {
+      try {
+        const response = await fetchMessages(conversationId);
+        const payload = response.data?.messages ?? response.data ?? [];
+        const normalized = (Array.isArray(payload) ? payload : []).map((message: any) => ({
+          id: message._id ?? message.id ?? String(Date.now()),
+          sender: resolveSenderRole(message.senderId?._id ?? message.senderId?.id ?? message.senderId),
+          text: message.text ?? '',
+          createdAt: formatMessageTime(message.createdAt),
+        }))
+
+        if (!cancelled) {
+          setMessages(normalized);
+        }
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+        if (!cancelled) {
+          setMessages([]);
+        }
+      }
+    };
+
+    void loadMessages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, user?.keycloakUserId]);
 
   useEffect(() => {
     if (!socket) return;
@@ -271,7 +283,7 @@ export default function GuestMessagesPage() {
 
     const handleNewMessage = (payload: {
       conversationId?: string;
-      message?: { _id?: string; text?: string; createdAt?: string };
+      message?: { _id?: string; text?: string; createdAt?: string; senderId?: string };
     }) => {
       const message = payload.message;
       const messageText = message?.text?.trim() ?? "";
@@ -284,9 +296,9 @@ export default function GuestMessagesPage() {
         ...currentMessages,
         {
           id: message._id ?? String(Date.now()),
-          sender: "host",
+          sender: resolveSenderRole(message.senderId),
           text: messageText,
-          createdAt: message.createdAt ?? "now",
+          createdAt: formatMessageTime(message.createdAt),
         },
       ]);
     };
@@ -301,7 +313,7 @@ export default function GuestMessagesPage() {
       socket.off("typing:stop", handleTypingStop);
       socket.off("message:new", handleNewMessage);
     };
-  }, [activeConversation.conversationId, socket]);
+  }, [activeConversation.conversationId, socket, user?.keycloakUserId]);
 
   useEffect(() => {
     if (!socket) return;
@@ -369,25 +381,74 @@ export default function GuestMessagesPage() {
     };
   }, [draftListingId, draftText]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const text = draftText.trim();
     if (!text) return;
 
+    // optimistic message
+    const tmpId = `tmp-${Date.now()}`;
+    const tmpCreatedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
     setMessages((currentMessages) => [
       ...currentMessages,
       {
-        id: String(Date.now()),
+        id: tmpId,
         sender: "guest",
         text,
-        createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        createdAt: tmpCreatedAt,
       },
     ]);
 
     setDraftText("");
     setDraftPreview(null);
     setDraftPreviewLoading(false);
+
+    // notify stop typing
+    try {
+      socket?.emit("typing:stop", { conversationId: activeConversation.conversationId });
+    } catch {}
+
+    setIsSending(true);
+
+    try {
+      const payload = {
+        conversationId: activeConversation.conversationId,
+        text,
+      };
+
+      const res = await sendMessage(payload);
+      const serverMsg = res?.data ?? null;
+
+      if (serverMsg && serverMsg._id) {
+        const serverCreatedAt = serverMsg.createdAt
+          ? new Date(serverMsg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          : tmpCreatedAt;
+
+        setMessages((curr) =>
+          curr.map((m) =>
+            m.id === tmpId
+              ? {
+                  id: serverMsg._id,
+                  sender: "guest",
+                  text: serverMsg.text ?? text,
+                  createdAt: serverCreatedAt,
+                }
+              : m
+          )
+        );
+      } else {
+        // if server didn't return expected shape, leave optimistic message as-is
+      }
+    } catch (error) {
+      // remove temp message on failure
+      setMessages((curr) => curr.filter((m) => m.id !== tmpId));
+      console.error("Failed to send message", error);
+      // Optionally: show toast or error UI
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -553,10 +614,15 @@ export default function GuestMessagesPage() {
                   />
                   <button
                     type="submit"
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-900 px-5 text-sm font-medium text-white transition hover:bg-zinc-700"
+                    disabled={isSending || !draftText.trim()}
+                    className={`inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-medium text-white transition ${
+                      isSending || !draftText.trim()
+                        ? "bg-zinc-700/60 cursor-not-allowed"
+                        : "bg-zinc-900 hover:bg-zinc-700"
+                    }`}
                   >
                     <Send className="h-4 w-4" />
-                    Send
+                    {isSending ? "Sending..." : "Send"}
                   </button>
                 </form>
 
