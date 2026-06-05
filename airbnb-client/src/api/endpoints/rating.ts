@@ -1,7 +1,15 @@
-import type { AxiosResponse } from "axios";
+import type { AxiosRequestConfig, AxiosResponse } from "axios";
 import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
+type PublicRequestConfig = AxiosRequestConfig & {
+  _skipAuth?: boolean;
+  _skipAuthRefresh?: boolean;
+};
+const publicRequest: PublicRequestConfig = {
+  _skipAuth: true,
+  _skipAuthRefresh: true,
+};
 
 export interface RatingDTO {
   id: string;
@@ -38,13 +46,23 @@ export interface CreateRatingPayload {
 }
 
 export const ratingAPI = {
-  createRating: (payload: CreateRatingPayload): Promise<AxiosResponse<RatingDTO>> => {
+  createRating: (
+    payload: CreateRatingPayload,
+  ): Promise<AxiosResponse<RatingDTO>> => {
     return apiClient.post(`${prefix}/ratings`, payload);
   },
-  getRatingsByListing: (listingId: string): Promise<AxiosResponse<RatingDTO[]>> => {
-    return apiClient.get(`${prefix}/ratings/listing/${listingId}`);
+  getRatingsByListing: (
+    listingId: string,
+  ): Promise<AxiosResponse<RatingDTO[]>> => {
+    return apiClient.get(
+      `${prefix}/ratings/listing/${listingId}`,
+      publicRequest,
+    );
   },
   getAverageRating: (listingId: string): Promise<AxiosResponse<number>> => {
-    return apiClient.get(`${prefix}/ratings/listing/${listingId}/average`);
+    return apiClient.get(
+      `${prefix}/ratings/listing/${listingId}/average`,
+      publicRequest,
+    );
   },
 };

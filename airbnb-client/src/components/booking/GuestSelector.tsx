@@ -132,18 +132,26 @@ export default function GuestSelector({
 
   const guestLabel = (() => {
     const parts: string[] = [];
-    if (value.adults > 0) parts.push(`${value.adults} người lớn`);
-    if (value.children > 0) parts.push(`${value.children} trẻ em`);
-    if (value.infants > 0) parts.push(`${value.infants} em bé`);
-    if (value.pets > 0) parts.push(`${value.pets} thú cưng`);
-    return parts.join(", ") || "1 khách";
+    if (value.adults > 0) {
+      parts.push(`${value.adults} adult${value.adults > 1 ? "s" : ""}`);
+    }
+    if (value.children > 0) {
+      parts.push(`${value.children} child${value.children > 1 ? "ren" : ""}`);
+    }
+    if (value.infants > 0) {
+      parts.push(`${value.infants} infant${value.infants > 1 ? "s" : ""}`);
+    }
+    if (value.pets > 0) {
+      parts.push(`${value.pets} pet${value.pets > 1 ? "s" : ""}`);
+    }
+    return parts.join(", ") || "1 guest";
   })();
 
   const guestRows = (
     <>
       <GuestRow
-        label="Người lớn"
-        sublabel="Từ 13 tuổi trở lên"
+        label="Adults"
+        sublabel="Ages 13 or above"
         value={value.adults}
         min={1}
         max={maxGuests - value.children}
@@ -151,8 +159,8 @@ export default function GuestSelector({
         onIncrease={() => change("adults", 1)}
       />
       <GuestRow
-        label="Trẻ em"
-        sublabel="Độ tuổi 2 - 12"
+        label="Children"
+        sublabel="Ages 2 - 12"
         value={value.children}
         min={0}
         max={maxGuests - value.adults}
@@ -160,8 +168,8 @@ export default function GuestSelector({
         onIncrease={() => change("children", 1)}
       />
       <GuestRow
-        label="Em bé"
-        sublabel="Dưới 2 tuổi"
+        label="Infants"
+        sublabel="Under 2"
         value={value.infants}
         min={0}
         max={5}
@@ -169,8 +177,8 @@ export default function GuestSelector({
         onIncrease={() => change("infants", 1)}
       />
       <GuestRow
-        label="Thú cưng"
-        sublabel="Bạn sẽ mang theo động vật phục vụ?"
+        label="Pets"
+        sublabel="Bringing a service animal?"
         sublabelLink="#"
         value={value.pets}
         min={0}
@@ -199,7 +207,7 @@ export default function GuestSelector({
           )}
         >
           <p className="text-[10px] font-semibold tracking-widest text-gray-600 uppercase mb-0.5">
-            Khách
+            Guests
           </p>
           <div className="flex items-center justify-between">
             <span className="text-[15px] text-gray-900 truncate pr-2">
@@ -223,8 +231,8 @@ export default function GuestSelector({
 
         <div className="px-5 pb-4">
           <p className="text-sm text-gray-500 leading-relaxed mb-4">
-            Chỗ ở này cho phép tối đa {maxGuests} khách, không tính em bé.{" "}
-            {!petsAllowed && "Không được phép mang theo thú cưng."}
+            This place allows up to {maxGuests} guests, not counting infants.{" "}
+            {!petsAllowed && "Pets are not allowed."}
           </p>
           <div className="flex justify-end">
             <button
@@ -232,7 +240,7 @@ export default function GuestSelector({
               onClick={() => setOpen(false)}
               className="text-[15px] font-semibold text-gray-900 hover:underline"
             >
-              Đóng
+              Close
             </button>
           </div>
         </div>

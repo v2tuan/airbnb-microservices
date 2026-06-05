@@ -41,6 +41,8 @@ public class ListingResponse {
     LocalTime checkInStartTime;
     LocalTime checkInEndTime;
     LocalTime checkOutTime;
+    LocalDateTime suspendedUntil;
+    String suspensionReason;
     
     List<ListingPhotoResponse> photos;
     List<AmenityResponse> amenities;

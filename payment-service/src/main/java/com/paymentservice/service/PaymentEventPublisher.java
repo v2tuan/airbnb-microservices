@@ -21,6 +21,9 @@ public class PaymentEventPublisher {
     @Value("${kafka.topics.refund-completed:refund.completed}")
     private String refundCompletedTopic;
 
+    @Value("${kafka.topics.refund-failed:refund.failed}")
+    private String refundFailedTopic;
+
     public void paymentSucceeded(String key, Object event) {
         kafkaTemplate.send(paymentSucceededTopic, key, event)
                 .whenComplete((result, ex) -> logSendResult(paymentSucceededTopic, key, ex));
@@ -34,6 +37,11 @@ public class PaymentEventPublisher {
     public void refundCompleted(String key, Object event) {
         kafkaTemplate.send(refundCompletedTopic, key, event)
                 .whenComplete((result, ex) -> logSendResult(refundCompletedTopic, key, ex));
+    }
+
+    public void refundFailed(String key, Object event) {
+        kafkaTemplate.send(refundFailedTopic, key, event)
+                .whenComplete((result, ex) -> logSendResult(refundFailedTopic, key, ex));
     }
 
     private void logSendResult(String topic, String key, Throwable ex) {

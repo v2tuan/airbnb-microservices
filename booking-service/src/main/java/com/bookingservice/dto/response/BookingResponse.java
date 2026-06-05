@@ -33,6 +33,7 @@ public class BookingResponse {
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
     private LocalDateTime checkedInAt;
+    private LocalDateTime checkedOutAt;
     private LocalDateTime completedAt;
     private LocalDateTime cancelledAt;
     private Integer guestCount;
@@ -50,11 +51,14 @@ public class BookingResponse {
     public static String getStatusDisplayName(BookingStatus status) {
         return switch (status) {
             case PENDING_PAYMENT -> "Pending payment";
-            case PAID -> "Paid";
-            case CHECKED_IN -> "Checked in";
-            case COMPLETED -> "Completed";
             case EXPIRED -> "Expired";
-            case CANCELLED -> "Cancelled";
+            case CONFIRMED -> "Confirmed";
+            case CHECKED_IN -> "Checked in";
+            case CHECKED_OUT -> "Checked out";
+            case COMPLETED -> "Completed";
+            case CANCELLED_BY_GUEST -> "Cancelled by guest";
+            case CANCELLED_BY_HOST -> "Cancelled by host";
+            case CANCELLED_BY_ADMIN -> "Cancelled by admin";
         };
     }
 }

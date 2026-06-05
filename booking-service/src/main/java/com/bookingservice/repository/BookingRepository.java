@@ -18,7 +18,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
      * Tìm booking theo roomId và khoảng thời gian (để check conflict)
      */
     @Query("SELECT b FROM Booking b WHERE b.listingId = :roomId " +
-            "AND b.status IN ('PENDING_PAYMENT', 'PAID', 'CHECKED_IN') " +
+            "AND b.status IN ('PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT') " +
             "AND NOT (b.checkOutDate <= :checkIn OR b.checkInDate >= :checkOut)")
     List<Booking> findConflictingBookings(
             @Param("roomId") UUID roomId,
@@ -49,6 +49,47 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     List<Booking> findByGuestId(UUID guestId);
 
+    boolean existsByListingIdAndStatusIn(UUID listingId, List<BookingStatus> statuses);
+
+    /**
+     * Query list reservation theo một listing cho admin scope.
+     * Sắp xếp check-in mới nhất trước, sau đó createdAt để host/admin dễ đọc lịch sử đặt phòng.
+     */
+    List<Booking> findByListingIdOrderByCheckInDateDescCreatedAtDesc(UUID listingId);
+
+    /**
+     * Query list reservation theo listing + status filter cho dashboard tab/filter.
+     */
+    List<Booking> findByListingIdAndStatusInOrderByCheckInDateDescCreatedAtDesc(
+            UUID listingId,
+            List<BookingStatus> statuses
+    );
+
+    /**
+     * Query list reservation theo listing + hostId cho host scope.
+     * Điều kiện hostId là lớp bảo vệ bổ sung bên cạnh phần kiểm quyền trong service.
+     */
+    List<Booking> findByListingIdAndHostIdOrderByCheckInDateDescCreatedAtDesc(UUID listingId, UUID hostId);
+
+    /**
+     * Query list reservation theo listing + hostId + status filter cho host dashboard.
+     */
+    List<Booking> findByListingIdAndHostIdAndStatusInOrderByCheckInDateDescCreatedAtDesc(
+            UUID listingId,
+            UUID hostId,
+            List<BookingStatus> statuses
+    );
+
+    /**
+     * Query reservation theo host cho scope "All listings".
+     *
+     * Đây là phần thay thế cho Promise.all ở frontend. Thay vì client gọi từng listing rồi tự
+     * ghép kết quả, backend dùng hostId đã được xác thực để lấy đúng một tập reservation nhất quán.
+     * Nếu bỏ query theo host và quay lại aggregate phía client, pagination/search sẽ chỉ đúng trong
+     * từng listing riêng lẻ chứ không đúng trên toàn portfolio của host.
+     */
+    List<Booking> findByHostIdOrderByCheckInDateDescCreatedAtDesc(UUID hostId);
+
     @Query("""
     SELECT b FROM Booking b
     WHERE b.guestId = :guestId
@@ -58,7 +99,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
         OR (
             :type = 'CANCELLED'
             AND (
-                b.status = com.bookingservice.entity.BookingStatus.CANCELLED
+                b.status IN (
+                    com.bookingservice.entity.BookingStatus.CANCELLED_BY_GUEST,
+                    com.bookingservice.entity.BookingStatus.CANCELLED_BY_HOST,
+                    com.bookingservice.entity.BookingStatus.CANCELLED_BY_ADMIN
+                )
 
                 OR (
                     b.status = com.bookingservice.entity.BookingStatus.PENDING_PAYMENT
@@ -66,7 +111,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                 )
 
                 OR (
-                    b.status = BookingStatus.EXPIRED
+                    b.status = com.bookingservice.entity.BookingStatus.EXPIRED
                 )
             )
         )
@@ -75,7 +120,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             :type = 'UPCOMING'
             AND (
                 (
-                    b.status = com.bookingservice.entity.BookingStatus.PAID
+                    b.status IN (
+                        com.bookingservice.entity.BookingStatus.CONFIRMED,
+                        com.bookingservice.entity.BookingStatus.CHECKED_IN,
+                        com.bookingservice.entity.BookingStatus.CHECKED_OUT
+                    )
                     AND b.checkOutDate >= CURRENT_DATE
                 )
 
@@ -88,9 +137,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
         OR (
             :type = 'COMPLETED'
-            AND b.status IN (
-                com.bookingservice.entity.BookingStatus.PAID            )
-            AND b.checkOutDate < CURRENT_DATE
+            AND b.status = com.bookingservice.entity.BookingStatus.COMPLETED
         )
     )
     ORDER BY b.createdAt DESC

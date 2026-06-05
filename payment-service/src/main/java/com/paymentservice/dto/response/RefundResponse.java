@@ -24,6 +24,9 @@ public class RefundResponse {
     private String refundReason;
     private String refundDetails;
     private String status;
+    private String businessCause;
+    private UUID businessCauseId;
+    private String failureReason;
     private UUID processedBy;
     private String gatewayRefundId;
 

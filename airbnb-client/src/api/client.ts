@@ -24,6 +24,9 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
   // Dùng cho auth endpoints hoặc các API muốn tự xử lý 401 thay vì để global
   // session manager can thiệp.
   _skipAuthRefresh?: boolean;
+  // Public endpoints should not receive a stale Authorization header from
+  // localStorage, otherwise gateways/resource servers may reject them.
+  _skipAuth?: boolean;
 };
 
 type AuthRefreshResponse = {
@@ -134,6 +137,13 @@ const refreshAccessToken = async () => {
 };
 
 apiClient.interceptors.request.use((config) => {
+  const requestConfig = config as RetryableRequestConfig;
+
+  if (requestConfig._skipAuth) {
+    delete config.headers.Authorization;
+    return config;
+  }
+
   // Luôn đọc token ngay tại thời điểm request chạy, không capture token từ lúc
   // app khởi động. Sau refresh, localStorage đã có token mới; nếu dùng token cũ
   // từ closure thì request vẫn gửi token hết hạn và tiếp tục nhận 401.

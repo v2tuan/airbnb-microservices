@@ -1,29 +1,44 @@
 "use client";
 
-import { AlertTriangle, X } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Loader2, RefreshCw, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 import type {
   BookingCancellationPolicy,
   BookingPaymentSummary,
+  GuestCancellationQuoteResponse,
 } from "@/types/booking.type";
 
 interface CancelReservationModalProps {
   isOpen: boolean;
   policy: BookingCancellationPolicy | null;
   payment: BookingPaymentSummary | null;
+  quote: GuestCancellationQuoteResponse | null;
+  quoteLoading?: boolean;
+  quoteError?: string | null;
+  submitting?: boolean;
   onClose: () => void;
-  onConfirm: (reason: string) => void;
+  onRetryQuote: () => void;
+  onConfirm: (reason: string, quoteId: string) => void;
 }
 
 export function CancelReservationModal({
   isOpen,
   policy,
   payment,
+  quote,
+  quoteLoading = false,
+  quoteError,
+  submitting = false,
   onClose,
+  onRetryQuote,
   onConfirm,
 }: CancelReservationModalProps) {
   const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (isOpen) setReason("");
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -36,10 +51,16 @@ export function CancelReservationModal({
     "Other",
   ];
 
-  const refundAmount = policy?.refundable
-    ? Number(payment?.totalAmount ?? 0)
-    : 0;
-  const currency = payment?.currency ?? "USD";
+  const currency = quote?.currency ?? payment?.currency ?? "USD";
+  const refundAmount = Number(quote?.refundAmount ?? 0);
+  const quoteExpired = quote ? new Date(quote.expiresAt).getTime() <= Date.now() : false;
+  const canConfirm = Boolean(reason && quote && !quoteExpired && !quoteLoading && !submitting);
+  const quoteExpiresAt = quote
+    ? new Date(quote.expiresAt).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
@@ -71,26 +92,83 @@ export function CancelReservationModal({
             </div>
           </div>
 
-          <div className="mb-6 space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Total paid</span>
-              <span className="font-medium">
-                {formatCurrency(Number(payment?.totalAmount ?? 0), currency)}
-              </span>
+          {quoteLoading ? (
+            <div className="mb-6 flex items-center gap-3 rounded-xl border border-slate-100 p-4 text-sm text-slate-600">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Calculating your cancellation quote...
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Estimated refund</span>
-              <span
-                className={`font-semibold ${
-                  refundAmount > 0 ? "text-emerald-600" : "text-red-500"
-                }`}
+          ) : quoteError ? (
+            <div className="mb-6 rounded-xl border border-red-100 bg-red-50 p-4">
+              <p className="text-sm font-medium text-red-700">{quoteError}</p>
+              <button
+                type="button"
+                onClick={onRetryQuote}
+                className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-red-700 underline underline-offset-2"
               >
-                {refundAmount > 0
-                  ? formatCurrency(refundAmount, currency)
-                  : "No refund"}
-              </span>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Try again
+              </button>
             </div>
-          </div>
+          ) : quote ? (
+            <div className="mb-6 space-y-3 rounded-xl border border-slate-100 p-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Total paid</span>
+                <span className="font-medium">
+                  {formatCurrency(Number(payment?.totalAmount ?? 0), currency)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Accommodation refund</span>
+                <span className="font-medium">
+                  {formatCurrency(Number(quote.accommodationRefund), currency)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Cleaning fee refund</span>
+                <span className="font-medium">
+                  {formatCurrency(Number(quote.cleaningFeeRefund), currency)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Service fee refund</span>
+                <span className="font-medium">
+                  {formatCurrency(Number(quote.serviceFeeRefund), currency)}
+                </span>
+              </div>
+              {Number(quote.taxesRefund) > 0 ? (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Taxes refund</span>
+                  <span className="font-medium">
+                    {formatCurrency(Number(quote.taxesRefund), currency)}
+                  </span>
+                </div>
+              ) : null}
+              <div className="border-slate-100 border-t pt-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Non-refundable</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(Number(quote.nonRefundableAmount), currency)}
+                  </span>
+                </div>
+                <div className="mt-2 flex justify-between text-sm">
+                  <span className="text-slate-900">Refund amount</span>
+                  <span
+                    className={`font-semibold ${
+                      refundAmount > 0 ? "text-emerald-600" : "text-red-500"
+                    }`}
+                  >
+                    {refundAmount > 0
+                      ? formatCurrency(refundAmount, currency)
+                      : "No refund"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Quote expires at {quoteExpiresAt}. Confirming after expiry
+                  requires a new quote.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <p className="mb-3 text-sm text-slate-600">Reason for cancellation</p>
           <div className="mb-6 grid grid-cols-2 gap-2">
@@ -112,11 +190,11 @@ export function CancelReservationModal({
 
           <button
             type="button"
-            onClick={() => onConfirm(reason)}
-            disabled={!reason}
+            onClick={() => quote && onConfirm(reason, quote.quoteId)}
+            disabled={!canConfirm}
             className="mb-3 w-full rounded-xl bg-rose-500 py-3 text-sm font-medium text-white transition-colors hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Confirm cancellation
+            {submitting ? "Cancelling..." : quoteExpired ? "Quote expired" : "Confirm cancellation"}
           </button>
           <button
             type="button"

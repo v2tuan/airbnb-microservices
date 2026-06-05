@@ -3,6 +3,8 @@ package com.listingservice.controller;
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingSuspensionRequest;
+import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.CompositeListingResponse;
@@ -166,10 +168,12 @@ public class ListingDetailController {
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListings(
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String country,
-            @RequestParam(required = false) Integer maxGuests) {
-        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}",
-                city, country, maxGuests);
-        List<ListingResponse> response = listingService.searchListings(city, country, maxGuests);
+            @RequestParam(required = false) Integer maxGuests,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, CheckIn: {}, CheckOut: {}",
+                city, country, maxGuests, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchListings(city, country, maxGuests, checkIn, checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
@@ -181,9 +185,12 @@ public class ListingDetailController {
     @GetMapping("/search/price")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByPriceRange(
             @RequestParam BigDecimal minPrice,
-            @RequestParam BigDecimal maxPrice) {
-        log.info("REST request to search listings by price range: {} - {}", minPrice, maxPrice);
-        List<ListingResponse> response = listingService.searchByPriceRange(minPrice, maxPrice);
+            @RequestParam BigDecimal maxPrice,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to search listings by price range: {} - {}, CheckIn: {}, CheckOut: {}",
+                minPrice, maxPrice, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchByPriceRange(minPrice, maxPrice, checkIn, checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
@@ -196,10 +203,12 @@ public class ListingDetailController {
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByLocation(
             @RequestParam BigDecimal latitude,
             @RequestParam BigDecimal longitude,
-            @RequestParam Double radius) {
-        log.info("REST request to search listings by location - Lat: {}, Lng: {}, Radius: {}km",
-                latitude, longitude, radius);
-        List<ListingResponse> response = listingService.searchByLocation(latitude, longitude, radius);
+            @RequestParam Double radius,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to search listings by location - Lat: {}, Lng: {}, Radius: {}km, CheckIn: {}, CheckOut: {}",
+                latitude, longitude, radius, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchByLocation(latitude, longitude, radius, checkIn, checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
@@ -236,6 +245,36 @@ public class ListingDetailController {
                 ApiResponse.<Void>builder()
                         .code(1000)
                         .message("Listing deactivated successfully")
+                        .build());
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
+    @PatchMapping("/{listingId}/suspend")
+    public ResponseEntity<ApiResponse<Void>> suspendListing(
+            @PathVariable UUID listingId,
+            @Valid @RequestBody ListingSuspensionRequest request
+    ) {
+        log.info("REST request to suspend listing ID: {}", listingId);
+        listingService.suspendListing(listingId, request);
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .code(1000)
+                        .message("Listing suspended successfully")
+                        .build());
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
+    @PatchMapping("/{listingId}/unsuspend")
+    public ResponseEntity<ApiResponse<Void>> unsuspendListing(
+            @PathVariable UUID listingId,
+            @Valid @RequestBody ListingUnsuspensionRequest request
+    ) {
+        log.info("REST request to unsuspend listing ID: {}", listingId);
+        listingService.unsuspendListing(listingId, request);
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .code(1000)
+                        .message("Listing unsuspended successfully")
                         .build());
     }
 

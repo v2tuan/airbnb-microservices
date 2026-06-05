@@ -12,22 +12,26 @@ import java.util.UUID;
         name = "bookings",
         indexes = {
                 // Index phục vụ query theo listing (check availability)
-//                @Index(name = "idx_bookings_listing", columnList = "listing_id"),
+                @Index(name = "idx_bookings_listing", columnList = "listing_id"),
 
                 // Index phục vụ query lịch sử booking của guest
                 @Index(name = "idx_bookings_guest", columnList = "guest_id"),
 
                 // Index phục vụ host xem booking của mình
-//                @Index(name = "idx_bookings_host", columnList = "host_id"),
+                @Index(name = "idx_bookings_host", columnList = "host_id"),
 
                 // Index theo status (filter booking)
                 @Index(name = "idx_bookings_status", columnList = "status"),
 
                 // Index quan trọng cho check availability
-//                @Index(
-//                        name = "idx_bookings_dates",
-//                        columnList = "listing_id, check_in_date, check_out_date"
-//                )
+                @Index(
+                        name = "idx_bookings_dates",
+                        columnList = "listing_id, check_in_date, check_out_date"
+                ),
+                @Index(
+                        name = "idx_bookings_host_listing_status",
+                        columnList = "host_id, listing_id, status"
+                )
         }
 )
 @Getter
@@ -98,6 +102,12 @@ public class Booking {
     private Integer totalNights;
 
     /**
+     * Immutable nightly price snapshot used during system approval.
+     */
+    @Column(name = "nightly_price", precision = 12, scale = 2)
+    private BigDecimal nightlyPrice;
+
+    /**
      * Tổng số khách
      */
 //    @Column(name = "num_guests", nullable = false)
@@ -121,6 +131,10 @@ public class Booking {
     @Column(name = "num_infants")
     private Integer numInfants = 0;
 
+    /**
+     * Số thú cưng đi cùng reservation.
+     * Field này giúp host nhìn nhanh nhu cầu lưu trú của guest trên dashboard.
+     */
     @Column(name = "num_pets")
     private Integer numPets = 0;
 
@@ -140,6 +154,12 @@ public class Booking {
     private long totalPrice;
 
     /**
+     * Immutable accommodation subtotal snapshot: nightlyPrice * totalNights.
+     */
+    @Column(name = "accommodation_subtotal", precision = 12, scale = 2)
+    private BigDecimal accommodationSubtotal;
+
+    /**
      * Giá phòng cơ bản
      */
 //    @Column(name = "base_price", nullable = false, precision = 10, scale = 2)
@@ -156,6 +176,24 @@ public class Booking {
      */
     @Column(name = "service_fee", precision = 10, scale = 2)
     private BigDecimal serviceFee = BigDecimal.ZERO;
+
+    /**
+     * Immutable tax snapshot. Tax model is not implemented yet, so approval stores zero.
+     */
+    @Column(name = "taxes", precision = 10, scale = 2)
+    private BigDecimal taxes = BigDecimal.ZERO;
+
+    /**
+     * Cancellation policy snapshot used by future cancellation quote/refund calculation.
+     */
+    @Column(name = "cancellation_policy_code", length = 30)
+    private String cancellationPolicyCode = "FLEXIBLE";
+
+    /**
+     * Host payout eligibility snapshot at approval time.
+     */
+    @Column(name = "host_payout_eligible")
+    private Boolean hostPayoutEligible = Boolean.FALSE;
 
     /**
      * Loại tiền tệ (VD: VND, USD)
@@ -205,15 +243,34 @@ public class Booking {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
+    /**
+     * Thời điểm host đánh dấu guest đã check-in.
+     * Được set khi status chuyển sang CHECKED_IN hoặc giữ nguyên nếu booking đã từng check-in.
+     */
     @Column(name = "checked_in_at")
     private LocalDateTime checkedInAt;
 
+    @Column(name = "checked_out_at")
+    private LocalDateTime checkedOutAt;
+
+    /**
+     * Thời điểm host hoàn tất reservation sau checkout.
+     * Dùng để dựng timeline và phân loại reservation đã hoàn thành.
+     */
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    /**
+     * Thời điểm reservation bị hủy bởi guest hoặc host.
+     * Actor-specific cancellation status is the main state; this timestamp serves audit/timeline views.
+     */
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    /**
+     * Lý do hủy reservation, tối đa 500 ký tự.
+     * Frontend gửi field này từ cancel dialog để host/guest có ngữ cảnh khi xem lại.
+     */
     @Column(name = "cancellation_reason", length = 500)
     private String cancellationReason;
 
@@ -249,8 +306,14 @@ public class Booking {
         if (this.currency == null) this.currency = "VND";
         if (this.numChildren == null) this.numChildren = 0;
         if (this.numInfants == null) this.numInfants = 0;
+        if (this.numPets == null) this.numPets = 0;
+        if (this.nightlyPrice == null) this.nightlyPrice = BigDecimal.ZERO;
+        if (this.accommodationSubtotal == null) this.accommodationSubtotal = BigDecimal.ZERO;
         if (this.cleaningFee == null) this.cleaningFee = BigDecimal.ZERO;
         if (this.serviceFee == null) this.serviceFee = BigDecimal.ZERO;
+        if (this.taxes == null) this.taxes = BigDecimal.ZERO;
+        if (this.cancellationPolicyCode == null) this.cancellationPolicyCode = "FLEXIBLE";
+        if (this.hostPayoutEligible == null) this.hostPayoutEligible = Boolean.FALSE;
     }
 
     /**
