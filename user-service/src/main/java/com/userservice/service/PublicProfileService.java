@@ -4,10 +4,12 @@ import com.userservice.dto.response.PublicHostResponseDTO;
 import com.userservice.entity.User;
 import com.userservice.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -25,7 +27,6 @@ public class PublicProfileService {
   private final RestClient listingServiceClient;
   private final RestClient ratingServiceClient;
 
-  private static final int ALL_LISTINGS_PAGE_SIZE = 100;
   private static final int REVIEWS_PAGE_SIZE = 6;
   private static final int LISTINGS_PAGE_SIZE = 8;
 
@@ -34,8 +35,14 @@ public class PublicProfileService {
       @Value("${services.listing-service.url:http://localhost:8081}") String listingServiceUrl,
       @Value("${services.rating-service.url:http://localhost:8085}") String ratingServiceUrl) {
     this.userRepository = userRepository;
-    this.listingServiceClient = RestClient.builder().baseUrl(normalizeBaseUrl(listingServiceUrl)).build();
-    this.ratingServiceClient = RestClient.builder().baseUrl(normalizeBaseUrl(ratingServiceUrl)).build();
+    this.listingServiceClient = RestClient.builder()
+        .baseUrl(normalizeBaseUrl(listingServiceUrl))
+        .requestFactory(requestFactory())
+        .build();
+    this.ratingServiceClient = RestClient.builder()
+        .baseUrl(normalizeBaseUrl(ratingServiceUrl))
+        .requestFactory(requestFactory())
+        .build();
   }
 
   public Optional<PublicHostResponseDTO> getByKeycloakUserId(String keycloakUserId) {
@@ -89,25 +96,16 @@ public class PublicProfileService {
     hostPayload.put("responseRate", "N/A");
     hostPayload.put("responseTime", "N/A");
 
-    Map<String, Map<String, Object>> allListingsById = fetchAllListingsByHost(hostId);
-    Map<String, Object> reviewsPagePayload = fetchReviewsPage(hostId, reviewPage, allListingsById);
+    Map<String, Object> reviewsPagePayload = fetchReviewsPage(hostId, reviewPage, Map.of());
     Map<String, Object> listingsPagePayload = fetchListingsPage(hostId, listingPage);
 
     Map<String, Object> ratingSummary = fetchRatingSummary(hostId);
-    long reviewsCount = calculateTotalReviews(allListingsById);
-    double overallRating = calculateWeightedAverage(allListingsById);
+    long reviewsCount = toLong(ratingSummary.get("reviewCount"));
+    double overallRating = toDouble(ratingSummary.get("overallRating"));
     long activeListingsCount = toLong(listingsPagePayload.getOrDefault("totalElements", 0L));
 
     if (reviewsCount == 0L) {
-      reviewsCount = toLong(ratingSummary.get("reviewCount"));
-    }
-
-    if (reviewsCount == 0L) {
       reviewsCount = toLong(reviewsPagePayload.getOrDefault("totalElements", 0L));
-    }
-
-    if (overallRating == 0.0) {
-      overallRating = toDouble(ratingSummary.get("overallRating"));
     }
 
     Map<String, Object> statsPayload = new LinkedHashMap<>();
@@ -219,66 +217,6 @@ public class PublicProfileService {
     }
   }
 
-  @SuppressWarnings("unchecked")
-  private Map<String, Map<String, Object>> fetchAllListingsByHost(String hostId) {
-    try {
-      Map<String, Map<String, Object>> listingsById = new LinkedHashMap<>();
-      int page = 0;
-      int totalPages = 1;
-
-      while (page < totalPages) {
-        int currentPage = page;
-        Map<String, Object> response = listingServiceClient.get()
-            .uri(uriBuilder -> uriBuilder
-                .path("/listings/host/{hostId}/paginated")
-                .queryParam("page", currentPage)
-                .queryParam("size", ALL_LISTINGS_PAGE_SIZE)
-                .queryParam("sort", "createdAt")
-                .queryParam("direction", "DESC")
-                .build(hostId))
-            .retrieve()
-            .body(Map.class);
-
-        if (response == null) {
-          break;
-        }
-
-        Object content = response.get("content");
-        if (content instanceof List<?> contentList) {
-          for (Object item : contentList) {
-            if (!(item instanceof Map<?, ?> itemMap)) {
-              continue;
-            }
-
-            Object idValue = itemMap.get("listingId");
-            if (idValue == null) {
-              idValue = itemMap.get("id");
-            }
-            if (idValue == null) {
-              continue;
-            }
-
-            String listingId = idValue.toString();
-            Map<String, Object> listing = new LinkedHashMap<>();
-            listing.put("title", itemMap.get("title"));
-            listing.put("city", itemMap.get("city"));
-            listing.put("thumbnailUrl", itemMap.get("thumbnailUrl"));
-            listing.put("avgRating", itemMap.get("avgRating"));
-            listing.put("reviewCount", itemMap.get("reviewCount"));
-            listingsById.put(listingId, listing);
-          }
-        }
-
-        totalPages = Math.max(1, (int) toLong(response.getOrDefault("totalPages", 1)));
-        page++;
-      }
-
-      return listingsById;
-    } catch (Exception ex) {
-      return new LinkedHashMap<>();
-    }
-  }
-
   private Map<String, Object> fetchRatingSummary(String hostId) {
     try {
       Map<String, Object> response = ratingServiceClient.get()
@@ -307,16 +245,6 @@ public class PublicProfileService {
     }
 
     return null;
-  }
-
-  private long calculateTotalReviews(Map<String, Map<String, Object>> allListingsById) {
-    long totalReviews = 0L;
-
-    for (Map<String, Object> listing : allListingsById.values()) {
-      totalReviews += toLong(listing.get("reviewCount"));
-    }
-
-    return totalReviews;
   }
 
   private String resolveHostId(PublicHostResponseDTO host) {
@@ -353,35 +281,18 @@ public class PublicProfileService {
     return 0.0;
   }
 
-  private double calculateWeightedAverage(Map<String, Map<String, Object>> allListingsById) {
-    if (allListingsById.isEmpty()) {
-      return 0.0;
-    }
-
-    double weightedSum = 0.0;
-    long totalReviews = 0L;
-
-    for (Map<String, Object> listing : allListingsById.values()) {
-      double avgRating = toDouble(listing.get("avgRating"));
-      long reviewCount = toLong(listing.get("reviewCount"));
-      if (reviewCount > 0) {
-        weightedSum += avgRating * reviewCount;
-        totalReviews += reviewCount;
-      }
-    }
-
-    if (totalReviews == 0L) {
-      return 0.0;
-    }
-
-    return weightedSum / totalReviews;
-  }
-
   private String normalizeBaseUrl(String url) {
     if (url == null || url.isBlank()) {
       return url;
     }
 
     return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+  }
+
+  private SimpleClientHttpRequestFactory requestFactory() {
+    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+    factory.setConnectTimeout(Duration.ofMillis(1000));
+    factory.setReadTimeout(Duration.ofMillis(1500));
+    return factory;
   }
 }

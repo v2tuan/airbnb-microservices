@@ -1,5 +1,6 @@
 package com.ratingservice.controller;
 
+import com.ratingservice.dto.BatchListingRatingSummaryRequest;
 import com.ratingservice.dto.RatingDTO;
 import com.ratingservice.service.RatingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +46,12 @@ public class RatingController {
   @GetMapping("/listing/{listingId}/summary")
   public ResponseEntity<Map<String, Object>> getListingRatingSummary(@PathVariable String listingId) {
     return ResponseEntity.ok(ratingService.getListingRatingSummary(listingId));
+  }
+
+  @PostMapping("/listings/summary")
+  public ResponseEntity<Map<String, Map<String, Object>>> getListingRatingSummaries(
+      @RequestBody BatchListingRatingSummaryRequest request) {
+    return ResponseEntity.ok(ratingService.getListingRatingSummaries(request.listingIds()));
   }
 
   @PutMapping("/{id}")

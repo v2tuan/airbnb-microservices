@@ -12,8 +12,8 @@ spring:
     driver-class-name: org.postgresql.Driver
 
     hikari:
-      maximum-pool-size: 5
-      minimum-idle: 1
+      maximum-pool-size: 15
+      minimum-idle: 3
       idle-timeout: 300000
       max-lifetime: 900000
       connection-timeout: 20000
@@ -23,11 +23,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         default_schema: public
-        format_sql: true
+        format_sql: false
 
   security:
     oauth2:
@@ -48,6 +48,6 @@ clients:
 logging:
   level:
     root: INFO
-    com.listingservice: DEBUG
-    org.springframework.security: DEBUG
-    org.hibernate.SQL: DEBUG
+    com.listingservice: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN

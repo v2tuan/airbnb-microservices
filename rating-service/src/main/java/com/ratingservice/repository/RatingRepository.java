@@ -11,6 +11,14 @@ import java.util.List;
 
 @Repository
 public interface RatingRepository extends JpaRepository<Rating, String> {
+  interface ListingRatingSummaryProjection {
+    String getListingId();
+
+    Long getReviewCount();
+
+    Double getAvgRating();
+  }
+
   List<Rating> findByListingId(String listingId);
 
   /**
@@ -29,4 +37,12 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
    */
   @Query("SELECT COUNT(r) as reviewCount, AVG(r.overallRating) as avgRating FROM Rating r WHERE r.listingId = :listingId")
   Object[] getListingRatingSummary(@Param("listingId") String listingId);
+
+  @Query("""
+      SELECT r.listingId as listingId, COUNT(r) as reviewCount, AVG(r.overallRating) as avgRating
+      FROM Rating r
+      WHERE r.listingId IN :listingIds
+      GROUP BY r.listingId
+      """)
+  List<ListingRatingSummaryProjection> getListingRatingSummaries(@Param("listingIds") List<String> listingIds);
 }

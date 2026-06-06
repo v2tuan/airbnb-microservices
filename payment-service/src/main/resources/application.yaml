@@ -53,7 +53,7 @@ spring:
 logging:
   level:
     root: INFO
-    com.paymentservice: DEBUG
+    com.paymentservice: INFO
 
 idp:
   url: http://localhost:8080

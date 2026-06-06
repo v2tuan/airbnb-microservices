@@ -28,8 +28,8 @@ spring:
     driver-class-name: org.postgresql.Driver
 
     hikari:
-      maximum-pool-size: 5
-      minimum-idle: 1
+      maximum-pool-size: 10
+      minimum-idle: 2
       idle-timeout: 300000
       max-lifetime: 900000
       connection-timeout: 20000
@@ -39,11 +39,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-      format_sql: true
-      dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   kafka:
     bootstrap-servers: localhost:9092

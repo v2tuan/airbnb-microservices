@@ -3,6 +3,7 @@ package com.listingservice.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import org.hibernate.annotations.BatchSize;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -23,7 +24,9 @@ import com.listingservice.constant.*;
 @Table(name = "listings", indexes = {
     @Index(name = "idx_listings_host", columnList = "host_id"),
     @Index(name = "idx_listings_status", columnList = "status"),
-    @Index(name = "idx_listings_location", columnList = "city, country")
+    @Index(name = "idx_listings_location", columnList = "city, country"),
+    @Index(name = "idx_listings_host_status_created", columnList = "host_id, status, created_at"),
+    @Index(name = "idx_listings_search", columnList = "status, city, country, max_guests")
 })
 public class Listing extends BaseEntity {
     
@@ -113,10 +116,12 @@ public class Listing extends BaseEntity {
     String suspensionReason;
     
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     @Builder.Default
     Set<ListingPhoto> photos = new HashSet<>();
     
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     @Builder.Default
     Set<ListingAmenity> listingAmenities = new HashSet<>();
     

@@ -26,6 +26,19 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("checkOut") LocalDate checkOut
     );
 
+    @Query("""
+            SELECT DISTINCT b.listingId
+            FROM Booking b
+            WHERE b.listingId IN :listingIds
+            AND b.status IN ('PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT')
+            AND NOT (b.checkOutDate <= :checkIn OR b.checkInDate >= :checkOut)
+            """)
+    List<UUID> findUnavailableListingIds(
+            @Param("listingIds") List<UUID> listingIds,
+            @Param("checkIn") LocalDate checkIn,
+            @Param("checkOut") LocalDate checkOut
+    );
+
     /*
     lock theo transaction hiện tại
     auto release khi transaction commit/rollback
@@ -146,5 +159,24 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             UUID guestId,
             String type,
             LocalDateTime now
+    );
+
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE (:hostId IS NULL OR b.hostId = :hostId)
+            AND (:hasListingId = false OR b.listingId = :listingId)
+            AND (:hasStatuses = false OR b.status IN :statuses)
+            AND (:dateFrom IS NULL OR b.checkOutDate >= :dateFrom)
+            AND (:dateTo IS NULL OR b.checkInDate <= :dateTo)
+            ORDER BY b.checkInDate DESC, b.createdAt DESC
+            """)
+    List<Booking> findReservationsForDashboard(
+            @Param("hostId") UUID hostId,
+            @Param("listingId") UUID listingId,
+            @Param("hasListingId") boolean hasListingId,
+            @Param("statuses") List<BookingStatus> statuses,
+            @Param("hasStatuses") boolean hasStatuses,
+            @Param("dateFrom") LocalDate dateFrom,
+            @Param("dateTo") LocalDate dateTo
     );
 }

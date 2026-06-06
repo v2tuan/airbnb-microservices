@@ -62,7 +62,6 @@ public class PaymentService {
     private final PaymentAuditLogRepository auditLogRepository;
     private final PaymentEventPublisher eventPublisher;
 
-    @Transactional
     public CheckoutResponse checkout(CheckoutRequest request, String idempotencyKey) throws StripeException {
         Jwt jwt = currentJwt();
         UUID guestId = UUID.fromString(jwt.getSubject());

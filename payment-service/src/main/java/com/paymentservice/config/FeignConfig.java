@@ -3,8 +3,10 @@ package com.paymentservice.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paymentservice.exception.BusinessException;
 import com.paymentservice.exception.ErrorResponse;
+import feign.Request;
 import feign.Response;
 import feign.RequestInterceptor;
+import feign.Retryer;
 import feign.codec.ErrorDecoder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +17,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 @Slf4j
@@ -50,6 +53,16 @@ public class FeignConfig {
                     methodKey, response.status(), error != null ? error.message() : "-");
             return BusinessException.downstream("A dependent service is currently unavailable. Please try again later.");
         };
+    }
+
+    @Bean
+    public Request.Options feignRequestOptions() {
+        return new Request.Options(1, TimeUnit.SECONDS, 3, TimeUnit.SECONDS, true);
+    }
+
+    @Bean
+    public Retryer feignRetryer() {
+        return Retryer.NEVER_RETRY;
     }
 
     private ErrorResponse readErrorResponse(Response response) {

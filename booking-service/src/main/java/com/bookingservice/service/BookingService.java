@@ -2,6 +2,7 @@ package com.bookingservice.service;
 
 import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.BookingRefundRequest;
+import com.bookingservice.dto.request.BatchPublicUserProfileRequest;
 import com.bookingservice.dto.request.CancelBookingRequest;
 import com.bookingservice.dto.request.ConfirmCancellationQuoteRequest;
 import com.bookingservice.dto.request.ConfirmHostCancellationQuoteRequest;
@@ -106,6 +107,33 @@ public class BookingService {
         }
 
         return bookingRepository.findConflictingBookings(listingId, checkIn, checkOut).isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<UUID, Boolean> getListingsAvailability(List<UUID> listingIds, LocalDate checkIn, LocalDate checkOut) {
+        if (listingIds == null || listingIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<UUID> distinctListingIds = listingIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (distinctListingIds.isEmpty()) {
+            return Map.of();
+        }
+
+        if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
+            return distinctListingIds.stream()
+                    .collect(Collectors.toMap(Function.identity(), ignored -> false));
+        }
+
+        Set<UUID> unavailableListingIds = new HashSet<>(
+                bookingRepository.findUnavailableListingIds(distinctListingIds, checkIn, checkOut));
+
+        return distinctListingIds.stream()
+                .collect(Collectors.toMap(Function.identity(), listingId -> !unavailableListingIds.contains(listingId)));
     }
 
     @Transactional(readOnly = true)
@@ -873,8 +901,9 @@ public class BookingService {
         }
 
         List<Booking> bookings = findReservationsForListing(listingId, admin ? null : hostId, statuses);
+        Map<UUID, PublicUserResponse> guestMap = fetchGuestProfiles(bookings);
         return bookings.stream()
-                .map(booking -> mapToReservationResponse(booking, listing, fetchGuestProfile(booking.getGuestId())))
+                .map(booking -> mapToReservationResponse(booking, listing, guestMap.get(booking.getGuestId())))
                 .toList();
     }
 
@@ -910,17 +939,39 @@ public class BookingService {
         UUID currentUserId = UUID.fromString(jwt.getSubject());
         String bearerToken = "Bearer " + jwt.getTokenValue();
 
-        List<ListingResponse> scopeListings = resolveReservationScopeListings(bearerToken, listingId, currentUserId, admin);
-        Map<UUID, ListingResponse> listingMap = scopeListings.stream()
-                .collect(Collectors.toMap(ListingResponse::getListingId, Function.identity(), (left, right) -> left));
+        boolean hasStatuses = statuses != null && !statuses.isEmpty();
+        List<BookingStatus> queryStatuses = hasStatuses ? statuses : List.of(BookingStatus.PENDING_PAYMENT);
+        UUID queryHostId = listingId != null && admin ? null : currentUserId;
+        List<Booking> scopeBookings = bookingRepository.findReservationsForDashboard(
+                queryHostId,
+                listingId,
+                listingId != null,
+                queryStatuses,
+                hasStatuses,
+                dateFrom,
+                dateTo);
 
-        if (scopeListings.isEmpty()) {
+        if (scopeBookings.isEmpty()) {
+            if (listingId != null) {
+                ensureCanManageListing(bearerToken, listingId, currentUserId, admin);
+            }
             return emptyHostReservationsPage(page, size);
         }
 
-        List<Booking> scopeBookings = listingId != null
-                ? findReservationsForListing(listingId, admin ? null : currentUserId, null)
-                : bookingRepository.findByHostIdOrderByCheckInDateDescCreatedAtDesc(currentUserId);
+        if (search == null || search.trim().isBlank()) {
+            return buildHostReservationsPageWithoutSearch(
+                    bearerToken,
+                    listingId,
+                    currentUserId,
+                    admin,
+                    scopeBookings,
+                    page,
+                    size);
+        }
+
+        Map<UUID, ListingResponse> listingMap = listingId != null
+                ? Map.of(listingId, ensureCanManageListing(bearerToken, listingId, currentUserId, admin))
+                : fetchListingsForBookings(bearerToken, scopeBookings);
 
         Map<UUID, PublicUserResponse> guestMap = fetchGuestProfiles(scopeBookings);
         List<ReservationResponse> scopedReservations = scopeBookings.stream()
@@ -1067,6 +1118,47 @@ public class BookingService {
         return listings != null ? listings : List.of();
     }
 
+    private ListingResponse ensureCanManageListing(String bearerToken, UUID listingId, UUID currentUserId, boolean admin) {
+        ListingResponse listing = listingClient.getListingById(bearerToken, listingId).getData();
+        if (listing == null) {
+            throw BusinessException.notFound("Listing not found");
+        }
+
+        UUID listingHostId = UUID.fromString(listing.getHostId());
+        if (!admin && !listingHostId.equals(currentUserId)) {
+            throw BusinessException.forbidden("You cannot manage reservations for this listing");
+        }
+
+        return listing;
+    }
+
+    private Map<UUID, ListingResponse> fetchListingsForBookings(String bearerToken, List<Booking> bookings) {
+        List<UUID> listingIds = bookings.stream()
+                .map(Booking::getListingId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (listingIds.isEmpty()) {
+            return Map.of();
+        }
+
+        try {
+            List<ListingResponse> listings = listingClient
+                    .getListingsByIds(bearerToken, new ListingBatchRequest(listingIds))
+                    .getData();
+            if (listings == null || listings.isEmpty()) {
+                return Map.of();
+            }
+
+            return listings.stream()
+                    .collect(Collectors.toMap(ListingResponse::getListingId, Function.identity(), (left, right) -> left));
+        } catch (RuntimeException ex) {
+            log.warn("Failed to batch fetch reservation listings. listingCount={}", listingIds.size(), ex);
+            return Map.of();
+        }
+    }
+
     private HostReservationsPageResponse emptyHostReservationsPage(int page, int size) {
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(0, page);
@@ -1099,6 +1191,93 @@ public class BookingService {
                 .build();
     }
 
+    private HostReservationsPageResponse buildHostReservationsPageWithoutSearch(
+            String bearerToken,
+            UUID listingId,
+            UUID currentUserId,
+            boolean admin,
+            List<Booking> scopeBookings,
+            int page,
+            int size
+    ) {
+        List<Booking> sortedBookings = sortReservationBookings(scopeBookings);
+        int safeSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(0, page);
+        int fromIndex = Math.min(safePage * safeSize, sortedBookings.size());
+        int toIndex = Math.min(fromIndex + safeSize, sortedBookings.size());
+        List<Booking> contentBookings = sortedBookings.subList(fromIndex, toIndex);
+        List<Booking> nextReservationBookings = sortedBookings.stream()
+                .filter(this::isNextReservationBooking)
+                .limit(4)
+                .toList();
+
+        List<Booking> bookingsToEnrich = java.util.stream.Stream
+                .concat(contentBookings.stream(), nextReservationBookings.stream())
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toMap(
+                                Booking::getBookingId,
+                                Function.identity(),
+                                (left, right) -> left,
+                                java.util.LinkedHashMap::new),
+                        bookingMap -> List.copyOf(bookingMap.values())));
+        Map<UUID, ReservationResponse> reservationMap = enrichReservationsByBookingId(
+                bearerToken,
+                listingId,
+                currentUserId,
+                admin,
+                bookingsToEnrich);
+
+        List<ReservationResponse> content = contentBookings.stream()
+                .map(booking -> reservationMap.get(booking.getBookingId()))
+                .toList();
+        List<ReservationResponse> nextReservations = nextReservationBookings.stream()
+                .map(booking -> reservationMap.get(booking.getBookingId()))
+                .toList();
+        int totalPages = sortedBookings.isEmpty()
+                ? 1
+                : (int) Math.ceil((double) sortedBookings.size() / safeSize);
+
+        return HostReservationsPageResponse.builder()
+                .content(content)
+                .page(safePage)
+                .size(safeSize)
+                .totalElements(sortedBookings.size())
+                .totalPages(totalPages)
+                .stats(buildReservationStatsFromBookings(scopeBookings))
+                .statusCounts(buildStatusCountsFromBookings(scopeBookings))
+                .occupiedDates(buildOccupiedDatesFromBookings(sortedBookings))
+                .nextReservations(nextReservations)
+                .build();
+    }
+
+    private Map<UUID, ReservationResponse> enrichReservationsByBookingId(
+            String bearerToken,
+            UUID listingId,
+            UUID currentUserId,
+            boolean admin,
+            List<Booking> bookings
+    ) {
+        if (bookings.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, ListingResponse> listingMap = listingId != null
+                ? Map.of(listingId, ensureCanManageListing(bearerToken, listingId, currentUserId, admin))
+                : fetchListingsForBookings(bearerToken, bookings);
+        Map<UUID, PublicUserResponse> guestMap = fetchGuestProfiles(bookings);
+
+        return bookings.stream()
+                .map(booking -> mapToReservationResponse(
+                        booking,
+                        listingMap.get(booking.getListingId()),
+                        guestMap.get(booking.getGuestId())))
+                .collect(Collectors.toMap(
+                        ReservationResponse::getReservationId,
+                        Function.identity(),
+                        (left, right) -> left,
+                        java.util.LinkedHashMap::new));
+    }
+
     private Map<UUID, PublicUserResponse> fetchGuestProfiles(List<Booking> bookings) {
         /*
          * Tách loading guest profile khỏi mapping để tránh gọi User Service lặp lại nhiều lần cho cùng
@@ -1109,9 +1288,29 @@ public class BookingService {
                 .map(Booking::getGuestId)
                 .collect(Collectors.toCollection(HashSet::new));
 
-        Map<UUID, PublicUserResponse> guestMap = new java.util.HashMap<>();
-        guestIds.forEach(guestId -> guestMap.put(guestId, fetchGuestProfile(guestId)));
-        return guestMap;
+        if (guestIds.isEmpty()) {
+            return Map.of();
+        }
+
+        try {
+            List<PublicUserResponse> guests = userClient.getPublicUsers(new BatchPublicUserProfileRequest(
+                    guestIds.stream().map(UUID::toString).toList()));
+            if (guests == null || guests.isEmpty()) {
+                return Map.of();
+            }
+
+            return guests.stream()
+                    .filter(guest -> guest.getKeycloakUserId() != null)
+                    .collect(Collectors.toMap(
+                            guest -> UUID.fromString(guest.getKeycloakUserId()),
+                            Function.identity(),
+                            (left, right) -> left));
+        } catch (RuntimeException ex) {
+            log.warn("Failed to batch fetch guest profiles. guestCount={}", guestIds.size(), ex);
+            Map<UUID, PublicUserResponse> guestMap = new java.util.HashMap<>();
+            guestIds.forEach(guestId -> guestMap.put(guestId, fetchGuestProfile(guestId)));
+            return guestMap;
+        }
     }
 
     private boolean reservationMatchesQuery(
@@ -1157,7 +1356,7 @@ public class BookingService {
     private List<ReservationResponse> sortReservationResponses(List<ReservationResponse> reservations) {
         return reservations.stream()
                 .sorted(Comparator
-                        .comparingInt(this::reservationPriority)
+                        .comparingInt((ReservationResponse reservation) -> reservationPriority(reservation))
                         .thenComparing(ReservationResponse::getCheckInDate)
                         .thenComparing(ReservationResponse::getCreatedAt, Comparator.reverseOrder()))
                 .toList();
@@ -1172,6 +1371,27 @@ public class BookingService {
         if (reservation.getStatus() == BookingStatus.CONFIRMED) return 3;
         if (reservation.getStatus() == BookingStatus.CHECKED_OUT) return 4;
         if (reservation.getStatus() == BookingStatus.COMPLETED) return 5;
+        return 6;
+    }
+
+    private List<Booking> sortReservationBookings(List<Booking> bookings) {
+        return bookings.stream()
+                .sorted(Comparator
+                        .comparingInt((Booking booking) -> reservationPriority(booking))
+                        .thenComparing(Booking::getCheckInDate)
+                        .thenComparing(Booking::getCreatedAt, Comparator.reverseOrder()))
+                .toList();
+    }
+
+    private int reservationPriority(Booking booking) {
+        LocalDate today = LocalDate.now();
+
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) return 0;
+        if (booking.getStatus() == BookingStatus.CHECKED_IN) return 1;
+        if (booking.getStatus() == BookingStatus.CONFIRMED && booking.getCheckInDate().isEqual(today)) return 2;
+        if (booking.getStatus() == BookingStatus.CONFIRMED) return 3;
+        if (booking.getStatus() == BookingStatus.CHECKED_OUT) return 4;
+        if (booking.getStatus() == BookingStatus.COMPLETED) return 5;
         return 6;
     }
 
@@ -1226,6 +1446,59 @@ public class BookingService {
         );
     }
 
+    private HostReservationsPageResponse.ReservationStats buildReservationStatsFromBookings(List<Booking> scopeBookings) {
+        LocalDate today = LocalDate.now();
+        long revenue = scopeBookings.stream()
+                .filter(booking -> booking.getStatus() == BookingStatus.CONFIRMED
+                        || booking.getStatus() == BookingStatus.CHECKED_IN
+                        || booking.getStatus() == BookingStatus.CHECKED_OUT
+                        || booking.getStatus() == BookingStatus.COMPLETED)
+                .mapToLong(Booking::getTotalPrice)
+                .sum();
+
+        return HostReservationsPageResponse.ReservationStats.builder()
+                .total(scopeBookings.size())
+                .pending(scopeBookings.stream()
+                        .filter(booking -> booking.getStatus() == BookingStatus.PENDING_PAYMENT)
+                        .count())
+                .arrivalsToday(scopeBookings.stream()
+                        .filter(booking -> booking.getCheckInDate().isEqual(today)
+                                && (booking.getStatus() == BookingStatus.CONFIRMED
+                                || booking.getStatus() == BookingStatus.CHECKED_IN))
+                        .count())
+                .inHouse(scopeBookings.stream()
+                        .filter(booking -> booking.getStatus() == BookingStatus.CHECKED_IN)
+                        .count())
+                .revenue(revenue)
+                .currency(scopeBookings.isEmpty() ? "USD" : scopeBookings.getFirst().getCurrency())
+                .build();
+    }
+
+    private Map<String, Long> buildStatusCountsFromBookings(List<Booking> scopeBookings) {
+        return Map.of(
+                "ALL", (long) scopeBookings.size(),
+                "NEEDS_ATTENTION", countStatusesFromBookings(scopeBookings, BookingStatus.PENDING_PAYMENT),
+                "CONFIRMED", countStatusesFromBookings(scopeBookings, BookingStatus.CONFIRMED),
+                "IN_HOUSE", countStatusesFromBookings(scopeBookings, BookingStatus.CHECKED_IN),
+                "CHECKED_OUT", countStatusesFromBookings(scopeBookings, BookingStatus.CHECKED_OUT),
+                "COMPLETED", countStatusesFromBookings(scopeBookings, BookingStatus.COMPLETED),
+                "CANCELLED", countStatusesFromBookings(
+                        scopeBookings,
+                        BookingStatus.CANCELLED_BY_GUEST,
+                        BookingStatus.CANCELLED_BY_HOST,
+                        BookingStatus.CANCELLED_BY_ADMIN,
+                        BookingStatus.EXPIRED
+                )
+        );
+    }
+
+    private long countStatusesFromBookings(List<Booking> bookings, BookingStatus... statuses) {
+        Set<BookingStatus> acceptedStatuses = Set.of(statuses);
+        return bookings.stream()
+                .filter(booking -> acceptedStatuses.contains(booking.getStatus()))
+                .count();
+    }
+
     private long countStatuses(List<ReservationResponse> reservations, BookingStatus... statuses) {
         Set<BookingStatus> acceptedStatuses = Set.of(statuses);
         return reservations.stream()
@@ -1252,6 +1525,25 @@ public class BookingService {
         return dates;
     }
 
+    private List<LocalDate> buildOccupiedDatesFromBookings(List<Booking> bookings) {
+        List<LocalDate> dates = new ArrayList<>();
+
+        bookings.stream()
+                .filter(booking -> !isCancelledStatus(booking.getStatus())
+                        && booking.getStatus() != BookingStatus.EXPIRED)
+                .forEach(booking -> {
+                    LocalDate cursor = booking.getCheckInDate();
+                    int guard = 0;
+                    while (cursor.isBefore(booking.getCheckOutDate()) && guard < 60) {
+                        dates.add(cursor);
+                        cursor = cursor.plusDays(1);
+                        guard += 1;
+                    }
+                });
+
+        return dates;
+    }
+
     private List<ReservationResponse> buildNextReservations(List<ReservationResponse> filteredReservations) {
         LocalDate today = LocalDate.now();
 
@@ -1262,6 +1554,15 @@ public class BookingService {
                         && !reservation.getCheckOutDate().isBefore(today))
                 .limit(4)
                 .toList();
+    }
+
+    private boolean isNextReservationBooking(Booking booking) {
+        LocalDate today = LocalDate.now();
+
+        return !isCancelledStatus(booking.getStatus())
+                && booking.getStatus() != BookingStatus.EXPIRED
+                && booking.getStatus() != BookingStatus.COMPLETED
+                && !booking.getCheckOutDate().isBefore(today);
     }
 
     private BookingResponse mapToResponse(Booking booking) {

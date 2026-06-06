@@ -95,14 +95,11 @@ public class RatingServiceImpl implements RatingService {
 
   @Override
   public Double getAverageRating(String listingId) {
-    List<Rating> ratings = ratingRepository.findByListingId(listingId);
-    if (ratings.isEmpty()) {
-      return 0.0;
+    Object[] summary = ratingRepository.getListingRatingSummary(listingId);
+    if (summary != null && summary.length > 1 && summary[1] != null) {
+      return ((Number) summary[1]).doubleValue();
     }
-    return ratings.stream()
-        .mapToDouble(Rating::getOverallRating)
-        .average()
-        .orElse(0.0);
+    return 0.0;
   }
 
   @Override
@@ -195,6 +192,39 @@ public class RatingServiceImpl implements RatingService {
     }
 
     return result;
+  }
+
+  @Override
+  public Map<String, Map<String, Object>> getListingRatingSummaries(List<String> listingIds) {
+    if (listingIds == null || listingIds.isEmpty()) {
+      return Map.of();
+    }
+
+    List<String> distinctListingIds = listingIds.stream()
+        .filter(id -> id != null && !id.isBlank())
+        .distinct()
+        .toList();
+
+    if (distinctListingIds.isEmpty()) {
+      return Map.of();
+    }
+
+    Map<String, Map<String, Object>> summaries = new HashMap<>();
+    for (String listingId : distinctListingIds) {
+      Map<String, Object> emptySummary = new HashMap<>();
+      emptySummary.put("reviewCount", 0L);
+      emptySummary.put("overallRating", 0.0);
+      summaries.put(listingId, emptySummary);
+    }
+
+    ratingRepository.getListingRatingSummaries(distinctListingIds).forEach(summary -> {
+      Map<String, Object> result = new HashMap<>();
+      result.put("reviewCount", summary.getReviewCount() != null ? summary.getReviewCount() : 0L);
+      result.put("overallRating", summary.getAvgRating() != null ? summary.getAvgRating() : 0.0);
+      summaries.put(summary.getListingId(), result);
+    });
+
+    return summaries;
   }
 
   private RatingDTO convertToDTO(Rating rating, Optional<UserProfileDTO> userProfile) {

@@ -3,7 +3,9 @@ package com.bookingservice.config;
 import com.bookingservice.exception.BusinessException;
 import com.bookingservice.exception.ErrorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.Request;
 import feign.Response;
+import feign.Retryer;
 import feign.codec.ErrorDecoder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 @Slf4j
@@ -32,6 +35,16 @@ public class FeignConfig {
                     methodKey, response.status(), error != null ? error.message() : "-");
             return BusinessException.downstream("A dependent service is currently unavailable. Please try again later.");
         };
+    }
+
+    @Bean
+    public Request.Options feignRequestOptions() {
+        return new Request.Options(1, TimeUnit.SECONDS, 3, TimeUnit.SECONDS, true);
+    }
+
+    @Bean
+    public Retryer feignRetryer() {
+        return Retryer.NEVER_RETRY;
     }
 
     private ErrorResponse readErrorResponse(Response response) {
