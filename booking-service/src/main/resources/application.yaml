@@ -74,12 +74,15 @@ kafka:
     payout-completed: payout-completed
     notifications: notifications
 
-listings:
-  url: http://localhost:8081/listings
-
-payments:
-  refunds-url: http://localhost:8087/payments/api/v1/refunds
-
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    
 # ===== STRIPE CONFIG =====
 stripe:
   # Webhook secret - lấy từ Stripe CLI hoặc Stripe Dashboard

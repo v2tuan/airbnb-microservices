@@ -26,5 +26,14 @@ spring:
         default_schema: public
         format_sql: false
 
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+
 server:
   port: 8085

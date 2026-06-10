@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/transactions")
+@RequestMapping("/transactions")
 @RequiredArgsConstructor
 public class TransactionController {
 
@@ -21,7 +21,7 @@ public class TransactionController {
 
     /**
      * Process payment
-     * POST /api/v1/transactions
+     * POST /payments/transactions
      */
     @PostMapping
     public ResponseEntity<TransactionResponse> processPayment(
@@ -32,7 +32,7 @@ public class TransactionController {
 
     /**
      * Get transaction by ID
-     * GET /api/v1/transactions/{id}
+     * GET /payments/transactions/{id}
      */
     @GetMapping("/{id}")
     public ResponseEntity<TransactionResponse> getTransaction(@PathVariable UUID id) {
@@ -42,7 +42,7 @@ public class TransactionController {
 
     /**
      * Get all transactions for a booking
-     * GET /api/v1/transactions/booking/{bookingId}
+     * GET /payments/transactions/booking/{bookingId}
      */
     @GetMapping("/booking/{bookingId}")
     public ResponseEntity<List<TransactionResponse>> getBookingTransactions(@PathVariable UUID bookingId) {
@@ -52,7 +52,7 @@ public class TransactionController {
 
     /**
      * Get all payment transactions for a user (payer)
-     * GET /api/v1/transactions/user/payments/{userId}
+     * GET /payments/transactions/user/payments/{userId}
      */
     @GetMapping("/user/payments/{userId}")
     public ResponseEntity<List<TransactionResponse>> getUserPaymentTransactions(@PathVariable UUID userId) {
@@ -62,7 +62,7 @@ public class TransactionController {
 
     /**
      * Get all payout transactions for a user (payee/host)
-     * GET /api/v1/transactions/user/payouts/{userId}
+     * GET /payments/transactions/user/payouts/{userId}
      */
     @GetMapping("/user/payouts/{userId}")
     public ResponseEntity<List<TransactionResponse>> getUserPayoutTransactions(@PathVariable UUID userId) {

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/refunds")
+@RequestMapping("/refunds")
 @RequiredArgsConstructor
 public class RefundController {
 
@@ -29,7 +29,7 @@ public class RefundController {
 
     /**
      * Get refund by ID
-     * GET /api/v1/refunds/{id}
+     * GET /payments/refunds/{id}
      */
     @GetMapping("/{id}")
     public ResponseEntity<RefundResponse> getRefund(@PathVariable UUID id) {
@@ -39,7 +39,7 @@ public class RefundController {
 
     /**
      * Get all refunds for a transaction
-     * GET /api/v1/refunds/transaction/{transactionId}
+     * GET /payments/refunds/transaction/{transactionId}
      */
     @GetMapping("/transaction/{transactionId}")
     public ResponseEntity<List<RefundResponse>> getTransactionRefunds(@PathVariable UUID transactionId) {

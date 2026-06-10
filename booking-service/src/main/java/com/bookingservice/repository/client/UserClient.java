@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 
-@FeignClient(name = "user-client", url = "${users.public-url:http://localhost:8082/users/public}")
+@FeignClient(name = "user-service", path = "/users/public")
 public interface UserClient {
     @GetMapping("/{keycloakUserId}")
     PublicUserResponse getPublicUser(@PathVariable String keycloakUserId);

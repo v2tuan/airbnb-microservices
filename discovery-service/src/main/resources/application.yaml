@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: discovery-service
+server:
+  port: 8761
+
+eureka:
+  client:
+    # Discovery Server không cần tự đăng ký chính nó.
+    register-with-eureka: false
+    # Không cần lấy danh sách service từ ai khác.
+    fetch-registry: false
