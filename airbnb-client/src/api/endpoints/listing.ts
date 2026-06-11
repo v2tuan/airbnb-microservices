@@ -93,6 +93,24 @@ export interface HouseRulesResponse {
   additionalRules?: string;
 }
 
+export interface ListingAccessInfoResponse {
+  accessInfoId?: string;
+  listingId?: string;
+  wifiPassword?: string | null;
+  entryCode?: string | null;
+  smartLockInstructions?: string | null;
+  keyPickupInstructions?: string | null;
+  checkInGuide?: ListingGuideStep[];
+}
+
+export interface ListingGuideStep {
+  guideStepId?: string;
+  stepNumber?: number;
+  title: string;
+  description: string;
+  imageUrl?: string | null;
+}
+
 export interface AmenityResponse {
   amenityId: string;
   name: string;
@@ -137,6 +155,7 @@ export interface ListingResponse {
   amenities?: AmenityResponse[];
   pricing?: ListingPricingResponse;
   houseRules?: HouseRulesResponse;
+  accessInfo?: ListingAccessInfoResponse;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -211,6 +230,20 @@ export interface HouseRulesPayload {
   partiesAllowed?: boolean;
   childrenAllowed?: boolean;
   additionalRules?: string;
+}
+
+export interface ListingAccessInfoPayload {
+  wifiPassword?: string | null;
+  entryCode?: string | null;
+  smartLockInstructions?: string | null;
+  keyPickupInstructions?: string | null;
+  checkInGuide?: Array<{
+    guideStepId?: string;
+    stepNumber?: number;
+    title: string;
+    description: string;
+    imageUrl?: string | null;
+  }>;
 }
 
 export interface AvailabilityPayload {
@@ -441,6 +474,18 @@ export const listingAPI = {
   ): Promise<AxiosResponse<ApiResponse<HouseRulesResponse>>> => {
     return apiClient.post(
       `${prefix}/listings/${listingId}/house-rules`,
+      payload,
+      withAuth(token),
+    );
+  },
+
+  saveAccessInfo: (
+    token: string | null,
+    listingId: string,
+    payload: ListingAccessInfoPayload,
+  ): Promise<AxiosResponse<ApiResponse<ListingAccessInfoResponse>>> => {
+    return apiClient.post(
+      `${prefix}/listings/${listingId}/access-info`,
       payload,
       withAuth(token),
     );

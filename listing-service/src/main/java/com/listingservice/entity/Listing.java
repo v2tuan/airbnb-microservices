@@ -125,6 +125,9 @@ public class Listing extends BaseEntity {
     
     @OneToOne(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
     HouseRules houseRules;
+
+    @OneToOne(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
+    ListingAccessInfo accessInfo;
     
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

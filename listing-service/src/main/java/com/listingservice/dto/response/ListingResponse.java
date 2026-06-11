@@ -49,6 +49,7 @@ public class ListingResponse {
     List<AmenityResponse> amenities;
     ListingPricingResponse pricing;
     HouseRulesResponse houseRules;
+    ListingAccessInfoResponse accessInfo;
     
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
