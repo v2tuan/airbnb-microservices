@@ -127,6 +127,19 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     // Pagination cho host profile (khong loc status)
     Page<Listing> findByHostId(String hostId, Pageable pageable);
 
+    @Query("""
+            SELECT l FROM Listing l
+            WHERE l.hostId = :hostId
+              AND (:status IS NULL OR l.status = :status)
+              AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
+            """)
+    Page<Listing> findHostListingsByKeyword(
+            @Param("hostId") String hostId,
+            @Param("status") ListingStatus status,
+            @Param("pattern") String pattern,
+            Pageable pageable
+    );
+
     @EntityGraph(attributePaths = {"photos", "pricing", "houseRules"})
     List<Listing> findByListingIdIn(List<UUID> ids);
 }

@@ -262,12 +262,20 @@ public class ListingService implements IListingService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ListingItemResponse> getListingsByHostPaginated(String hostId, ListingStatus status, Pageable pageable) {
-        log.info("Getting paginated listings for host: {}, status: {}, page: {}, size: {}",
-                hostId, status, pageable.getPageNumber(), pageable.getPageSize());
+    public Page<ListingItemResponse> getListingsByHostPaginated(String hostId, ListingStatus status, String keyword, Pageable pageable) {
+        log.info("Getting paginated listings for host: {}, status: {}, keyword: {}, page: {}, size: {}",
+                hostId, status, keyword, pageable.getPageNumber(), pageable.getPageSize());
 
+        String normalizedKeyword = keyword != null && !keyword.isBlank() ? keyword.trim() : null;
         Page<Listing> listingsPage;
-        if (status != null) {
+        if (normalizedKeyword != null) {
+            listingsPage = listingRepository.findHostListingsByKeyword(
+                    hostId,
+                    status,
+                    "%" + normalizedKeyword.toLowerCase() + "%",
+                    pageable
+            );
+        } else if (status != null) {
             listingsPage = listingRepository.findByHostIdAndStatus(hostId, status, pageable);
         } else {
             listingsPage = listingRepository.findByHostId(hostId, pageable);

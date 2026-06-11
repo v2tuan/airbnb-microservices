@@ -148,18 +148,19 @@ public class ListingDetailController {
     public ResponseEntity<Page<ListingItemResponse>> getListingsByHostPaginated(
             @PathVariable String hostId,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "8") int size,
             @RequestParam(defaultValue = "createdAt") String sort,
             @RequestParam(defaultValue = "DESC") String direction) {
 
-        log.info("REST request to get paginated listings for host: {}, status: {}", hostId, status);
+        log.info("REST request to get paginated listings for host: {}, status: {}, keyword: {}", hostId, status, keyword);
 
         Sort.Direction sortDirection = Sort.Direction.fromString(direction);
         Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sort));
 
         ListingStatus listingStatus = status != null && !status.isEmpty() ? ListingStatus.valueOf(status) : null;
-        Page<ListingItemResponse> response = listingService.getListingsByHostPaginated(hostId, listingStatus, pageable);
+        Page<ListingItemResponse> response = listingService.getListingsByHostPaginated(hostId, listingStatus, keyword, pageable);
 
         return ResponseEntity.ok(response);
     }

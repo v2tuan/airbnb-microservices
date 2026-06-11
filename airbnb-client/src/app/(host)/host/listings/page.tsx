@@ -1,7 +1,10 @@
 "use client";
 
+import { isAxiosError } from "axios";
 import {
   CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
   Grid3X3,
   List,
   Loader2,
@@ -9,9 +12,10 @@ import {
   Plus,
   Power,
   PowerOff,
+  Search,
   Trash2,
+  X,
 } from "lucide-react";
-import { isAxiosError } from "axios";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,6 +42,15 @@ type HostListingItem = ListingItemResponse & {
   status?: ListingStatus;
   createdAt?: string;
 };
+
+const LISTINGS_PAGE_SIZE = 12;
+const statusFilters: Array<{ label: string; value: ListingStatus | "ALL" }> = [
+  { label: "All", value: "ALL" },
+  { label: "Active", value: "ACTIVE" },
+  { label: "Draft", value: "DRAFT" },
+  { label: "Inactive", value: "INACTIVE" },
+  { label: "Suspended", value: "SUSPENDED" },
+];
 
 const propertyLabels: Partial<Record<PropertyType, string>> = {
   APARTMENT: "Apartment",
@@ -95,6 +108,33 @@ function normalizeItems(payload: unknown): HostListingItem[] {
         [raw.address, item.city, item.country].filter(Boolean).join(", "),
     };
   });
+}
+
+function normalizePageMeta(payload: unknown) {
+  type PagePayload = PageResponse<HostListingItem> & {
+    number?: number;
+    size?: number;
+  };
+
+  const source = unwrapApiData(payload as PagePayload | ListingResponse[]) as
+    | PagePayload
+    | ListingResponse[];
+
+  if (Array.isArray(source)) {
+    return {
+      page: 0,
+      size: source.length,
+      totalElements: source.length,
+      totalPages: 1,
+    };
+  }
+
+  return {
+    page: source.page ?? source.number ?? 0,
+    size: source.size ?? LISTINGS_PAGE_SIZE,
+    totalElements: source.totalElements ?? 0,
+    totalPages: Math.max(1, source.totalPages ?? 1),
+  };
 }
 
 function getListingTitle(item: HostListingItem) {
@@ -198,6 +238,14 @@ export default function HostListingsPage() {
   const token = useSelector((state: RootState) => state.auth.token);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [items, setItems] = useState<HostListingItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ListingStatus | "ALL">(
+    "ALL",
+  );
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
@@ -218,20 +266,45 @@ export default function HostListingsPage() {
     setError("");
     try {
       const response = await listingAPI.getListingsByHost(hostId, {
-        page: 0,
-        size: 48,
+        page: page - 1,
+        size: LISTINGS_PAGE_SIZE,
+        keyword: keyword || undefined,
+        status: statusFilter === "ALL" ? undefined : statusFilter,
       });
+      const meta = normalizePageMeta(response.data);
       setItems(normalizeItems(response.data));
+      setTotalPages(meta.totalPages);
+      setTotalElements(meta.totalElements);
+
+      if (page > meta.totalPages) {
+        setPage(meta.totalPages);
+      }
     } catch {
       setError("Unable to load your listings.");
     } finally {
       setLoading(false);
     }
-  }, [hostId, isHost]);
+  }, [hostId, isHost, keyword, page, statusFilter]);
 
   useEffect(() => {
     void loadListings();
   }, [loadListings]);
+
+  const handleSearch = () => {
+    setKeyword(searchInput.trim());
+    setPage(1);
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput("");
+    setKeyword("");
+    setPage(1);
+  };
+
+  const handleStatusFilter = (nextStatus: ListingStatus | "ALL") => {
+    setStatusFilter(nextStatus);
+    setPage(1);
+  };
 
   const handleDelete = async (listingId: string) => {
     if (!token) return;
@@ -240,7 +313,11 @@ export default function HostListingsPage() {
     setSavingId(`delete-${listingId}`);
     try {
       await listingAPI.deleteListing(token, listingId);
-      setItems((current) => current.filter((item) => item.id !== listingId));
+      if (items.length === 1 && page > 1) {
+        setPage((current) => current - 1);
+      } else {
+        void loadListings();
+      }
     } finally {
       setSavingId("");
     }
@@ -353,6 +430,94 @@ export default function HostListingsPage() {
           </div>
         </div>
 
+        <div className="mt-8 flex flex-col gap-4 rounded-[14px] border border-[#dddddd] bg-white p-4 md:flex-row md:items-center md:justify-between">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSearch();
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2"
+          >
+            <div className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full border border-[#dddddd] px-4 focus-within:border-[#222222]">
+              <Search className="size-4 shrink-0 text-[#6a6a6a]" />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search by listing name or city"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#222222] outline-none placeholder:text-[#6a6a6a]"
+              />
+              {keyword ? (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="inline-flex size-8 items-center justify-center rounded-full text-[#6a6a6a] hover:bg-[#f2f2f2]"
+                  aria-label="Clear listing search"
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+            </div>
+            <button
+              type="submit"
+              className="inline-flex h-12 items-center justify-center rounded-full bg-[#222222] px-5 text-sm font-semibold text-white transition hover:bg-black"
+            >
+              Search
+            </button>
+          </form>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {statusFilters.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleStatusFilter(option.value)}
+                className={`h-10 rounded-full border px-4 text-sm font-semibold transition ${
+                  statusFilter === option.value
+                    ? "border-[#222222] bg-[#222222] text-white"
+                    : "border-[#dddddd] bg-white text-[#222222] hover:border-[#222222]"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!loading && !error && totalElements > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[#6a6a6a]">
+            <p>
+              Showing {(page - 1) * LISTINGS_PAGE_SIZE + 1}-
+              {Math.min(page * LISTINGS_PAGE_SIZE, totalElements)} of{" "}
+              {totalElements} listings
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1}
+                className="inline-flex size-10 items-center justify-center rounded-full border border-[#dddddd] text-[#222222] transition hover:border-[#222222] disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="Previous listings page"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <span className="min-w-20 text-center font-medium text-[#222222]">
+                {page} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages, current + 1))
+                }
+                disabled={page >= totalPages}
+                className="inline-flex size-10 items-center justify-center rounded-full border border-[#dddddd] text-[#222222] transition hover:border-[#222222] disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label="Next listings page"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="mt-20 flex items-center gap-3 text-[#6a6a6a]">
             <Loader2 className="size-5 animate-spin" />
@@ -365,10 +530,14 @@ export default function HostListingsPage() {
         ) : items.length === 0 ? (
           <div className="mt-12 rounded-[14px] border border-[#dddddd] bg-white p-8">
             <p className="text-lg font-semibold text-[#222222]">
-              No listings yet
+              {keyword || statusFilter !== "ALL"
+                ? "No listings match your filters"
+                : "No listings yet"}
             </p>
             <p className="mt-1 text-[#6a6a6a]">
-              Start with the basics, then add pricing, photos, and rules.
+              {keyword || statusFilter !== "ALL"
+                ? "Try another name, city, or status."
+                : "Start with the basics, then add pricing, photos, and rules."}
             </p>
           </div>
         ) : viewMode === "table" ? (

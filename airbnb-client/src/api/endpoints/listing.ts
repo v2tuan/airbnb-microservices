@@ -361,7 +361,12 @@ export const listingAPI = {
 
   getListingsByHost: (
     hostId: string,
-    params?: { status?: ListingStatus; page?: number; size?: number },
+    params?: {
+      status?: ListingStatus;
+      keyword?: string;
+      page?: number;
+      size?: number;
+    },
   ): Promise<
     AxiosResponse<
       PageResponse<ListingItemResponse> | ApiResponse<ListingResponse[]>
