@@ -1,31 +1,23 @@
 package com.listingservice.service;
 
+import com.listingservice.dto.request.BatchListingRatingSummaryRequest;
+import com.listingservice.repository.client.RatingServiceFeignClient;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class RatingClient {
 
-  private final RestClient ratingServiceClient;
-
-  public RatingClient(@Value("${clients.rating-service.base-url:http://localhost:8888}") String ratingServiceBaseUrl) {
-    this.ratingServiceClient = RestClient.builder()
-        .baseUrl(ratingServiceBaseUrl)
-        .requestFactory(requestFactory())
-        .build();
-  }
+  private final RatingServiceFeignClient ratingServiceFeignClient;
 
   public BigDecimal getAverageRating(UUID listingId) {
     if (listingId == null) {
@@ -33,15 +25,10 @@ public class RatingClient {
     }
 
     try {
-      Double average = ratingServiceClient.get()
-          .uri("/api/v1/ratings/listing/{listingId}/average", listingId)
-          .retrieve()
-          .body(Double.class);
-
+      Double average = ratingServiceFeignClient.getAverageRating(listingId);
       if (average == null) {
         return BigDecimal.ZERO;
       }
-
       return BigDecimal.valueOf(average).setScale(2, RoundingMode.HALF_UP);
     } catch (Exception ex) {
       log.warn("Failed to fetch average rating for listingId={}. Fallback to 0.", listingId, ex);
@@ -55,20 +42,8 @@ public class RatingClient {
     }
 
     try {
-      ListingRatingSummary summary = ratingServiceClient.get()
-          .uri("/api/v1/ratings/listing/{listingId}/summary", listingId)
-          .retrieve()
-          .body(ListingRatingSummary.class);
-
-      if (summary == null) {
-        return new ListingRatingSummary(BigDecimal.ZERO, 0L);
-      }
-
-      BigDecimal average = summary.getOverallRating() == null
-          ? BigDecimal.ZERO
-          : summary.getOverallRating().setScale(2, RoundingMode.HALF_UP);
-      Long reviewCount = summary.getReviewCount() == null ? 0L : summary.getReviewCount();
-      return new ListingRatingSummary(average, reviewCount);
+      Map<String, Object> summary = ratingServiceFeignClient.getListingRatingSummary(listingId);
+      return toListingRatingSummary(summary);
     } catch (Exception ex) {
       log.warn("Failed to fetch rating summary for listingId={}. Fallback to defaults.", listingId, ex);
       return new ListingRatingSummary(BigDecimal.ZERO, 0L);
@@ -91,26 +66,41 @@ public class RatingClient {
         return Map.of();
       }
 
-      Map<String, ListingRatingSummary> summaries = ratingServiceClient.post()
-          .uri("/api/v1/ratings/listings/summary")
-          .body(new BatchListingRatingSummaryRequest(ids))
-          .retrieve()
-          .body(new ParameterizedTypeReference<Map<String, ListingRatingSummary>>() {});
-      return summaries != null ? summaries : Map.of();
+      Map<String, Map<String, Object>> summaries = ratingServiceFeignClient.getListingRatingSummaries(
+          new BatchListingRatingSummaryRequest(ids));
+
+      if (summaries == null || summaries.isEmpty()) {
+        return Map.of();
+      }
+
+      Map<String, ListingRatingSummary> result = new java.util.LinkedHashMap<>();
+      summaries.forEach((listingId, summary) ->
+          result.put(listingId, toListingRatingSummary(summary)));
+      return result;
     } catch (Exception ex) {
       log.warn("Failed to fetch batch rating summaries. Fallback to defaults.", ex);
       return Map.of();
     }
   }
 
-  private SimpleClientHttpRequestFactory requestFactory() {
-    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(Duration.ofMillis(1000));
-    factory.setReadTimeout(Duration.ofMillis(1500));
-    return factory;
-  }
+  private ListingRatingSummary toListingRatingSummary(Map<String, Object> summary) {
+    if (summary == null || summary.isEmpty()) {
+      return new ListingRatingSummary(BigDecimal.ZERO, 0L);
+    }
 
-  private record BatchListingRatingSummaryRequest(List<String> listingIds) {
+    BigDecimal average = BigDecimal.ZERO;
+    Object overallRating = summary.get("overallRating");
+    if (overallRating instanceof Number number) {
+      average = BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    long reviewCount = 0L;
+    Object count = summary.get("reviewCount");
+    if (count instanceof Number number) {
+      reviewCount = number.longValue();
+    }
+
+    return new ListingRatingSummary(average, reviewCount);
   }
 
   public static class ListingRatingSummary {
