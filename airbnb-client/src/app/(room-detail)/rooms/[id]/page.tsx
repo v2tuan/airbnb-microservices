@@ -123,8 +123,6 @@ const normalizeRating = (raw: any): RatingRecord => {
 export default function RoomDetail () {
   const params = useParams<{ id: string }>();
 
-  console.log(params.id);
-
   const { id } = params;
 
   const [listing, setListing] = useState<any>(null);
@@ -136,73 +134,87 @@ export default function RoomDetail () {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const fetchRatings = async () => {
+      try {
+        const [ratingsResponse, averageResponse] = await Promise.allSettled([
+          ratingAPI.getRatingsByListing(id),
+          ratingAPI.getAverageRating(id),
+        ]);
+
+        if (cancelled) return;
+
+        const rawRatingsPayload =
+          ratingsResponse.status === "fulfilled" ? ratingsResponse.value.data : [];
+
+        setRatings(toRatingsArray(rawRatingsPayload).map(normalizeRating));
+        setAverageRating(
+          averageResponse.status === "fulfilled" ? averageResponse.value.data : 0,
+        );
+      } catch (ratingError) {
+        console.error("Failed to fetch listing ratings:", ratingError);
+      }
+    };
+
+    const fetchHost = async (hostId?: string) => {
+      if (!hostId) return;
+
+      try {
+        const hostResponse = await userAPI.getPublicProfilePageData(hostId, {
+          reviewPage: 0,
+          listingPage: 0,
+        });
+        if (cancelled) return;
+
+        const hostProfile = (hostResponse.data as PublicProfilePageData | undefined)
+          ?.host;
+
+        setHost({
+          id: hostProfile?.id ?? hostId,
+          fullName: hostProfile?.fullName,
+          avatarUrl: hostProfile?.avatarUrl,
+          isSuperhost: hostProfile?.isSuperhost,
+          hostSince: hostProfile?.hostSince,
+          location: hostProfile?.location,
+          responseRate: hostProfile?.responseRate,
+          responseTime: hostProfile?.responseTime,
+        });
+      } catch (hostError) {
+        console.error("Failed to fetch host profile:", hostError);
+        if (!cancelled) setHost(null);
+      }
+    };
+
     const fetchData = async () => {
       try {
-        const [listingResponse, ratingsResponse, averageResponse] =
-            await Promise.allSettled([
-              listingAPI.getRoomById(id),
-              ratingAPI.getRatingsByListing(id),
-              ratingAPI.getAverageRating(id),
-            ]);
-
-        if (listingResponse.status !== "fulfilled") {
-          throw listingResponse.reason;
-        }
-
-        const listingData = unwrapApiData(listingResponse.value.data);
+        const listingResponse = await listingAPI.getRoomById(id);
+        const listingData = unwrapApiData(listingResponse.data);
 
         if (!listingData) {
           notFound();
           return;
         }
 
-        const rawRatingsPayload =
-            ratingsResponse.status === "fulfilled"
-                ? ratingsResponse.value.data
-                : [];
-
-        const normalizedRatings =
-            toRatingsArray(rawRatingsPayload).map(normalizeRating);
-
-        const avgRating =
-            averageResponse.status === "fulfilled"
-                ? averageResponse.value.data
-                : 0;
-
+        if (cancelled) return;
         setListing(listingData);
-        setRatings(normalizedRatings);
-        setAverageRating(avgRating);
+        setLoading(false);
 
-        const hostId = listingData?.hostId;
-        if (hostId) {
-          try {
-            const hostResponse = await userAPI.getPublicProfilePageData(hostId, { reviewPage: 0, listingPage: 0 });
-            const hostProfile = (hostResponse.data as PublicProfilePageData | undefined)?.host;
-
-            setHost({
-              id: hostProfile?.id ?? hostId,
-              fullName: hostProfile?.fullName,
-              avatarUrl: hostProfile?.avatarUrl,
-              isSuperhost: hostProfile?.isSuperhost,
-              hostSince: hostProfile?.hostSince,
-              location: hostProfile?.location,
-              responseRate: hostProfile?.responseRate,
-              responseTime: hostProfile?.responseTime,
-            });
-          } catch (hostError) {
-            console.error("Failed to fetch host profile:", hostError);
-            setHost(null);
-          }
-        }
+        void fetchRatings();
+        void fetchHost(listingData?.hostId);
       } catch (error) {
         console.error("Failed to fetch listing:", error);
-        setError(true);
+        if (!cancelled) setError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   if (loading) {

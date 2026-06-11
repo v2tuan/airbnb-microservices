@@ -10,7 +10,6 @@ import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.entity.Listing;
-import com.listingservice.entity.ListingPhoto;
 import com.listingservice.exception.AppException;
 import com.listingservice.exception.ErrorCode;
 import com.listingservice.mapper.IListingMapper;
@@ -23,16 +22,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -267,45 +263,41 @@ public class ListingService implements IListingService {
                 hostId, status, keyword, pageable.getPageNumber(), pageable.getPageSize());
 
         String normalizedKeyword = keyword != null && !keyword.isBlank() ? keyword.trim() : null;
-        Page<Listing> listingsPage;
+        Page<ListingItemResponse> listingsPage;
         if (normalizedKeyword != null) {
-            listingsPage = listingRepository.findHostListingsByKeyword(
+            listingsPage = listingRepository.findHostListingItemsByKeyword(
                     hostId,
                     status,
                     "%" + normalizedKeyword.toLowerCase() + "%",
                     pageable
             );
         } else if (status != null) {
-            listingsPage = listingRepository.findByHostIdAndStatus(hostId, status, pageable);
+            listingsPage = listingRepository.findHostListingItemsByStatus(hostId, status, pageable);
         } else {
-            listingsPage = listingRepository.findByHostId(hostId, pageable);
+            listingsPage = listingRepository.findHostListingItems(hostId, pageable);
         }
 
         List<UUID> listingIds = listingsPage.getContent().stream()
-                .map(Listing::getListingId)
+                .map(ListingItemResponse::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .map(UUID::fromString)
                 .toList();
         Map<String, RatingClient.ListingRatingSummary> ratingSummaries =
                 ratingClient.getListingRatingSummaries(listingIds);
 
-        List<ListingItemResponse> content = listingsPage.getContent().stream()
-                .map(listing -> toListingItemResponse(
-                        listing,
-                        ratingSummaries.get(listing.getListingId().toString())))
-                .toList();
+        listingsPage.getContent().forEach(item -> applyRatingSummary(
+                item,
+                ratingSummaries.get(item.getId())
+        ));
 
-        return new PageImpl<>(content, pageable, listingsPage.getTotalElements());
+        return listingsPage;
     }
 
     private HomeSectionResponse buildSection(String sectionKey, String title, String city, int limit) {
-        List<HomeListingCardResponse> listings = listingRepository
-                .findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(
-                        city,
-                        ListingStatus.ACTIVE,
-                        PageRequest.of(0, limit))
-                .stream()
-                .map(this::safeToHomeCard)
-                .filter(java.util.Objects::nonNull)
-                .toList();
+        List<HomeListingCardResponse> listings = listingRepository.findHomeCardsByCity(
+                city,
+                ListingStatus.ACTIVE,
+                PageRequest.of(0, limit));
 
         return HomeSectionResponse.builder()
                 .sectionKey(sectionKey)
@@ -315,90 +307,13 @@ public class ListingService implements IListingService {
                 .build();
     }
 
-    private HomeListingCardResponse safeToHomeCard(Listing listing) {
-        try {
-            return toHomeCard(listing);
-        } catch (Exception ex) {
-            log.warn("Skip invalid listing in home section. listingId={}", listing.getListingId(), ex);
-            return null;
-        }
-    }
-
-    private HomeListingCardResponse toHomeCard(Listing listing) {
-        return HomeListingCardResponse.builder()
-                .listingId(listing.getListingId())
-                .title(listing.getTitle())
-                .city(listing.getCity())
-                .country(listing.getCountry())
-                .coverImageUrl(resolveCoverImageUrl(listing))
-                .basePrice(listing.getPricing() != null ? listing.getPricing().getBasePrice() : null)
-                .rating(resolveBasicRating(listing))
-                .currency(listing.getPricing() != null ? listing.getPricing().getCurrency() : null)
-                .maxGuests(listing.getMaxGuests())
-                .instantBook(listing.getInstantBook())
-                .build();
-    }
-
-    private ListingItemResponse toListingItemResponse(Listing listing) {
-        return toListingItemResponse(listing, ratingClient.getListingRatingSummary(listing.getListingId()));
-    }
-
-    private ListingItemResponse toListingItemResponse(Listing listing, RatingClient.ListingRatingSummary ratingSummary) {
+    private void applyRatingSummary(ListingItemResponse item, RatingClient.ListingRatingSummary ratingSummary) {
         RatingClient.ListingRatingSummary safeRatingSummary = ratingSummary != null
                 ? ratingSummary
                 : new RatingClient.ListingRatingSummary(BigDecimal.ZERO, 0L);
 
-        return ListingItemResponse.builder()
-                .id(listing.getListingId().toString())
-                .title(listing.getTitle())
-                .thumbnailUrl(resolveCoverImageUrl(listing))
-                .city(listing.getCity())
-                .country(listing.getCountry())
-                .propertyType(listing.getPropertyType())
-                .status(listing.getStatus())
-                .createdAt(listing.getCreatedAt())
-                .shortFeatures(buildShortFeatures(listing))
-            .avgRating(safeRatingSummary.getOverallRating().doubleValue())
-            .reviewCount(safeRatingSummary.getReviewCount())
-                .build();
-    }
-
-    private String buildShortFeatures(Listing listing) {
-        List<String> features = new java.util.ArrayList<>();
-
-        if (listing.getListingAmenities() != null && !listing.getListingAmenities().isEmpty()) {
-            // Take first few amenities
-            listing.getListingAmenities().stream()
-                    .limit(3)
-                    .forEach(amenity -> features.add(amenity.getAmenity().getName()));
-        }
-
-        return String.join("/", features);
-    }
-
-    private BigDecimal resolveBasicRating(Listing listing) {
-        if (listing.getListingId() == null) {
-            return new BigDecimal("4.80");
-        }
-
-        long hash = Math.abs(listing.getListingId().getLeastSignificantBits());
-        double normalized = (hash % 51) / 100.0; // range: 0.00 -> 0.50
-
-        return BigDecimal.valueOf(4.50 + normalized).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private String resolveCoverImageUrl(Listing listing) {
-        if (listing.getPhotos() == null || listing.getPhotos().isEmpty()) {
-            return null;
-        }
-
-        return listing.getPhotos().stream()
-                .sorted(Comparator
-                        .comparing((ListingPhoto photo) -> !Boolean.TRUE.equals(photo.getIsCover()))
-                        .thenComparing(ListingPhoto::getDisplayOrder, Comparator.nullsLast(Integer::compareTo)))
-                .map(ListingPhoto::getPhotoUrl)
-                .findFirst()
-                .orElse(null);
+        item.setAvgRating(safeRatingSummary.getOverallRating().doubleValue());
+        item.setReviewCount(safeRatingSummary.getReviewCount());
     }
 
     private int normalizeLimit(Integer limitPerSection) {

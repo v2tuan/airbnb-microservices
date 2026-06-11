@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -41,6 +42,15 @@ import java.util.UUID;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
 public class ListingDetailController {
+
+    private static final int DEFAULT_HOST_LISTINGS_PAGE_SIZE = 12;
+    private static final int MAX_HOST_LISTINGS_PAGE_SIZE = 50;
+    private static final Set<String> HOST_LISTINGS_SORT_FIELDS = Set.of(
+            "createdAt",
+            "title",
+            "city",
+            "status"
+    );
 
     IListingService listingService;
     private final ListingDetailService listingDetailService;
@@ -150,19 +160,43 @@ public class ListingDetailController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "8") int size,
+            @RequestParam(defaultValue = "12") int size,
             @RequestParam(defaultValue = "createdAt") String sort,
             @RequestParam(defaultValue = "DESC") String direction) {
 
         log.info("REST request to get paginated listings for host: {}, status: {}, keyword: {}", hostId, status, keyword);
 
-        Sort.Direction sortDirection = Sort.Direction.fromString(direction);
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortDirection, sort));
+        Sort.Direction sortDirection = parseSortDirection(direction);
+        Pageable pageable = PageRequest.of(
+                Math.max(0, page),
+                normalizeHostListingsPageSize(size),
+                Sort.by(sortDirection, normalizeHostListingsSort(sort))
+        );
 
-        ListingStatus listingStatus = status != null && !status.isEmpty() ? ListingStatus.valueOf(status) : null;
+        ListingStatus listingStatus = status != null && !status.isEmpty() ? ListingStatus.valueOf(status.trim()) : null;
         Page<ListingItemResponse> response = listingService.getListingsByHostPaginated(hostId, listingStatus, keyword, pageable);
 
         return ResponseEntity.ok(response);
+    }
+
+    private int normalizeHostListingsPageSize(int size) {
+        if (size < 1) {
+            return DEFAULT_HOST_LISTINGS_PAGE_SIZE;
+        }
+
+        return Math.min(size, MAX_HOST_LISTINGS_PAGE_SIZE);
+    }
+
+    private String normalizeHostListingsSort(String sort) {
+        return HOST_LISTINGS_SORT_FIELDS.contains(sort) ? sort : "createdAt";
+    }
+
+    private Sort.Direction parseSortDirection(String direction) {
+        try {
+            return Sort.Direction.fromString(direction);
+        } catch (IllegalArgumentException ex) {
+            return Sort.Direction.DESC;
+        }
     }
 
     @GetMapping("/search")

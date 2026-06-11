@@ -1,6 +1,8 @@
 package com.listingservice.repository;
 
 import com.listingservice.constant.ListingStatus;
+import com.listingservice.dto.response.HomeListingCardResponse;
+import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.entity.Listing;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,7 +21,7 @@ import java.util.UUID;
 public interface ListingRepository extends JpaRepository<Listing, UUID> {
 
     @Override
-    @EntityGraph(attributePaths = {"photos", "pricing", "houseRules"})
+    @EntityGraph(attributePaths = {"photos", "pricing", "houseRules", "listingAmenities", "listingAmenities.amenity", "accessInfo", "accessInfo.checkInGuide"})
     Optional<Listing> findById(UUID listingId);
 
     @Override
@@ -60,11 +62,37 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     // Tim theo city va status cho section trang chu
     List<Listing> findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(String city, ListingStatus status);
 
-    @EntityGraph(attributePaths = {"photos", "pricing"})
-    List<Listing> findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(
-        String city,
-        ListingStatus status,
-        Pageable pageable
+    @Query("""
+            SELECT new com.listingservice.dto.response.HomeListingCardResponse(
+                l.listingId,
+                l.title,
+                l.city,
+                l.country,
+                (
+                    SELECT p.photoUrl
+                    FROM ListingPhoto p
+                    WHERE p.listing = l
+                    ORDER BY
+                        CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                        p.displayOrder ASC
+                    LIMIT 1
+                ),
+                pr.basePrice,
+                null,
+                pr.currency,
+                l.maxGuests,
+                l.instantBook
+            )
+            FROM Listing l
+            LEFT JOIN l.pricing pr
+            WHERE LOWER(l.city) = LOWER(:city)
+              AND l.status = :status
+            ORDER BY l.instantBook DESC, l.createdAt DESC
+            """)
+    List<HomeListingCardResponse> findHomeCardsByCity(
+            @Param("city") String city,
+            @Param("status") ListingStatus status,
+            Pageable pageable
     );
 
     // Fallback query cho section trang chu
@@ -121,25 +149,117 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     // Dem so listing active cua host
     long countByHostIdAndStatus(String hostId, ListingStatus status);
 
-    // Pagination cho host profile
-    Page<Listing> findByHostIdAndStatus(String hostId, ListingStatus status, Pageable pageable);
+    @Query(
+            value = """
+                    SELECT new com.listingservice.dto.response.ListingItemResponse(
+                        l.listingId,
+                        l.title,
+                        (
+                            SELECT p.photoUrl
+                            FROM ListingPhoto p
+                            WHERE p.listing = l
+                            ORDER BY
+                                CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                                p.displayOrder ASC
+                            LIMIT 1
+                        ),
+                        l.city,
+                        l.country,
+                        l.propertyType,
+                        l.status,
+                        l.createdAt,
+                        null,
+                        null,
+                        null
+                    )
+                    FROM Listing l
+                    WHERE l.hostId = :hostId
+                    """,
+            countQuery = "SELECT COUNT(l) FROM Listing l WHERE l.hostId = :hostId"
+    )
+    Page<ListingItemResponse> findHostListingItems(
+            @Param("hostId") String hostId,
+            Pageable pageable
+    );
 
-    // Pagination cho host profile (khong loc status)
-    Page<Listing> findByHostId(String hostId, Pageable pageable);
+    @Query(
+            value = """
+                    SELECT new com.listingservice.dto.response.ListingItemResponse(
+                        l.listingId,
+                        l.title,
+                        (
+                            SELECT p.photoUrl
+                            FROM ListingPhoto p
+                            WHERE p.listing = l
+                            ORDER BY
+                                CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                                p.displayOrder ASC
+                            LIMIT 1
+                        ),
+                        l.city,
+                        l.country,
+                        l.propertyType,
+                        l.status,
+                        l.createdAt,
+                        null,
+                        null,
+                        null
+                    )
+                    FROM Listing l
+                    WHERE l.hostId = :hostId
+                      AND l.status = :status
+                    """,
+            countQuery = "SELECT COUNT(l) FROM Listing l WHERE l.hostId = :hostId AND l.status = :status"
+    )
+    Page<ListingItemResponse> findHostListingItemsByStatus(
+            @Param("hostId") String hostId,
+            @Param("status") ListingStatus status,
+            Pageable pageable
+    );
 
-    @Query("""
-            SELECT l FROM Listing l
-            WHERE l.hostId = :hostId
-              AND (:status IS NULL OR l.status = :status)
-              AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
-            """)
-    Page<Listing> findHostListingsByKeyword(
+    @Query(
+            value = """
+                    SELECT new com.listingservice.dto.response.ListingItemResponse(
+                        l.listingId,
+                        l.title,
+                        (
+                            SELECT p.photoUrl
+                            FROM ListingPhoto p
+                            WHERE p.listing = l
+                            ORDER BY
+                                CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                                p.displayOrder ASC
+                            LIMIT 1
+                        ),
+                        l.city,
+                        l.country,
+                        l.propertyType,
+                        l.status,
+                        l.createdAt,
+                        null,
+                        null,
+                        null
+                    )
+                    FROM Listing l
+                    WHERE l.hostId = :hostId
+                      AND (:status IS NULL OR l.status = :status)
+                      AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
+                    """,
+            countQuery = """
+                    SELECT COUNT(l)
+                    FROM Listing l
+                    WHERE l.hostId = :hostId
+                      AND (:status IS NULL OR l.status = :status)
+                      AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
+                    """
+    )
+    Page<ListingItemResponse> findHostListingItemsByKeyword(
             @Param("hostId") String hostId,
             @Param("status") ListingStatus status,
             @Param("pattern") String pattern,
             Pageable pageable
     );
 
-    @EntityGraph(attributePaths = {"photos", "pricing", "houseRules"})
+    @EntityGraph(attributePaths = {"photos", "pricing", "houseRules", "listingAmenities", "listingAmenities.amenity", "accessInfo", "accessInfo.checkInGuide"})
     List<Listing> findByListingIdIn(List<UUID> ids);
 }
