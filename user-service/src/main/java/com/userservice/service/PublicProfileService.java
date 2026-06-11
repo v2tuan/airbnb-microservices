@@ -2,14 +2,13 @@ package com.userservice.service;
 
 import com.userservice.dto.response.PublicHostResponseDTO;
 import com.userservice.entity.User;
+import com.userservice.repository.ListingServiceClient;
+import com.userservice.repository.RatingServiceClient;
 import com.userservice.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -21,29 +20,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class PublicProfileService {
-  private final UserRepository userRepository;
 
-  private final RestClient listingServiceClient;
-  private final RestClient ratingServiceClient;
+  private final UserRepository userRepository;
+  private final ListingServiceClient listingServiceClient;
+  private final RatingServiceClient ratingServiceClient;
 
   private static final int REVIEWS_PAGE_SIZE = 6;
   private static final int LISTINGS_PAGE_SIZE = 8;
-
-  public PublicProfileService(
-      UserRepository userRepository,
-      @Value("${services.listing-service.url:http://localhost:8081}") String listingServiceUrl,
-      @Value("${services.rating-service.url:http://localhost:8085}") String ratingServiceUrl) {
-    this.userRepository = userRepository;
-    this.listingServiceClient = RestClient.builder()
-        .baseUrl(normalizeBaseUrl(listingServiceUrl))
-        .requestFactory(requestFactory())
-        .build();
-    this.ratingServiceClient = RestClient.builder()
-        .baseUrl(normalizeBaseUrl(ratingServiceUrl))
-        .requestFactory(requestFactory())
-        .build();
-  }
 
   public Optional<PublicHostResponseDTO> getByKeycloakUserId(String keycloakUserId) {
     return userRepository.findByKeycloakUserId(keycloakUserId).map(this::toPublicResponse);
@@ -140,16 +125,8 @@ public class PublicProfileService {
       int reviewPage,
       Map<String, Map<String, Object>> allListingsById) {
     try {
-      Map<String, Object> response = ratingServiceClient.get()
-          .uri(uriBuilder -> uriBuilder
-              .path("/ratings/host/{hostId}")
-              .queryParam("page", reviewPage)
-              .queryParam("size", REVIEWS_PAGE_SIZE)
-              .queryParam("sort", "createdAt")
-              .queryParam("direction", "DESC")
-              .build(hostId))
-          .retrieve()
-          .body(Map.class);
+      Map<String, Object> response = ratingServiceClient.getReviewsByHost(
+          hostId, reviewPage, REVIEWS_PAGE_SIZE, "createdAt", "DESC");
 
       if (response == null) {
         return new LinkedHashMap<>();
@@ -190,17 +167,8 @@ public class PublicProfileService {
   @SuppressWarnings("unchecked")
   private Map<String, Object> fetchListingsPage(String hostId, int listingPage) {
     try {
-      Map<String, Object> response = listingServiceClient.get()
-          .uri(uriBuilder -> uriBuilder
-              .path("/listings/host/{hostId}/paginated")
-              .queryParam("page", listingPage)
-              .queryParam("size", LISTINGS_PAGE_SIZE)
-              .queryParam("status", "ACTIVE")
-              .queryParam("sort", "createdAt")
-              .queryParam("direction", "DESC")
-              .build(hostId))
-          .retrieve()
-          .body(Map.class);
+      Map<String, Object> response = listingServiceClient.getListingsByHostPaginated(
+          hostId, listingPage, LISTINGS_PAGE_SIZE, "ACTIVE", "createdAt", "DESC");
 
       if (response == null) {
         return new LinkedHashMap<>();
@@ -219,10 +187,7 @@ public class PublicProfileService {
 
   private Map<String, Object> fetchRatingSummary(String hostId) {
     try {
-      Map<String, Object> response = ratingServiceClient.get()
-          .uri("/ratings/summary/host/{hostId}", hostId)
-          .retrieve()
-          .body(Map.class);
+      Map<String, Object> response = ratingServiceClient.getHostRatingSummary(hostId);
       return response == null ? new LinkedHashMap<>() : response;
     } catch (Exception ex) {
       return new LinkedHashMap<>();
@@ -279,20 +244,5 @@ public class PublicProfileService {
       return number.doubleValue();
     }
     return 0.0;
-  }
-
-  private String normalizeBaseUrl(String url) {
-    if (url == null || url.isBlank()) {
-      return url;
-    }
-
-    return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-  }
-
-  private SimpleClientHttpRequestFactory requestFactory() {
-    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(Duration.ofMillis(1000));
-    factory.setReadTimeout(Duration.ofMillis(1500));
-    return factory;
   }
 }

@@ -4,14 +4,6 @@ server:
 app:
   api-prefix: /api/v1
 
-services:
-  user-service:
-    url: http://localhost:8082/users
-  listing-service:
-    url: http://localhost:8081
-  rating-service:
-    url: http://localhost:8085
-
 spring:
   application:
     name: api-gateway
