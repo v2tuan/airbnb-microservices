@@ -12,10 +12,12 @@ import com.paymentservice.entity.Payment;
 import com.paymentservice.entity.PaymentAuditLog;
 import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
+import com.paymentservice.entity.PayoutStatus;
 import com.paymentservice.entity.StripeWebhookEvent;
 import com.paymentservice.entity.Transaction;
 import com.paymentservice.entity.WebhookEventStatus;
 import com.paymentservice.event.PaymentSucceededEvent;
+import com.paymentservice.exception.BusinessException;
 import com.paymentservice.mapper.BookingMapper;
 import com.paymentservice.repository.PaymentAuditLogRepository;
 import com.paymentservice.repository.PaymentRepository;
@@ -60,7 +62,6 @@ public class PaymentService {
     private final PaymentAuditLogRepository auditLogRepository;
     private final PaymentEventPublisher eventPublisher;
 
-    @Transactional
     public CheckoutResponse checkout(CheckoutRequest request, String idempotencyKey) throws StripeException {
         Jwt jwt = currentJwt();
         UUID guestId = UUID.fromString(jwt.getSubject());
@@ -75,7 +76,7 @@ public class PaymentService {
         // Lấy Stripe account id của host
         String hostStripeAccountId = userClient.getStripeAccountId(booking.getHostId()).getData();
         if (hostStripeAccountId == null || hostStripeAccountId.isBlank()) {
-            throw new IllegalStateException("Host has not completed Stripe Connect onboarding");
+            throw BusinessException.conflict("Host has not completed Stripe Connect onboarding");
         }
 
         long amount = booking.getTotalAmount();
@@ -156,7 +157,7 @@ public class PaymentService {
                 default -> log.debug("Ignoring Stripe event type={}", eventType);
             }
             markWebhookProcessed(stripeEventId);
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             markWebhookFailed(stripeEventId, ex.getMessage());
             throw ex;
         }
@@ -164,7 +165,7 @@ public class PaymentService {
 
     private void handlePaymentSucceeded(PaymentIntent paymentIntent, UUID bookingId, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
-                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found"));
 
         if (payment.getStatus() != PaymentStatus.PAID && isPaidOrRefundStatus(payment.getStatus())) {
             log.warn("Ignoring succeeded event for refunded payment paymentId={} status={}",
@@ -174,11 +175,20 @@ public class PaymentService {
 
         // Nếu trạng thái là đã paid sẵn rồi thì chỉ cập nhật thông tin payment thôi không xử lý gì thêm
         boolean alreadyPaid = payment.getStatus() == PaymentStatus.PAID;
+        // Charge là object Stripe tạo ra sau khi PaymentIntent thanh toán thành công.
+        // Payout cần chargeId để lấy balance_transaction và biết Stripe đã settle tiền ra currency nào.
+        String latestChargeId = latestChargeId(paymentIntent);
         if (!alreadyPaid) {
             payment.setStatus(PaymentStatus.PAID);
             payment.setSucceededAt(LocalDateTime.now());
             payment.setStripeEventId(eventId);
             payment.setWebhookPayload(rawPayload);
+            // Lưu chargeId sớm để PayoutService không phải retrieve PaymentIntent lại nếu không cần.
+            payment.setStripeChargeId(latestChargeId);
+            paymentRepository.save(payment);
+        } else if (payment.getStripeChargeId() == null && latestChargeId != null) {
+            // Trường hợp webhook gửi lại hoặc payment đã PAID trước đó nhưng DB thiếu chargeId.
+            payment.setStripeChargeId(latestChargeId);
             paymentRepository.save(payment);
         }
 
@@ -213,7 +223,7 @@ public class PaymentService {
                     .hostEarnings(BigDecimal.valueOf(payment.getHostAmount()))
                     .currency(payment.getCurrency())
                     .payoutMethod("STRIPE_CONNECT")
-                    .status("PENDING_CHECKIN")
+                    .status(PayoutStatus.PENDING_CHECKIN)
                     .scheduledAt(booking.getCheckInDate().atStartOfDay().plusDays(1))
                     .build());
         }
@@ -234,7 +244,7 @@ public class PaymentService {
 
     private void handlePaymentFailed(PaymentIntent paymentIntent, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
-                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found"));
         if (isPaidOrRefundStatus(payment.getStatus())) {
             log.warn("Ignoring failed event for already settled payment paymentId={} status={}",
                     payment.getId(), payment.getStatus());
@@ -249,7 +259,7 @@ public class PaymentService {
 
     private void handlePaymentCancelled(PaymentIntent paymentIntent, String eventId, String rawPayload) {
         Payment payment = paymentRepository.findByStripePaymentIntentId(paymentIntent.getId())
-                .orElseThrow(() -> new IllegalStateException("Payment not found for PaymentIntent " + paymentIntent.getId()));
+                .orElseThrow(() -> BusinessException.notFound("Payment not found"));
         if (isPaidOrRefundStatus(payment.getStatus())) {
             log.warn("Ignoring cancelled event for already settled payment paymentId={} status={}",
                     payment.getId(), payment.getStatus());
@@ -267,7 +277,7 @@ public class PaymentService {
             return current;
         }
         if (current.getStatus() != BookingStatus.PENDING_PAYMENT) {
-            throw new IllegalStateException("Cannot confirm booking " + bookingId + " from status " + current.getStatus());
+            throw BusinessException.unprocessable("Cannot confirm booking from status " + current.getStatus());
         }
 
         return bookingServiceClient.updateBookingStatus(
@@ -285,6 +295,20 @@ public class PaymentService {
                 || status == PaymentStatus.PARTIALLY_REFUNDED
                 || status == PaymentStatus.REFUNDED
                 || status == PaymentStatus.REFUND_FAILED;
+    }
+
+    /**
+     * Lấy latest_charge từ PaymentIntent.
+     *
+     * Stripe webhook thường trả latest_charge dạng String id.
+     * Nếu object đã được expand thì fallback sang latestChargeObject.getId().
+     */
+    private String latestChargeId(PaymentIntent paymentIntent) {
+        String latestChargeId = paymentIntent.getLatestCharge();
+        if ((latestChargeId == null || latestChargeId.isBlank()) && paymentIntent.getLatestChargeObject() != null) {
+            latestChargeId = paymentIntent.getLatestChargeObject().getId();
+        }
+        return latestChargeId;
     }
 
     private boolean registerWebhookEvent(String type, String paymentIntentId, String eventId, String payload) {

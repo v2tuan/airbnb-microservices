@@ -29,4 +29,9 @@ public interface RatingService {
    * Get rating summary (count and overall rating) for a listing
    */
   Map<String, Object> getListingRatingSummary(String listingId);
+
+  /**
+   * Get rating summaries for multiple listings in one DB query.
+   */
+  Map<String, Map<String, Object>> getListingRatingSummaries(List<String> listingIds);
 }

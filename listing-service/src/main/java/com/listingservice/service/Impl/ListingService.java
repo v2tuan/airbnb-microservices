@@ -23,6 +23,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -143,16 +146,11 @@ public class ListingService implements IListingService {
     public List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut) {
         log.info("Searching listings - City: {}, Country: {}, Max Guests: {}", city, country, maxGuests);
 
-        List<Listing> listings = listingRepository.findByStatus(ListingStatus.ACTIVE).stream()
-                .filter(listing -> matchesIgnoreCase(listing.getCity(), city))
-                .filter(listing -> matchesIgnoreCase(listing.getCountry(), country))
-                .toList();
-
-        if (maxGuests != null) {
-            listings = listings.stream()
-                    .filter(l -> l.getMaxGuests() >= maxGuests)
-                    .toList();
-        }
+        List<Listing> listings = listingRepository.searchActiveListings(
+                ListingStatus.ACTIVE,
+                normalizeFilter(city),
+                normalizeFilter(country),
+                maxGuests);
 
         return filterAvailableForSearch(listings, checkIn, checkOut).stream()
                 .map(listingMapper::toResponse)
@@ -275,15 +273,28 @@ public class ListingService implements IListingService {
             listingsPage = listingRepository.findByHostId(hostId, pageable);
         }
 
-        return listingsPage.map(this::toListingItemResponse);
+        List<UUID> listingIds = listingsPage.getContent().stream()
+                .map(Listing::getListingId)
+                .toList();
+        Map<String, RatingClient.ListingRatingSummary> ratingSummaries =
+                ratingClient.getListingRatingSummaries(listingIds);
+
+        List<ListingItemResponse> content = listingsPage.getContent().stream()
+                .map(listing -> toListingItemResponse(
+                        listing,
+                        ratingSummaries.get(listing.getListingId().toString())))
+                .toList();
+
+        return new PageImpl<>(content, pageable, listingsPage.getTotalElements());
     }
 
     private HomeSectionResponse buildSection(String sectionKey, String title, String city, int limit) {
         List<HomeListingCardResponse> listings = listingRepository
-                .findByCityIgnoreCaseAndStatus(city, ListingStatus.ACTIVE)
+                .findByCityIgnoreCaseAndStatusOrderByInstantBookDescCreatedAtDesc(
+                        city,
+                        ListingStatus.ACTIVE,
+                        PageRequest.of(0, limit))
                 .stream()
-                .sorted(Comparator.comparing(Listing::getInstantBook, Comparator.nullsLast(Boolean::compareTo)).reversed())
-                .limit(limit)
                 .map(this::safeToHomeCard)
                 .filter(java.util.Objects::nonNull)
                 .toList();
@@ -321,7 +332,13 @@ public class ListingService implements IListingService {
     }
 
     private ListingItemResponse toListingItemResponse(Listing listing) {
-        RatingClient.ListingRatingSummary ratingSummary = ratingClient.getListingRatingSummary(listing.getListingId());
+        return toListingItemResponse(listing, ratingClient.getListingRatingSummary(listing.getListingId()));
+    }
+
+    private ListingItemResponse toListingItemResponse(Listing listing, RatingClient.ListingRatingSummary ratingSummary) {
+        RatingClient.ListingRatingSummary safeRatingSummary = ratingSummary != null
+                ? ratingSummary
+                : new RatingClient.ListingRatingSummary(BigDecimal.ZERO, 0L);
 
         return ListingItemResponse.builder()
                 .id(listing.getListingId().toString())
@@ -333,8 +350,8 @@ public class ListingService implements IListingService {
                 .status(listing.getStatus())
                 .createdAt(listing.getCreatedAt())
                 .shortFeatures(buildShortFeatures(listing))
-            .avgRating(ratingSummary.getOverallRating().doubleValue())
-            .reviewCount(ratingSummary.getReviewCount())
+            .avgRating(safeRatingSummary.getOverallRating().doubleValue())
+            .reviewCount(safeRatingSummary.getReviewCount())
                 .build();
     }
 
@@ -398,9 +415,18 @@ public class ListingService implements IListingService {
             return List.of();
         }
 
+        Map<String, Boolean> availabilityByListingId = availabilityClient.getAvailability(
+                listings.stream().map(Listing::getListingId).toList(),
+                checkIn,
+                checkOut);
+
         return listings.stream()
-                .filter(listing -> availabilityClient.isAvailable(listing.getListingId(), checkIn, checkOut))
+                .filter(listing -> availabilityByListingId.getOrDefault(listing.getListingId().toString(), true))
                 .toList();
+    }
+
+    private String normalizeFilter(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private void validateCheckInWindow(Listing listing) {

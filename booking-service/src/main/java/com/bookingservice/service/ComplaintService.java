@@ -17,6 +17,7 @@ import com.bookingservice.entity.BookingComplaint;
 import com.bookingservice.entity.BookingStatus;
 import com.bookingservice.entity.ComplaintStatus;
 import com.bookingservice.entity.ComplaintType;
+import com.bookingservice.exception.BusinessException;
 import com.bookingservice.repository.BookingComplaintRepository;
 import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.client.ListingClient;
@@ -24,14 +25,12 @@ import com.bookingservice.repository.client.PaymentClient;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -96,14 +95,14 @@ public class ComplaintService {
         Jwt jwt = currentJwt();
         UUID guestId = UUID.fromString(jwt.getSubject());
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
 
         if (!booking.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            throw BusinessException.notFound("Booking not found");
         }
         validateComplaintCreationEligibility(booking);
         if (complaintRepository.existsByBookingIdAndStatusIn(bookingId, ACTIVE_COMPLAINT_STATUSES)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking already has an active complaint");
+            throw BusinessException.conflict("Booking already has an active complaint");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -155,12 +154,12 @@ public class ComplaintService {
         Jwt jwt = currentJwt();
         UUID hostId = UUID.fromString(jwt.getSubject());
         BookingComplaint complaint = complaintRepository.findByIdForUpdate(complaintId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found"));
+                .orElseThrow(() -> BusinessException.notFound("Complaint not found"));
         if (!complaint.getHostId().equals(hostId) && !isAdmin(jwt)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found");
+            throw BusinessException.notFound("Complaint not found");
         }
         if (complaint.getStatus() != ComplaintStatus.WAITING_HOST_RESPONSE) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint is not waiting for host response");
+            throw BusinessException.conflict("Complaint is not waiting for host response");
         }
         complaint.setHostResponse(request.getResponse().trim());
         complaint.setHostRespondedAt(LocalDateTime.now());
@@ -172,13 +171,13 @@ public class ComplaintService {
     @Transactional
     public ComplaintResponse acceptHostResponse(UUID complaintId) {
         BookingComplaint complaint = complaintRepository.findByIdForUpdate(complaintId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found"));
+                .orElseThrow(() -> BusinessException.notFound("Complaint not found"));
         UUID guestId = UUID.fromString(currentJwt().getSubject());
         if (!complaint.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found");
+            throw BusinessException.notFound("Complaint not found");
         }
         if (complaint.getStatus() != ComplaintStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint is not open");
+            throw BusinessException.conflict("Complaint is not open");
         }
         complaint.setStatus(ComplaintStatus.RESOLVED);
         complaint.setResolvedAt(LocalDateTime.now());
@@ -191,13 +190,13 @@ public class ComplaintService {
     @Transactional
     public ComplaintResponse escalateToAdmin(UUID complaintId) {
         BookingComplaint complaint = complaintRepository.findByIdForUpdate(complaintId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found"));
+                .orElseThrow(() -> BusinessException.notFound("Complaint not found"));
         UUID guestId = UUID.fromString(currentJwt().getSubject());
         if (!complaint.getGuestId().equals(guestId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found");
+            throw BusinessException.notFound("Complaint not found");
         }
         if (complaint.getStatus() != ComplaintStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint cannot be escalated");
+            throw BusinessException.conflict("Complaint cannot be escalated");
         }
         BookingComplaint saved = escalateComplaint(complaint);
         publishComplaintEvent("COMPLAINT_ESCALATED", saved, false, false, true);
@@ -209,15 +208,15 @@ public class ComplaintService {
         Jwt jwt = currentJwt();
         requireAdmin(jwt);
         BookingComplaint complaint = complaintRepository.findByIdForUpdate(complaintId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found"));
+                .orElseThrow(() -> BusinessException.notFound("Complaint not found"));
         Booking booking = bookingRepository.findByIdForUpdate(complaint.getBookingId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
 
         if (complaint.getStatus() != ComplaintStatus.ESCALATED_TO_ADMIN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint is not escalated to admin");
+            throw BusinessException.conflict("Complaint is not escalated to admin");
         }
         if (!DECISION_MATRIX.getOrDefault(complaint.getType(), List.of()).contains(request.getDecision())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Decision is not allowed for complaint type");
+            throw BusinessException.conflict("Decision is not allowed for complaint type");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -240,7 +239,7 @@ public class ComplaintService {
                 BigDecimal amount = request.getRefundAmount();
                 if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0
                         || amount.compareTo(totalAmount(booking)) >= 0) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Partial refund must be greater than zero and less than total amount");
+                    throw BusinessException.badRequest("Partial refund must be greater than zero and less than total amount");
                 }
                 complaint.setRefundAmount(money(amount));
                 createRefund(jwt, booking, money(amount), "COMPLAINT_PARTIAL_REFUND", "Complaint decision " + complaintId,
@@ -288,9 +287,9 @@ public class ComplaintService {
         Jwt jwt = currentJwt();
         requireAdmin(jwt);
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
         if (booking.getStatus() != BookingStatus.CONFIRMED && booking.getStatus() != BookingStatus.CHECKED_IN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Admin can force cancel only confirmed or checked-in bookings");
+            throw BusinessException.conflict("Admin can force cancel only confirmed or checked-in bookings");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -390,11 +389,11 @@ public class ComplaintService {
 
     private void validateComplaintCreationEligibility(Booking booking) {
         if (booking.getStatus() != BookingStatus.CHECKED_IN) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint can be created only for checked-in bookings");
+            throw BusinessException.conflict("Complaint can be created only for checked-in bookings");
         }
         if (booking.getCheckedInAt() == null
                 || booking.getCheckedInAt().plusHours(COMPLAINT_WINDOW_HOURS).isBefore(LocalDateTime.now())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complaint window has expired");
+            throw BusinessException.conflict("Complaint window has expired");
         }
     }
 
@@ -541,7 +540,7 @@ public class ComplaintService {
                 return null;
             }
             return UUID.fromString(response.getData().getHostId());
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             log.warn("Failed to resolve host for listing notification listingId={}", listingId, ex);
             return null;
         }
@@ -568,7 +567,7 @@ public class ComplaintService {
 
     private void requireAdmin(Jwt jwt) {
         if (!isAdmin(jwt)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role is required");
+            throw BusinessException.forbidden("Admin role is required");
         }
     }
 

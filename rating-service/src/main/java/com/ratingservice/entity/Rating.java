@@ -9,7 +9,11 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="ratings")
+@Table(name = "ratings", indexes = {
+  @Index(name = "idx_ratings_listing", columnList = "listing_id"),
+  @Index(name = "idx_ratings_host_created", columnList = "host_id, created_at"),
+  @Index(name = "idx_ratings_user", columnList = "user_id")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,8 +22,13 @@ public class Rating {
   @GeneratedValue(strategy = GenerationType.UUID)
   private String id;
 
+  @Column(name = "listing_id")
   private String listingId;
+
+  @Column(name = "user_id")
   private String userId;
+
+  @Column(name = "host_id")
   private String hostId;
 
   private Double overallRating;
@@ -34,7 +43,10 @@ public class Rating {
   private String reviewerFullName;
   private String reviewerAvatarUrl;
   private String reviewerLocation;
+  @Column(name = "created_at")
   private LocalDateTime createdAt;
+
+  @Column(name = "updated_at")
   private LocalDateTime updatedAt;
 }
 

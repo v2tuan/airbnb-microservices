@@ -48,41 +48,41 @@ spring:
 
           routes:
             - id: profile_service
-              uri: http://localhost:8082
+              uri: lb://user-service
               predicates:
                 - Path=${app.api-prefix}/profile/**
               filters:
                 - StripPrefix=2
                 - PrefixPath=/users
             - id: user_service
-              uri: http://localhost:8082
+              uri: lb://user-service
               predicates:
                 - Path=${app.api-prefix}/users/**
               filters:
                 - StripPrefix=2
 #                - PrefixPath=/users
             - id: listing_service
-              uri: http://localhost:8081
+              uri: lb://listing-service
               predicates:
                 - Path=${app.api-prefix}/listings/**
               filters:
                 - StripPrefix=2
             - id: rating_service
-              uri: http://localhost:8085
+              uri: lb://rating-service
               predicates:
                 - Path=${app.api-prefix}/ratings/**
               filters:
                 - StripPrefix=2
             - id: wishlist_service
-              uri: http://localhost:8083
+              uri: lb://wishlist-service
               predicates:
                 - Path=${app.api-prefix}/wishlist/**
               filters:
                 - StripPrefix=2
             - id: payment_service
-              uri: http://localhost:8087
+              uri: lb://payment-service
               predicates:
-                - Path=${app.api-prefix}/payment-methods/**,${app.api-prefix}/transactions/**,${app.api-prefix}/refunds/**,${app.api-prefix}/payments/**
+                - Path=${app.api-prefix}/payments/**
               filters:
                 - StripPrefix=2
             - id: message_service
@@ -93,8 +93,17 @@ spring:
                 - StripPrefix=2
                 - PrefixPath=/V1
             - id: booking_service
-              uri: http://localhost:8086
+              uri: lb://booking-service
               predicates:
                 - Path=${app.api-prefix}/bookings/**
               filters:
                 - StripPrefix=2
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true

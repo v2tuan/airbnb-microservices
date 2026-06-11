@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
-import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -36,13 +35,11 @@ public class UserProfileAggregatorService {
 
         // Fetch user profile
         Mono<PublicHostDTO> userMono = userServiceClient.getPublicProfile(userId)
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100)))
                 .timeout(Duration.ofSeconds(5));
 
         // Fetch ratings summary (optional, may be empty for non-hosts)
         Mono<RatingServiceClient.RatingSummaryDTO> ratingSummaryMono = ratingServiceClient.getHostRatingSummary(userId)
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100)))
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(2))
                 .onErrorResume(e -> {
                     log.debug("User {} is not a host or no ratings found, using defaults", userId);
                     return Mono.just(new RatingServiceClient.RatingSummaryDTO(0.0, 0L));
@@ -50,8 +47,7 @@ public class UserProfileAggregatorService {
 
         // Fetch reviews (paginated, optional)
         Mono<RatingServiceClient.RatingPageResponseDTO> reviewsMono = ratingServiceClient.getReviewsByHost(userId, reviewPage, REVIEWS_PAGE_SIZE)
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100)))
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(2))
                 .onErrorResume(e -> {
                     log.debug("No reviews found for user: {}", userId);
                     return Mono.just(new RatingServiceClient.RatingPageResponseDTO(java.util.List.of(), reviewPage, REVIEWS_PAGE_SIZE, 0L));
@@ -59,8 +55,7 @@ public class UserProfileAggregatorService {
 
         // Fetch listings (paginated, optional)
         Mono<ListingServiceClient.ListingPageResponseDTO> listingsMono = listingServiceClient.getListingsByHost(userId, listingPage, LISTINGS_PAGE_SIZE)
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100)))
-                .timeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(2))
                 .onErrorResume(e -> {
                     log.debug("No listings found for user: {}", userId);
                     return Mono.just(new ListingServiceClient.ListingPageResponseDTO(java.util.List.of(), listingPage, LISTINGS_PAGE_SIZE, 0L));

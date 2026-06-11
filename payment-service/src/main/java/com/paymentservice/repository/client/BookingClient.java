@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-@FeignClient(name = "booking-client", url = "http://localhost:8086/bookings")
+@FeignClient(name = "booking-service", path = "/bookings")
 public interface BookingClient {
     @PostMapping(value = "/")
     CreateBookingResponse createBooking(@RequestHeader("authorization") String token,

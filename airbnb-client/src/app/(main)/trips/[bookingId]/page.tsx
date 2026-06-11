@@ -48,6 +48,7 @@ import { TripTimeline } from "@/components/trips/TripTimeline";
 import { usePaymentCountdown } from "@/components/trips/usePaymentCountdown";
 import { formatDate, getNights } from "@/lib/utils";
 import type { RootState } from "@/store";
+import { extractApiErrorMessage } from "@/types/api.type";
 import type {
   BookingDetailResponse,
   BookingStatus,
@@ -222,6 +223,7 @@ export default function BookingDetailPage() {
   const [booking, setBooking] = useState<BookingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -246,11 +248,15 @@ export default function BookingDetailPage() {
       try {
         setLoading(true);
         setError(false);
+        setErrorMessage(null);
         const response = await getBookingDetail(token, params.bookingId);
         if (!cancelled) setBooking(response.data);
       } catch (err) {
         console.error("Failed to fetch booking detail", err);
-        if (!cancelled) setError(true);
+        if (!cancelled) {
+          setError(true);
+          setErrorMessage(extractApiErrorMessage(err, "This reservation does not exist or is not available for your account."));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -301,8 +307,7 @@ export default function BookingDetailPage() {
               Booking not found
             </h1>
             <p className="mt-3 text-sm text-slate-500">
-              This reservation does not exist or is not available for your
-              account.
+              {errorMessage ?? "This reservation does not exist or is not available for your account."}
             </p>
             <Link
               href="/trips"
@@ -417,10 +422,7 @@ export default function BookingDetailPage() {
       setCancellationQuote(response.data);
     } catch (err) {
       console.error("Failed to load cancellation quote", err);
-      setQuoteError(
-        getApiErrorMessage(err) ??
-          "Could not calculate the cancellation quote. Try again.",
-      );
+      setQuoteError(extractApiErrorMessage(err, "Could not calculate the cancellation quote. Try again."));
       setCancellationQuote(null);
     } finally {
       setQuoteLoading(false);
@@ -450,6 +452,7 @@ export default function BookingDetailPage() {
       setCancelRequestSent(true);
     } catch (err) {
       console.error("Failed to expire pending booking", err);
+      setQuoteError(extractApiErrorMessage(err, "Cancellation failed. Please try again."));
     }
   };
 
@@ -473,10 +476,7 @@ export default function BookingDetailPage() {
       setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
-      setQuoteError(
-        getApiErrorMessage(err) ??
-          "Cancellation failed. Request a new quote and try again.",
-      );
+      setQuoteError(extractApiErrorMessage(err, "Cancellation failed. Request a new quote and try again."));
     } finally {
       setCancelSubmitting(false);
     }
@@ -545,6 +545,11 @@ export default function BookingDetailPage() {
                 onCancel={handleAbandonPendingHold}
               />
             )}
+            {quoteError && !cancelOpen ? (
+              <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-700">
+                {quoteError}
+              </div>
+            ) : null}
           </div>
         ) : null}
 

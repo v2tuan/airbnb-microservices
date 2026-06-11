@@ -4,6 +4,7 @@ import com.paymentservice.dto.request.ProcessPaymentRequest;
 import com.paymentservice.dto.response.TransactionResponse;
 import com.paymentservice.entity.PaymentMethod;
 import com.paymentservice.entity.Transaction;
+import com.paymentservice.exception.BusinessException;
 import com.paymentservice.mapper.TransactionMapper;
 import com.paymentservice.repository.PaymentMethodRepository;
 import com.paymentservice.repository.PaymentAuditLogRepository;
@@ -39,7 +40,7 @@ public class TransactionService {
 
         // Validate payment method exists
         PaymentMethod paymentMethod = paymentMethodRepository.findById(request.getPaymentMethodId())
-            .orElseThrow(() -> new RuntimeException("Payment method not found"));
+            .orElseThrow(() -> BusinessException.notFound("Payment method not found"));
 
         // Create transaction
         Transaction transaction = Transaction.builder()
@@ -72,7 +73,7 @@ public class TransactionService {
     @CacheEvict(cacheNames = {"transaction", "bookingTransactions", "userPaymentTransactions", "userPayoutTransactions"}, allEntries = true)
     public void updateTransactionStatus(UUID transactionId, String newStatus) {
         Transaction transaction = transactionRepository.findById(transactionId)
-            .orElseThrow(() -> new RuntimeException("Transaction not found"));
+            .orElseThrow(() -> BusinessException.notFound("Transaction not found"));
 
         transaction.setStatus(newStatus);
         if ("COMPLETED".equals(newStatus) || "FAILED".equals(newStatus)) {
@@ -89,7 +90,7 @@ public class TransactionService {
     @Cacheable(cacheNames = "transaction", key = "#transactionId")
     public TransactionResponse getTransaction(UUID transactionId) {
         Transaction transaction = transactionRepository.findById(transactionId)
-            .orElseThrow(() -> new RuntimeException("Transaction not found"));
+            .orElseThrow(() -> BusinessException.notFound("Transaction not found"));
         return transactionMapper.toResponse(transaction);
     }
 

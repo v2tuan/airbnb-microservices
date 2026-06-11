@@ -7,6 +7,7 @@ import {
     useStripe,
     useElements,
 } from '@stripe/react-stripe-js';
+import { extractApiErrorMessage } from "@/types/api.type";
 
 interface PaymentFormProps {
     bookingId: string;
@@ -82,9 +83,10 @@ export default function PaymentForm({
                     onError('Unexpected error');
                 }
             }
-        } catch (err: any) {
-            setErrorMessage(err.message || 'Đã có lỗi xảy ra');
-            onError(err.message);
+        } catch (err: unknown) {
+            const message = extractApiErrorMessage(err, "Payment could not be completed. Please try again.");
+            setErrorMessage(message);
+            onError(message);
         } finally {
             setIsLoading(false);
         }

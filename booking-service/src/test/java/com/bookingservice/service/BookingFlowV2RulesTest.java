@@ -10,6 +10,7 @@ import com.bookingservice.dto.response.ListingPricingResponse;
 import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingStatus;
+import com.bookingservice.exception.BusinessException;
 import com.bookingservice.repository.BookingCancellationQuoteRepository;
 import com.bookingservice.repository.BookingComplaintRepository;
 import com.bookingservice.repository.BookingRepository;
@@ -148,9 +149,9 @@ class BookingFlowV2RulesTest {
         invokeTransition(BookingStatus.CHECKED_IN, BookingStatus.CANCELLED_BY_ADMIN);
 
         assertThatThrownBy(() -> invokeTransition(BookingStatus.CHECKED_IN, BookingStatus.CANCELLED_BY_GUEST))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> invokeTransition(BookingStatus.COMPLETED, BookingStatus.CANCELLED_BY_ADMIN))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test

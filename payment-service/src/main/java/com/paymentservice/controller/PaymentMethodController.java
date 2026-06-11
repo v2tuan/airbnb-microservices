@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/payment-methods")
+@RequestMapping("/payment-methods")
 @RequiredArgsConstructor
 public class PaymentMethodController {
 
@@ -21,7 +21,7 @@ public class PaymentMethodController {
 
     /**
      * Create new payment method
-     * POST /api/v1/payment-methods
+     * POST /payments/payment-methods
      */
     @PostMapping
     public ResponseEntity<PaymentMethodResponse> createPaymentMethod(
@@ -33,7 +33,7 @@ public class PaymentMethodController {
 
     /**
      * Get all payment methods for a user
-     * GET /api/v1/payment-methods?userId=xxx
+     * GET /payments/payment-methods?userId=xxx
      */
     @GetMapping
     public ResponseEntity<List<PaymentMethodResponse>> getUserPaymentMethods(@RequestParam UUID userId) {
@@ -43,7 +43,7 @@ public class PaymentMethodController {
 
     /**
      * Get payment method by ID
-     * GET /api/v1/payment-methods/{id}
+     * GET /payments/payment-methods/{id}
      */
     @GetMapping("/{id}")
     public ResponseEntity<PaymentMethodResponse> getPaymentMethod(@PathVariable UUID id) {
@@ -53,7 +53,7 @@ public class PaymentMethodController {
 
     /**
      * Delete payment method
-     * DELETE /api/v1/payment-methods/{id}
+     * DELETE /payments/payment-methods/{id}
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePaymentMethod(@PathVariable UUID id) {
@@ -63,7 +63,7 @@ public class PaymentMethodController {
 
     /**
      * Set payment method as default
-     * PUT /api/v1/payment-methods/{id}/set-default
+     * PUT /payments/payment-methods/{id}/set-default
      */
     @PutMapping("/{id}/set-default")
     public ResponseEntity<PaymentMethodResponse> setAsDefault(

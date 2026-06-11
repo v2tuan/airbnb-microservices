@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.UUID;
 
-@FeignClient(name = "payment-refund-client", url = "${payments.refunds-url:http://localhost:8087/payments/api/v1/refunds}")
+@FeignClient(name = "payment-service", path = "/payments/refunds")
 public interface PaymentClient {
     @PostMapping("/booking/{bookingId}")
     RefundResponse createBookingRefund(

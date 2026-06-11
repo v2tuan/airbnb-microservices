@@ -29,6 +29,10 @@ import java.util.UUID;
                         columnList = "listing_id, check_in_date, check_out_date"
                 ),
                 @Index(
+                        name = "idx_bookings_listing_status_dates",
+                        columnList = "listing_id, status, check_in_date, check_out_date"
+                ),
+                @Index(
                         name = "idx_bookings_host_listing_status",
                         columnList = "host_id, listing_id, status"
                 )

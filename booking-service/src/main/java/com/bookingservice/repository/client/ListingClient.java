@@ -5,16 +5,13 @@ import com.bookingservice.dto.request.ListingSuspensionRequest;
 import com.bookingservice.dto.request.ListingBatchRequest;
 import com.bookingservice.dto.request.ListingUnsuspensionRequest;
 import com.bookingservice.dto.response.ListingResponse;
-import feign.QueryMap;
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
 
-@FeignClient(name = "listing-client", url = "${listings.url}")
+@FeignClient(name = "listing-service", path = "/listings")
 public interface ListingClient {
     @GetMapping("/{listingId}")
     ApiResponse<ListingResponse> getListingById(@RequestHeader("Authorization") String token, @PathVariable UUID listingId);

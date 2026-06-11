@@ -37,7 +37,7 @@ public class NotificationEventPublisher {
                                     eventType, recipientId, ex);
                         }
                     });
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             log.warn("Failed to enqueue notification eventType={} recipient={}", eventType, recipientId, ex);
         }
     }

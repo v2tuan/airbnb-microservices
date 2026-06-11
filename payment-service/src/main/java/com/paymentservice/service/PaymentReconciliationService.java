@@ -53,7 +53,7 @@ public class PaymentReconciliationService {
             }
         } catch (StripeException ex) {
             log.error("Payment reconciliation failed paymentId={}", payment.getId(), ex);
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             log.error("Payment reconciliation side-effect failed paymentId={}", payment.getId(), ex);
         }
     }

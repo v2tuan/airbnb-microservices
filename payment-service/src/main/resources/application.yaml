@@ -50,10 +50,19 @@ spring:
         jwt:
           issuer-uri: http://localhost:8080/realms/airbnb
 
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+
 logging:
   level:
     root: INFO
-    com.paymentservice: DEBUG
+    com.paymentservice: INFO
 
 idp:
   url: http://localhost:8080

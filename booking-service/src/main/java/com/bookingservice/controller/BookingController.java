@@ -5,6 +5,7 @@ import com.bookingservice.dto.request.BookingFilterType;
 import com.bookingservice.dto.request.AdminComplaintDecisionRequest;
 import com.bookingservice.dto.request.AdminForceCancelRequest;
 import com.bookingservice.dto.request.AdminListingStatusRequest;
+import com.bookingservice.dto.request.BatchAvailabilityRequest;
 import com.bookingservice.dto.request.CancelBookingRequest;
 import com.bookingservice.dto.request.ConfirmCancellationQuoteRequest;
 import com.bookingservice.dto.request.ConfirmHostCancellationQuoteRequest;
@@ -43,6 +44,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -63,6 +65,17 @@ public class BookingController {
                 .success(true)
                 .message("Availability checked")
                 .data(bookingService.isListingAvailable(listingId, checkIn, checkOut))
+                .build());
+    }
+
+    @PostMapping("/availability/batch")
+    public ResponseEntity<ApiResponse<Map<UUID, Boolean>>> getListingsAvailability(
+            @RequestBody BatchAvailabilityRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.<Map<UUID, Boolean>>builder()
+                .success(true)
+                .message("Batch availability checked")
+                .data(bookingService.getListingsAvailability(request.listingIds(), request.checkIn(), request.checkOut()))
                 .build());
     }
 
