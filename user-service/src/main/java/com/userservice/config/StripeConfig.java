@@ -25,12 +25,6 @@ public class StripeConfig {
 //    private String webhookSecret;
 
     /**
-     * Publishable Key - an toàn để gửi cho Frontend
-     */
-    @Value("${stripe.publishable-key}")
-    private String publishableKey;
-
-    /**
      * Set Stripe API key khi Spring context khởi động.
      * @PostConstruct đảm bảo được gọi sau khi bean được inject đầy đủ.
      */

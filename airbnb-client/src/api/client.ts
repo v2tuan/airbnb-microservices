@@ -7,8 +7,14 @@ import axios, {
 import { notifyAuthSessionExpired } from "@/lib/auth-session";
 import { authStorage } from "@/lib/auth-storage";
 
+const apiBaseURL =
+  typeof window === "undefined"
+    ? process.env.NEXT_INTERNAL_API_BASE_URL ||
+      process.env.NEXT_PUBLIC_API_BASE_URL
+    : process.env.NEXT_PUBLIC_API_BASE_URL;
+
 const apiClient: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  baseURL: apiBaseURL,
   timeout: 20000,
 });
 

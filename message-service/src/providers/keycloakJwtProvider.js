@@ -7,8 +7,9 @@ let jwks = null
 const getJwksClient = () => {
   if (!jwks) {
     const issuer = env.KEYCLOAK_ISSUER_URI?.replace(/\/$/, '')
+    const jwksUri = env.KEYCLOAK_JWK_SET_URI || `${issuer}/protocol/openid-connect/certs`
     jwks = jwksClient({
-      jwksUri: `${issuer}/protocol/openid-connect/certs`,
+      jwksUri,
       cache: true,
       rateLimit: true
     })

@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.7
+
+ARG APP_PORT=8017
+
+# Dependencies stage: install all packages needed to transpile the service.
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Build stage: transpile src/ to build/ with Babel.
+FROM deps AS build
+WORKDIR /app
+
+COPY .babelrc ./
+COPY src src
+
+RUN npm run build
+
+# Runtime stage: install production dependencies and run the transpiled server.
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+ARG APP_PORT=8017
+ENV NODE_ENV=production
+ENV BUILD_MODE=production
+ENV PORT=${APP_PORT}
+
+EXPOSE ${APP_PORT}
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY --from=build /app/build ./build
+
+CMD ["node", "build/src/server.js"]

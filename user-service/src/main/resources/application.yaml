@@ -4,29 +4,24 @@ server:
     context-path: /users
 
 app:
-  frontend-url: http://localhost:3000
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:3000}
 
 spring:
   application:
     name: user-service
 
-  config:
-    import:
-      - optional:file:.env[.properties]
-      - optional:file:user-service/.env[.properties]
-
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/airbnb
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/airbnb}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/airbnb/protocol/openid-connect/certs}
 
   datasource:
-    url: jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/user_db?sslmode=require
-    username: neondb_owner
-    password: npg_GnXE70sJUjmu
+    url: ${USER_DB_URL:jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/user_db?sslmode=require}
+    username: ${USER_DB_USERNAME:neondb_owner}
+    password: ${USER_DB_PASSWORD:npg_GnXE70sJUjmu}
     driver-class-name: org.postgresql.Driver
-
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
@@ -34,7 +29,6 @@ spring:
       max-lifetime: 900000
       connection-timeout: 20000
       keepalive-time: 300000
-
 
   jpa:
     hibernate:
@@ -46,7 +40,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -54,26 +48,27 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
     register-with-eureka: true
     fetch-registry: true
   instance:
     prefer-ip-address: true
 
 idp:
-  url: http://localhost:8080
-  client-id: user_service
-  client-secret: Vzg4aVN4v35o2HhDX0jsKcVX6mGN4c96
+  url: ${IDP_URL:http://localhost:8080}
+  client-id: ${USER_SERVICE_IDP_CLIENT_ID:user_service}
+  client-secret: ${USER_SERVICE_IDP_CLIENT_SECRET:Vzg4aVN4v35o2HhDX0jsKcVX6mGN4c96}
+
+services:
+  listing-service:
+    url: ${LISTING_SERVICE_URL:http://localhost:8081}
+  rating-service:
+    url: ${RATING_SERVICE_URL:http://localhost:8085}
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:}
   api-key: ${CLOUDINARY_API_KEY:}
   api-secret: ${CLOUDINARY_API_SECRET:}
 
-# ===== STRIPE CONFIG =====
 stripe:
-  # Secret key - dùng test key khi develop
   secret-key: ${STRIPE_SECRET_KEY:}
-
-  # Publishable key - dùng ở Frontend (an toàn để expose)
-  publishable-key: ${STRIPE_PUBLISHABLE_KEY:}

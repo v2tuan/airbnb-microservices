@@ -25,23 +25,32 @@ public class WebClientConfiguration {
     @Value("${services.rating-service.url:http://localhost:8085}")
     private String ratingServiceUrl;
 
+    @Value("${gateway.downstream.connect-timeout-ms:3000}")
+    private int downstreamConnectTimeoutMs;
+
+    @Value("${gateway.downstream.response-timeout-seconds:15}")
+    private int downstreamResponseTimeoutSeconds;
+
+    @Value("${gateway.downstream.pending-acquire-timeout-seconds:5}")
+    private int downstreamPendingAcquireTimeoutSeconds;
+
     @Bean
     public ConnectionProvider downstreamConnectionProvider() {
         return ConnectionProvider.builder("gateway-downstream")
                 .maxConnections(200)
                 .pendingAcquireMaxCount(500)
-                .pendingAcquireTimeout(Duration.ofSeconds(2))
+                .pendingAcquireTimeout(Duration.ofSeconds(downstreamPendingAcquireTimeoutSeconds))
                 .build();
     }
 
     @Bean
     public HttpClient downstreamHttpClient(ConnectionProvider downstreamConnectionProvider) {
         return HttpClient.create(downstreamConnectionProvider)
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 1000)
-                .responseTimeout(Duration.ofSeconds(3))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, downstreamConnectTimeoutMs)
+                .responseTimeout(Duration.ofSeconds(downstreamResponseTimeoutSeconds))
                 .doOnConnected(connection -> connection
-                        .addHandlerLast(new ReadTimeoutHandler(3))
-                        .addHandlerLast(new WriteTimeoutHandler(3)));
+                        .addHandlerLast(new ReadTimeoutHandler(downstreamResponseTimeoutSeconds))
+                        .addHandlerLast(new WriteTimeoutHandler(downstreamResponseTimeoutSeconds)));
     }
 
     @Bean("userServiceWebClient")

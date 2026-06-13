@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+
+ARG APP_PORT=3000
+
+# Dependencies stage: install the exact npm dependency graph from package-lock.json.
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Build stage: compile Next.js and emit the standalone production server.
+FROM deps AS build
+WORKDIR /app
+
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_PREFIX
+ARG NEXT_PUBLIC_MESSAGE_SERVICE_URL
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_PREFIX=$NEXT_PUBLIC_PREFIX
+ENV NEXT_PUBLIC_MESSAGE_SERVICE_URL=$NEXT_PUBLIC_MESSAGE_SERVICE_URL
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+
+COPY next.config.ts tsconfig.json postcss.config.mjs components.json biome.json next-env.d.ts ./
+COPY public public
+COPY src src
+
+RUN npm run build
+
+# Runtime stage: copy only the standalone server and static assets.
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+ARG APP_PORT=3000
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=${APP_PORT}
+
+EXPOSE ${APP_PORT}
+
+COPY --from=build /app/public ./public
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
+
+CMD ["node", "server.js"]

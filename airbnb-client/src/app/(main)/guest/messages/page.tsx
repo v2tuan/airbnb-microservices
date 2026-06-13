@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import {
   Archive,
   CircleDot,
@@ -274,7 +274,7 @@ function ListingLinkPreview({
   );
 }
 
-export default function GuestMessagesPage() {
+function GuestMessagesPageContent() {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { conversations, loading: conversationsLoading, updateConversationLastMessage } = useConversations();
@@ -317,7 +317,8 @@ export default function GuestMessagesPage() {
     return currentUserIds.has(String(senderId));
   };
 
-  const resolveSenderRole = (senderId?: string) => (isOwnMessage(senderId) ? "guest" : "host");
+  const resolveSenderRole = (senderId?: string): ChatMessage["sender"] =>
+    isOwnMessage(senderId) ? "guest" : "host";
 
   useEffect(() => {
     // Để match sender chính xác, cần có keycloakUserId (JWT sub).
@@ -703,5 +704,13 @@ export default function GuestMessagesPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function GuestMessagesPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-[#f7f4ef]" />}>
+      <GuestMessagesPageContent />
+    </Suspense>
   );
 }

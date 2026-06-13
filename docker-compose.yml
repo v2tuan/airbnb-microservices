@@ -1,0 +1,332 @@
+name: airbnb-microservices
+
+x-host-gateway: &host-gateway
+  - "host.docker.internal:host-gateway"
+
+x-java-env: &java-env
+  JAVA_OPTS: ${JAVA_OPTS:-}
+  EUREKA_DEFAULT_ZONE: http://discovery-service:8761/eureka/
+  KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
+  KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
+  KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+x-spring-service: &spring-service
+  networks:
+    - airbnb-net
+  extra_hosts: *host-gateway
+  depends_on:
+    - discovery-service
+    - kafka
+    - keycloak
+
+services:
+  kafka:
+    image: apache/kafka:4.2.0
+    container_name: airbnb-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    networks:
+      - airbnb-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.5
+    container_name: airbnb-keycloak
+    ports:
+      - "8080:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
+      KC_DB: postgres
+      KC_DB_URL: ${KC_DB_URL}
+      KC_DB_USERNAME: ${KC_DB_USERNAME}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_DB_SCHEMA: ${KC_DB_SCHEMA:-public}
+    command:
+      - start-dev
+    networks:
+      - airbnb-net
+
+  discovery-service:
+    build:
+      context: ./discovery-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8761
+    image: airbnb/discovery-service:local
+    environment:
+      JAVA_OPTS: ${JAVA_OPTS:-}
+    expose:
+      - "8761"
+    networks:
+      - airbnb-net
+
+  api-gateway:
+    <<: *spring-service
+    build:
+      context: ./api-gateway
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8888
+    image: airbnb/api-gateway:local
+    ports:
+      - "${API_GATEWAY_PORT:-8888}:8888"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: api-gateway
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      USER_SERVICE_URL: http://user-service:8082/users
+      LISTING_SERVICE_URL: http://listing-service:8081
+      RATING_SERVICE_URL: http://rating-service:8085
+      MESSAGE_SERVICE_URI: http://message-service:8017
+      MESSAGE_SERVICE_WS_URI: ws://message-service:8017
+      GATEWAY_DOWNSTREAM_CONNECT_TIMEOUT_MS: ${GATEWAY_DOWNSTREAM_CONNECT_TIMEOUT_MS:-3000}
+      GATEWAY_DOWNSTREAM_RESPONSE_TIMEOUT_SECONDS: ${GATEWAY_DOWNSTREAM_RESPONSE_TIMEOUT_SECONDS:-15}
+      GATEWAY_DOWNSTREAM_PENDING_ACQUIRE_TIMEOUT_SECONDS: ${GATEWAY_DOWNSTREAM_PENDING_ACQUIRE_TIMEOUT_SECONDS:-5}
+
+  activity-service:
+    <<: *spring-service
+    build:
+      context: ./activity-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8089
+    image: airbnb/activity-service:local
+    expose:
+      - "8089"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: activity-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      ACTIVITY_DB_URL: ${ACTIVITY_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/activity_db?sslmode=require}
+      ACTIVITY_DB_USERNAME: ${ACTIVITY_DB_USERNAME:-neondb_owner}
+      ACTIVITY_DB_PASSWORD: ${ACTIVITY_DB_PASSWORD:-npg_GnXE70sJUjmu}
+
+  user-service:
+    <<: *spring-service
+    build:
+      context: ./user-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8082
+    image: airbnb/user-service:local
+    expose:
+      - "8082"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: user-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      USER_DB_URL: ${USER_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/user_db?sslmode=require}
+      USER_DB_USERNAME: ${USER_DB_USERNAME:-neondb_owner}
+      USER_DB_PASSWORD: ${USER_DB_PASSWORD:-npg_GnXE70sJUjmu}
+      IDP_URL: http://keycloak:8080
+      USER_SERVICE_IDP_CLIENT_ID: ${USER_SERVICE_IDP_CLIENT_ID:-user_service}
+      USER_SERVICE_IDP_CLIENT_SECRET: ${USER_SERVICE_IDP_CLIENT_SECRET:-Vzg4aVN4v35o2HhDX0jsKcVX6mGN4c96}
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:3000}
+      LISTING_SERVICE_URL: http://listing-service:8081
+      RATING_SERVICE_URL: http://rating-service:8085
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+
+  listing-service:
+    <<: *spring-service
+    build:
+      context: ./listing-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8081
+    image: airbnb/listing-service:local
+    expose:
+      - "8081"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: listing-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      LISTING_DB_URL: ${LISTING_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/listing_db?sslmode=require}
+      LISTING_DB_USERNAME: ${LISTING_DB_USERNAME:-neondb_owner}
+      LISTING_DB_PASSWORD: ${LISTING_DB_PASSWORD:-npg_GnXE70sJUjmu}
+      JWT_SIGNER_KEY: ${JWT_SIGNER_KEY:-1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij}
+      RATING_SERVICE_BASE_URL: http://api-gateway:8888
+      BOOKING_SERVICE_BASE_URL: http://booking-service:8086/bookings
+
+  wishlist-service:
+    <<: *spring-service
+    build:
+      context: ./wishlist-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8083
+    image: airbnb/wishlist-service:local
+    expose:
+      - "8083"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: wishlist-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      WISHLIST_DB_URL: ${WISHLIST_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/wishlist_db?sslmode=require}
+      WISHLIST_DB_USERNAME: ${WISHLIST_DB_USERNAME:-neondb_owner}
+      WISHLIST_DB_PASSWORD: ${WISHLIST_DB_PASSWORD:-npg_GnXE70sJUjmu}
+      JWT_SIGNER_KEY: ${JWT_SIGNER_KEY:-1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij}
+
+  rating-service:
+    <<: *spring-service
+    build:
+      context: ./rating-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8085
+    image: airbnb/rating-service:local
+    expose:
+      - "8085"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: rating-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      RATING_DB_URL: ${RATING_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/listing_db?sslmode=require}
+      RATING_DB_USERNAME: ${RATING_DB_USERNAME:-neondb_owner}
+      RATING_DB_PASSWORD: ${RATING_DB_PASSWORD:-npg_GnXE70sJUjmu}
+      APP_GATEWAY_BASE_URL: http://api-gateway:8888/api/v1
+
+  booking-service:
+    <<: *spring-service
+    build:
+      context: ./booking-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8086
+    image: airbnb/booking-service:local
+    expose:
+      - "8086"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: booking-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      BOOKING_DB_URL: ${BOOKING_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/booking_db?sslmode=require}
+      BOOKING_DB_USERNAME: ${BOOKING_DB_USERNAME:-neondb_owner}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-npg_GnXE70sJUjmu}
+
+  payment-service:
+    <<: *spring-service
+    build:
+      context: ./payment-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8087
+    image: airbnb/payment-service:local
+    expose:
+      - "8087"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: payment-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      PAYMENT_DB_URL: ${PAYMENT_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/payment_db?sslmode=require}
+      PAYMENT_DB_USERNAME: ${PAYMENT_DB_USERNAME:-neondb_owner}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-npg_GnXE70sJUjmu}
+      IDP_URL: http://keycloak:8080
+      PAYMENT_SERVICE_IDP_CLIENT_ID: ${PAYMENT_SERVICE_IDP_CLIENT_ID:-payment_service}
+      PAYMENT_SERVICE_IDP_CLIENT_SECRET: ${PAYMENT_SERVICE_IDP_CLIENT_SECRET:-by2n65zqJJrNemDHwVRSiOtl3f5CwdgK}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      CACHE_TYPE: ${CACHE_TYPE:-simple}
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      PAYMENT_RECONCILIATION_ENABLED: ${PAYMENT_RECONCILIATION_ENABLED:-false}
+      PAYMENT_RECONCILIATION_DELAY_MS: ${PAYMENT_RECONCILIATION_DELAY_MS:-3600000}
+      PAYOUT_SCHEDULER_DELAY_MS: ${PAYOUT_SCHEDULER_DELAY_MS:-60000}
+
+  notification-service:
+    <<: *spring-service
+    build:
+      context: ./notification-service
+      dockerfile: ../docker/Dockerfile.spring-boot
+      args:
+        APP_PORT: 8084
+    image: airbnb/notification-service:local
+    expose:
+      - "8084"
+    environment:
+      <<: *java-env
+      EUREKA_INSTANCE_HOSTNAME: notification-service
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      NOTIFICATION_MONGODB_URI: ${NOTIFICATION_MONGODB_URI:-mongodb://host.docker.internal:27017/airbnb_db}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-laptrinhh2208@gmail.com}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+
+  message-service:
+    build:
+      context: ./message-service
+      dockerfile: ../docker/Dockerfile.node-babel
+      args:
+        APP_PORT: 8017
+    image: airbnb/message-service:local
+    expose:
+      - "8017"
+    environment:
+      BUILD_MODE: production
+      PORT: 8017
+      MONGODB_URI: ${MONGODB_URI:-}
+      DATABASE_NAME: ${DATABASE_NAME:-airbnb_message}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
+      ALLOW_LEGACY_JWT: ${ALLOW_LEGACY_JWT:-false}
+      ACCESS_TOKEN_SECRET_SIGNATURE: ${ACCESS_TOKEN_SECRET_SIGNATURE:-}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      WEBSITE_DOMAIN_DEVELOPMENT: ${APP_FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_PROD_URL: ${FRONTEND_PROD_URL:-}
+    networks:
+      - airbnb-net
+    extra_hosts: *host-gateway
+    depends_on:
+      - keycloak
+
+  airbnb-client:
+    build:
+      context: ./airbnb-client
+      dockerfile: ../docker/Dockerfile.next
+      args:
+        APP_PORT: 3000
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8888}
+        NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
+        NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8888}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    image: airbnb/airbnb-client:local
+    ports:
+      - "${AIRBNB_CLIENT_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      NEXT_INTERNAL_API_BASE_URL: ${NEXT_INTERNAL_API_BASE_URL:-http://api-gateway:8888}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8888}
+      NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
+      NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8888}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    depends_on:
+      - api-gateway
+    networks:
+      - airbnb-net
+
+networks:
+  airbnb-net:
+    driver: bridge

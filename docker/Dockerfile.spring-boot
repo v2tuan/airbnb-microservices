@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.7
+
+ARG APP_PORT=8080
+
+# Build stage: compile the Spring Boot service and create the executable jar.
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /workspace
+
+COPY pom.xml ./
+RUN mvn -B -DskipTests dependency:go-offline
+
+COPY src src
+RUN mvn -B -DskipTests package
+
+# Runtime stage: run only the built jar on a smaller JRE image.
+FROM eclipse-temurin:21-jre AS runtime
+WORKDIR /app
+
+ARG APP_PORT=8080
+ENV JAVA_OPTS=""
+
+EXPOSE ${APP_PORT}
+
+COPY --from=build /workspace/target/*.jar app.jar
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

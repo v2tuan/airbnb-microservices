@@ -8,11 +8,10 @@ spring:
     name: booking-service
 
   datasource:
-    url: jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/booking_db?sslmode=require
-    username: neondb_owner
-    password: npg_GnXE70sJUjmu
+    url: ${BOOKING_DB_URL:jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/booking_db?sslmode=require}
+    username: ${BOOKING_DB_USERNAME:neondb_owner}
+    password: ${BOOKING_DB_PASSWORD:npg_GnXE70sJUjmu}
     driver-class-name: org.postgresql.Driver
-
     hikari:
       maximum-pool-size: 15
       minimum-idle: 3
@@ -20,7 +19,6 @@ spring:
       max-lifetime: 900000
       connection-timeout: 20000
       keepalive-time: 300000
-
 
   jpa:
     hibernate:
@@ -35,33 +33,23 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/airbnb
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/airbnb}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/airbnb/protocol/openid-connect/certs}
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
-      # JSON serializer: tự động serialize Java object thành JSON string
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      # Đảm bảo message được ghi vào tất cả ISR replicas trước khi confirm
       acks: all
-      # Retry 3 lần nếu send fail (network timeout, broker không available)
       retries: 3
     consumer:
       group-id: booking-service-group
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      # Chỉ cho phép deserialize các class trong package này (security)
-#      properties:
-#        spring.json.trusted.packages: "com.airbnb.common.event.*"
-      # earliest: đọc từ đầu topic nếu chưa có offset
-      # latest: chỉ đọc message mới (default)
       auto-offset-reset: earliest
-      # Tắt auto-commit: Spring Kafka tự commit sau khi listener xử lý xong
-      # Nếu listener throw exception → không commit → message được retry
       enable-auto-commit: false
 
-# Tên các Kafka topic — tập trung ở đây để dễ thay đổi
 kafka:
   topics:
     booking-saga-started: booking-saga-started
@@ -77,15 +65,8 @@ kafka:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
     register-with-eureka: true
     fetch-registry: true
   instance:
     prefer-ip-address: true
-    
-# ===== STRIPE CONFIG =====
-stripe:
-  # Webhook secret - lấy từ Stripe CLI hoặc Stripe Dashboard
-  # Chạy: stripe listen --forward-to localhost:8080/webhook
-  # CLI sẽ hiện: "webhook signing secret: whsec_..."
-#  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_21d16feabfa118dd96ba5395e29b7113b6561c9e3d12f51b15b34fbdf624400a}

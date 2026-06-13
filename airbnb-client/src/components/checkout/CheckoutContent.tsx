@@ -170,19 +170,18 @@ function DateEditDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[calc(100vh-64px)] max-w-[calc(100%-2rem)] gap-0 overflow-hidden rounded-[32px] bg-white p-0 shadow-[0_20px_60px_rgba(0,0,0,0.18)] sm:max-w-[860px]">
         <div className="px-9 pb-5 pt-10 sm:px-12">
-          <DialogHeader className="gap-5">
-            <DialogTitle className="text-[32px] font-semibold tracking-tight text-zinc-900">
-              Thay đổi ngày
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Chọn ngày nhận phòng và trả phòng cho lượt đặt này.
-            </DialogDescription>
-          </DialogHeader>
-dev
-          <div className="mt-8 flex items-center justify-between border-b border-zinc-200 pb-6">
-            <div>
-              <p className="text-[15px] font-semibold text-zinc-500">
-                Giờ nhận phòng
+         <DialogHeader className="gap-5">
+           <DialogTitle className="text-[32px] font-semibold tracking-tight text-zinc-900">
+             Thay đổi ngày
+           </DialogTitle>
+           <DialogDescription className="sr-only">
+             Chọn ngày nhận phòng và trả phòng cho lượt đặt này.
+           </DialogDescription>
+         </DialogHeader>
+         <div className="mt-8 flex items-center justify-between border-b border-zinc-200 pb-6">
+           <div>
+             <p className="text-[15px] font-semibold text-zinc-500">
+               Giờ nhận phòng
               </p>
               <p className="mt-1 text-[22px] font-semibold text-zinc-900">
                 {checkInTime}
