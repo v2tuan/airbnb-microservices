@@ -7,11 +7,12 @@ import {
   CalendarDays,
   Camera,
   Check,
-  ChevronRight,
   CircleDollarSign,
   Clock,
   Home,
   ImagePlus,
+  KeyRound,
+  ListChecks,
   Loader2,
   MapPin,
   Minus,
@@ -24,6 +25,7 @@ import {
   Trash2,
   Upload,
   Users,
+  Wifi,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -41,6 +43,7 @@ import {
   type AmenityResponse,
   type AvailabilityPayload,
   type HouseRulesPayload,
+  type ListingAccessInfoPayload,
   type ListingMutationPayload,
   type ListingPhotoResponse,
   type ListingPricingPayload,
@@ -67,6 +70,7 @@ type PanelKey =
   | "amenities"
   | "pricing"
   | "rules"
+  | "access"
   | "availability";
 
 const propertyOptions: Array<{ value: PropertyType; label: string }> = [
@@ -119,6 +123,7 @@ const panels: Array<{ key: PanelKey; label: string; icon: ElementType }> = [
   { key: "amenities", label: "Amenities", icon: Sparkles },
   { key: "pricing", label: "Pricing", icon: CircleDollarSign },
   { key: "rules", label: "House rules", icon: ShieldCheck },
+  { key: "access", label: "Access info", icon: KeyRound },
   { key: "availability", label: "Availability", icon: CalendarDays },
 ];
 
@@ -148,6 +153,25 @@ function hasValidCheckInWindow(form: ListingMutationPayload) {
   );
 }
 
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "response" in error &&
+    error.response &&
+    typeof error.response === "object" &&
+    "data" in error.response &&
+    error.response.data &&
+    typeof error.response.data === "object" &&
+    "message" in error.response.data &&
+    typeof error.response.data.message === "string"
+  ) {
+    return error.response.data.message;
+  }
+
+  return fallback;
+}
+
 const defaultPricing: ListingPricingPayload = {
   basePrice: 100,
   currency: "USD",
@@ -167,6 +191,14 @@ const defaultRules: HouseRulesPayload = {
   partiesAllowed: false,
   childrenAllowed: true,
   additionalRules: "",
+};
+
+const defaultAccessInfo: ListingAccessInfoPayload = {
+  wifiPassword: "",
+  entryCode: "",
+  smartLockInstructions: "",
+  keyPickupInstructions: "",
+  checkInGuide: [],
 };
 
 function toListingForm(listing: ListingResponse): ListingMutationPayload {
@@ -291,6 +323,8 @@ export default function EditListingPage() {
   const [form, setForm] = useState<ListingMutationPayload | null>(null);
   const [pricing, setPricing] = useState<ListingPricingPayload>(defaultPricing);
   const [rules, setRules] = useState<HouseRulesPayload>(defaultRules);
+  const [accessInfo, setAccessInfo] =
+    useState<ListingAccessInfoPayload>(defaultAccessInfo);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
   const [selectedAmenityNames, setSelectedAmenityNames] = useState<string[]>(
     [],
@@ -327,6 +361,11 @@ export default function EditListingPage() {
       setForm(toListingForm(nextListing));
       setPricing({ ...defaultPricing, ...nextListing.pricing });
       setRules({ ...defaultRules, ...nextListing.houseRules });
+      setAccessInfo({
+        ...defaultAccessInfo,
+        ...nextListing.accessInfo,
+        checkInGuide: nextListing.accessInfo?.checkInGuide ?? [],
+      });
       setSelectedAmenityNames(
         nextListing.amenities?.map((amenity) => amenity.name) ?? [],
       );
@@ -423,6 +462,68 @@ export default function EditListingPage() {
     } finally {
       setSaving("");
     }
+  };
+
+  const handleSaveAccessInfo = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!token) return;
+
+    setSaving("access");
+    setError("");
+    try {
+      await listingAPI.saveAccessInfo(token, listingId, {
+        ...accessInfo,
+        checkInGuide: (accessInfo.checkInGuide ?? []).map((step, index) => ({
+          stepNumber: index + 1,
+          title: step.title,
+          description: step.description,
+          imageUrl: step.imageUrl ?? "",
+        })),
+      });
+      flashSuccess("Access info saved.");
+      void loadListing();
+    } catch (error: unknown) {
+      setError(getApiErrorMessage(error, "Unable to save access info."));
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const updateGuideStep = (
+    index: number,
+    field: "title" | "description" | "imageUrl",
+    value: string,
+  ) => {
+    setAccessInfo((current) => ({
+      ...current,
+      checkInGuide: (current.checkInGuide ?? []).map((step, stepIndex) =>
+        stepIndex === index ? { ...step, [field]: value } : step,
+      ),
+    }));
+  };
+
+  const addGuideStep = () => {
+    setAccessInfo((current) => ({
+      ...current,
+      checkInGuide: [
+        ...(current.checkInGuide ?? []),
+        {
+          stepNumber: (current.checkInGuide?.length ?? 0) + 1,
+          title: "",
+          description: "",
+          imageUrl: "",
+        },
+      ],
+    }));
+  };
+
+  const removeGuideStep = (index: number) => {
+    setAccessInfo((current) => ({
+      ...current,
+      checkInGuide: (current.checkInGuide ?? [])
+        .filter((_, stepIndex) => stepIndex !== index)
+        .map((step, stepIndex) => ({ ...step, stepNumber: stepIndex + 1 })),
+    }));
   };
 
   const handleSaveAmenities = async (event: FormEvent) => {
@@ -1416,6 +1517,177 @@ export default function EditListingPage() {
                   </section>
                   <div className="sticky bottom-0 -mx-6 mt-12 flex justify-end border-t border-[#dddddd] bg-white px-6 py-5">
                     <SaveButton loading={saving === "rules"}>Save</SaveButton>
+                  </div>
+                </form>
+              ) : null}
+
+              {activePanel === "access" ? (
+                <form onSubmit={handleSaveAccessInfo}>
+                  <h2 className="text-[28px] font-semibold leading-tight text-[#222222]">
+                    Access info
+                  </h2>
+                  <p className="mt-5 max-w-xl text-base text-[#6a6a6a]">
+                    Save private check-in details guests need for confirmed
+                    reservations.
+                  </p>
+
+                  <section className="mt-10 max-w-3xl">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="WiFi password">
+                        <input
+                          value={accessInfo.wifiPassword ?? ""}
+                          onChange={(event) =>
+                            setAccessInfo((current) => ({
+                              ...current,
+                              wifiPassword: event.target.value,
+                            }))
+                          }
+                          className={inputClass}
+                          placeholder="Shared after booking"
+                        />
+                      </Field>
+                      <Field label="Entry code">
+                        <input
+                          value={accessInfo.entryCode ?? ""}
+                          onChange={(event) =>
+                            setAccessInfo((current) => ({
+                              ...current,
+                              entryCode: event.target.value,
+                            }))
+                          }
+                          className={inputClass}
+                          placeholder="Door, gate, or lockbox code"
+                        />
+                      </Field>
+                    </div>
+                  </section>
+
+                  <section className="mt-10 max-w-3xl">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="Smart lock instructions">
+                        <textarea
+                          value={accessInfo.smartLockInstructions ?? ""}
+                          onChange={(event) =>
+                            setAccessInfo((current) => ({
+                              ...current,
+                              smartLockInstructions: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          className={textareaClass}
+                          placeholder="Explain how to wake the keypad or unlock the door."
+                        />
+                      </Field>
+                      <Field label="Key pickup instructions">
+                        <textarea
+                          value={accessInfo.keyPickupInstructions ?? ""}
+                          onChange={(event) =>
+                            setAccessInfo((current) => ({
+                              ...current,
+                              keyPickupInstructions: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          className={textareaClass}
+                          placeholder="Tell guests where to collect keys if needed."
+                        />
+                      </Field>
+                    </div>
+                  </section>
+
+                  <section className="mt-10 max-w-3xl">
+                    <div className="mb-5 flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#222222]">
+                          Arrival guide
+                        </h3>
+                        <p className="mt-1 text-sm text-[#6a6a6a]">
+                          Add ordered steps guests can follow on arrival.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addGuideStep}
+                        className="inline-flex h-11 items-center gap-2 rounded-lg border border-[#222222] px-4 text-sm font-medium text-[#222222]"
+                      >
+                        <Plus className="size-4" />
+                        Add step
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {(accessInfo.checkInGuide ?? []).map((step, index) => (
+                        <div
+                          key={
+                            step.guideStepId ?? step.stepNumber ?? step.title
+                          }
+                          className="rounded-[14px] border border-[#dddddd] p-4"
+                        >
+                          <div className="mb-4 flex items-center justify-between gap-4">
+                            <span className="flex size-9 items-center justify-center rounded-full bg-[#222222] text-sm font-semibold text-white">
+                              {index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeGuideStep(index)}
+                              className="inline-flex size-9 items-center justify-center rounded-full text-[#c13515] hover:bg-red-50"
+                              aria-label="Remove guide step"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                          <div className="grid gap-4">
+                            <Field label="Title">
+                              <input
+                                value={step.title}
+                                onChange={(event) =>
+                                  updateGuideStep(
+                                    index,
+                                    "title",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                                placeholder="Find the entrance"
+                              />
+                            </Field>
+                            <Field label="Description" wide>
+                              <textarea
+                                value={step.description}
+                                onChange={(event) =>
+                                  updateGuideStep(
+                                    index,
+                                    "description",
+                                    event.target.value,
+                                  )
+                                }
+                                rows={3}
+                                className={textareaClass}
+                                placeholder="Describe this step clearly."
+                              />
+                            </Field>
+                            <Field label="Image URL" wide>
+                              <input
+                                value={step.imageUrl ?? ""}
+                                onChange={(event) =>
+                                  updateGuideStep(
+                                    index,
+                                    "imageUrl",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                                placeholder="Optional"
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <div className="sticky bottom-0 -mx-6 mt-12 flex justify-end border-t border-[#dddddd] bg-white px-6 py-5">
+                    <SaveButton loading={saving === "access"}>Save</SaveButton>
                   </div>
                 </form>
               ) : null}
@@ -2416,6 +2688,26 @@ export default function EditListingPage() {
                   <p className="flex items-center gap-3">
                     <Users className="size-5" />
                     {form.maxGuests} guests maximum
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActivePanel("access")}
+                className={`block w-full rounded-[14px] bg-white p-5 text-left transition ${activePanel === "access" ? "ring-2 ring-[#222222]" : softShadow}`}
+              >
+                <p className="text-base font-semibold text-[#222222]">
+                  Access info
+                </p>
+                <div className="mt-4 space-y-3 text-base text-[#222222]">
+                  <p className="flex items-center gap-3">
+                    <Wifi className="size-5" />
+                    {accessInfo.wifiPassword ? "WiFi added" : "Add WiFi"}
+                  </p>
+                  <p className="flex items-center gap-3">
+                    <ListChecks className="size-5" />
+                    {(accessInfo.checkInGuide ?? []).length} arrival steps
                   </p>
                 </div>
               </button>

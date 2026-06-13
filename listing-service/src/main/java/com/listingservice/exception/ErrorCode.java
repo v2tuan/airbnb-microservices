@@ -52,6 +52,7 @@ public enum ErrorCode {
     HOUSE_RULES_NOT_FOUND(2501, "House rules not found", HttpStatus.NOT_FOUND),
     INVALID_CHECK_IN_TIME(2502, "Invalid check-in time", HttpStatus.BAD_REQUEST),
     INVALID_CHECK_OUT_TIME(2503, "Invalid check-out time", HttpStatus.BAD_REQUEST),
+    ACCESS_INFO_NOT_FOUND(2504, "Access info not found", HttpStatus.NOT_FOUND),
     
     // Validation errors (2600-2699)
     TITLE_REQUIRED(2601, "Title is required", HttpStatus.BAD_REQUEST),

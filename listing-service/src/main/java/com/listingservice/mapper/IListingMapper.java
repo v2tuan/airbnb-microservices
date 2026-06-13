@@ -10,7 +10,8 @@ import org.mapstruct.*;
     IListingPhotoMapper.class, 
     IAmenityMapper.class, 
     IListingPricingMapper.class, 
-    IHouseRulesMapper.class
+    IHouseRulesMapper.class,
+    IListingAccessInfoMapper.class
 })
 public interface IListingMapper {
     
@@ -21,6 +22,7 @@ public interface IListingMapper {
     @Mapping(target = "listingAmenities", ignore = true)
     @Mapping(target = "pricing", ignore = true)
     @Mapping(target = "houseRules", ignore = true)
+    @Mapping(target = "accessInfo", ignore = true)
     @Mapping(target = "customPricing", ignore = true)
     @Mapping(target = "availabilityCalendar", ignore = true)
     @Mapping(target = "cancellationPolicyCode", source = "cancellationPolicyCode", defaultValue = "FLEXIBLE")
@@ -30,6 +32,7 @@ public interface IListingMapper {
     @Mapping(target = "photos", source = "photos")
     @Mapping(target = "pricing", source = "pricing")
     @Mapping(target = "houseRules", source = "houseRules")
+    @Mapping(target = "accessInfo", source = "accessInfo")
     ListingResponse toResponse(Listing listing);
     
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
@@ -40,6 +43,7 @@ public interface IListingMapper {
     @Mapping(target = "listingAmenities", ignore = true)
     @Mapping(target = "pricing", ignore = true)
     @Mapping(target = "houseRules", ignore = true)
+    @Mapping(target = "accessInfo", ignore = true)
     @Mapping(target = "customPricing", ignore = true)
     @Mapping(target = "availabilityCalendar", ignore = true)
     void updateEntity(@MappingTarget Listing listing, ListingUpdateRequest request);

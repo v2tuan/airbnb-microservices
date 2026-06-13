@@ -36,6 +36,6 @@ public interface IListingService {
     /**
      * Get paginated listings by host with optional status filter
      */
-    Page<ListingItemResponse> getListingsByHostPaginated(String hostId, ListingStatus status, Pageable pageable);
+    Page<ListingItemResponse> getListingsByHostPaginated(String hostId, ListingStatus status, String keyword, Pageable pageable);
 }
 

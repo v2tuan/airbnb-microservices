@@ -9,15 +9,6 @@ gateway:
     connect-timeout-ms: ${GATEWAY_DOWNSTREAM_CONNECT_TIMEOUT_MS:3000}
     response-timeout-seconds: ${GATEWAY_DOWNSTREAM_RESPONSE_TIMEOUT_SECONDS:15}
     pending-acquire-timeout-seconds: ${GATEWAY_DOWNSTREAM_PENDING_ACQUIRE_TIMEOUT_SECONDS:5}
-
-services:
-  user-service:
-    url: ${USER_SERVICE_URL:http://localhost:8082/users}
-  listing-service:
-    url: ${LISTING_SERVICE_URL:http://localhost:8081}
-  rating-service:
-    url: ${RATING_SERVICE_URL:http://localhost:8085}
-
 spring:
   application:
     name: api-gateway

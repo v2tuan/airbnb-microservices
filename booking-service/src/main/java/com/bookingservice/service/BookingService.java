@@ -18,6 +18,7 @@ import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostReservationsPageResponse;
+import com.bookingservice.dto.response.ListingAccessInfoResponse;
 import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.dto.response.PublicUserResponse;
 import com.bookingservice.dto.response.ReservationDetailResponse;
@@ -1925,6 +1926,29 @@ public class BookingService {
     }
 
     private BookingDetailResponse.AccessInfo buildAccessInfo(ListingResponse listing) {
+        ListingAccessInfoResponse listingAccessInfo = listing != null ? listing.getAccessInfo() : null;
+        if (listingAccessInfo != null) {
+            List<BookingDetailResponse.GuideStep> guideSteps = listingAccessInfo.getCheckInGuide() != null
+                    && !listingAccessInfo.getCheckInGuide().isEmpty()
+                    ? listingAccessInfo.getCheckInGuide().stream()
+                    .map(step -> BookingDetailResponse.GuideStep.builder()
+                            .stepNumber(step.getStepNumber())
+                            .title(step.getTitle())
+                            .description(step.getDescription())
+                            .imageUrl(step.getImageUrl())
+                            .build())
+                    .toList()
+                    : buildCheckInGuide(listing);
+
+            return BookingDetailResponse.AccessInfo.builder()
+                    .wifiPassword(listingAccessInfo.getWifiPassword())
+                    .entryCode(listingAccessInfo.getEntryCode())
+                    .smartLockInstructions(listingAccessInfo.getSmartLockInstructions())
+                    .keyPickupInstructions(listingAccessInfo.getKeyPickupInstructions())
+                    .checkInGuide(guideSteps)
+                    .build();
+        }
+
         return BookingDetailResponse.AccessInfo.builder()
                 .wifiPassword(null)
                 .entryCode(null)
