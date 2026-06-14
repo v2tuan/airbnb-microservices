@@ -66,9 +66,11 @@ public class SecurityConfig {
                         prefix + "/listings/**",
                         prefix + "/ratings/**",
                         prefix + "/profile/**",
+                        prefix + "/chatbot/**",
                         // Ensure literal API prefix route is also allowed in case
                         // the `prefix` value isn't available at runtime for any reason.
                         "/api/v1/profile/**",
+                        "/api/v1/chatbot/**",
                         prefix + "/payments/webhook"
                 ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)

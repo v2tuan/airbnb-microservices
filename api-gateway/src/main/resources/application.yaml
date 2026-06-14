@@ -100,6 +100,12 @@ spring:
                 - Path=${app.api-prefix}/bookings/**
               filters:
                 - StripPrefix=2
+            - id: chatbot_service
+              uri: lb://chatbot-service
+              predicates:
+                - Path=${app.api-prefix}/chatbot/**
+              filters:
+                - StripPrefix=2
 
 eureka:
   client:
