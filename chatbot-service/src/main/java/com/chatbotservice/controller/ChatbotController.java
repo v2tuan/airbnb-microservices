@@ -1,6 +1,7 @@
 package com.chatbotservice.controller;
 
 import com.chatbotservice.dto.ChatRequest;
+import com.chatbotservice.dto.ChatStreamEvent;
 import com.chatbotservice.service.ChatbotService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -56,8 +57,8 @@ public class ChatbotController {
                     String userId = jwt.getSubject();
 
                     return chatbotService.stream(message.trim(), userId)
-                            .filter(chunk -> chunk != null && !chunk.isEmpty())
-                            .map(this::messageEvent)
+                            .filter(event -> event != null && event.data() != null && !event.data().isEmpty())
+                            .map(this::streamEvent)
                             .concatWithValues(doneEvent());
                 })
                 .onErrorResume(ex -> {
@@ -66,9 +67,11 @@ public class ChatbotController {
                 });
     }
 
-    private ServerSentEvent<String> messageEvent(String chunk) {
-        return ServerSentEvent.builder(chunk)
-                .event("message")
+    private ServerSentEvent<String> streamEvent(ChatStreamEvent event) {
+        // Keep event names explicit so the frontend can route Markdown tokens and
+        // structured listing card JSON to different UI components.
+        return ServerSentEvent.builder(event.data())
+                .event(event.event())
                 .build();
     }
 

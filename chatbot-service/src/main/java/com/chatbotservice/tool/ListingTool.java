@@ -3,10 +3,12 @@ package com.chatbotservice.tool;
 import com.chatbotservice.client.ListingFeignClient;
 import com.chatbotservice.configuration.ChatbotProperties;
 import com.chatbotservice.dto.listing.ApiResponse;
+import com.chatbotservice.dto.listing.ListingCardResponse;
 import com.chatbotservice.dto.listing.ListingPhotoResponse;
 import com.chatbotservice.dto.listing.ListingPricingResponse;
 import com.chatbotservice.dto.listing.ListingResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
@@ -48,7 +50,8 @@ public class ListingTool {
             @ToolParam(required = false, description = "Check-in date in ISO format yyyy-MM-dd.")
             LocalDate checkIn,
             @ToolParam(required = false, description = "Check-out date in ISO format yyyy-MM-dd.")
-            LocalDate checkOut
+            LocalDate checkOut,
+            ToolContext toolContext
     ) {
         if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
             return "INVALID_SEARCH_FILTER: minPrice must be less than or equal to maxPrice.";
@@ -73,6 +76,8 @@ public class ListingTool {
                 return "NO_LISTINGS_FOUND: No active listings matched the requested filters.";
             }
 
+            addListingCardsToContext(toolContext, listings);
+
             return formatResults(listings);
         } catch (Exception exception) {
             log.warn("Listing tool failed", exception);
@@ -84,6 +89,43 @@ public class ListingTool {
         return response != null && response.data() != null
                 ? response.data()
                 : List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addListingCardsToContext(ToolContext toolContext, List<ListingResponse> listings) {
+        if (toolContext == null || toolContext.getContext() == null) {
+            return;
+        }
+
+        Object value = toolContext.getContext().get("listingCards");
+        if (!(value instanceof List<?> cards)) {
+            return;
+        }
+
+        // ToolContext is Spring AI's per-request runtime map. It is not sent to the model,
+        // so this is a safe place to collect structured card data for the SSE response.
+        List<ListingCardResponse> typedCards = (List<ListingCardResponse>) cards;
+        listings.stream()
+                .map(this::toCardResponse)
+                .forEach(typedCards::add);
+    }
+
+    private ListingCardResponse toCardResponse(ListingResponse listing) {
+        ListingPricingResponse pricing = listing.pricing();
+
+        return new ListingCardResponse(
+                listing.listingId() != null ? listing.listingId().toString() : null,
+                listing.title(),
+                listing.city(),
+                listing.country(),
+                pricing != null ? pricing.basePrice() : null,
+                pricing != null ? pricing.currency() : null,
+                coverPhoto(listing),
+                listing.maxGuests(),
+                listing.instantBook(),
+                listing.roomType(),
+                listing.propertyType()
+        );
     }
 
     private boolean matchesPrice(ListingResponse listing, BigDecimal minPrice, BigDecimal maxPrice) {
