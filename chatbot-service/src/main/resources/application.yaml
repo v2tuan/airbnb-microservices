@@ -4,15 +4,14 @@ spring:
 
   ai:
     model:
-      chat: google-genai
+      chat: ${CHATBOT_AI_PROVIDER:google-genai}
     google:
       genai:
-        api-key: ${GEMINI_API_KEY}
+        api-key: ${GEMINI_API_KEY:}
         chat:
-#          model: gemini-2.5-flash
-          model: gemini-3.1-flash-lite
-          temperature: 0.3
-          max-output-tokens: 2048
+          model: ${GEMINI_MODEL:gemini-2.5-flash}
+          temperature: ${GEMINI_TEMPERATURE:0.3}
+          max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
 
   security:
     oauth2:
@@ -30,5 +29,11 @@ eureka:
   instance:
     prefer-ip-address: true
 
+chatbot:
+  response-timeout: ${CHATBOT_RESPONSE_TIMEOUT:60s}
+  listing:
+    timeout: ${LISTING_SERVICE_TIMEOUT:3s}
+    max-results: ${CHATBOT_LISTING_MAX_RESULTS:6}
+
 server:
-  port: 8090
+  port: ${CHATBOT_SERVICE_PORT:8090}

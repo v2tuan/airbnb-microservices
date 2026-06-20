@@ -4,21 +4,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
-import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -66,11 +60,9 @@ public class SecurityConfig {
                         prefix + "/listings/**",
                         prefix + "/ratings/**",
                         prefix + "/profile/**",
-                        prefix + "/chatbot/**",
                         // Ensure literal API prefix route is also allowed in case
                         // the `prefix` value isn't available at runtime for any reason.
                         "/api/v1/profile/**",
-                        "/api/v1/chatbot/**",
                         prefix + "/payments/webhook"
                 ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)

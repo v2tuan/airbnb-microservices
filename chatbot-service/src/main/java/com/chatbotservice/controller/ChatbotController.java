@@ -1,13 +1,22 @@
 package com.chatbotservice.controller;
 
 import com.chatbotservice.dto.ChatRequest;
-import com.chatbotservice.dto.ChatResponse;
 import com.chatbotservice.service.ChatbotService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/chatbot")
@@ -19,29 +28,59 @@ public class ChatbotController {
         this.chatbotService = chatbotService;
     }
 
-//    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-//    public Flux<String> stream(@RequestBody ChatRequest request) {
-//        return chatbotService.stream(request.message())
-//                .onErrorResume(ex ->
-//                        Flux.just("Xin lỗi, chatbot hiện đang hết quota Gemini. Vui lòng thử lại sau.")
-//                );
-//    }
+    @GetMapping("/health")
+    public Map<String, String> health() {
+        return Map.of("status", "UP", "service", "chatbot-service");
+    }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> stream(@RequestBody ChatRequest request) {
-        return chatbotService.stream(request.message())
-                .filter(chunk -> chunk != null && !chunk.isEmpty())
-                .map(chunk -> ServerSentEvent.builder(chunk)
-                        .event("message")
-                        .build())
+    public Flux<ServerSentEvent<String>> stream(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestBody(required = false) Mono<ChatRequest> request
+    ) {
+        if (jwt == null || !StringUtils.hasText(jwt.getSubject())) {
+            return Flux.just(errorEvent("Bạn cần đăng nhập để sử dụng chatbot."));
+        }
+
+        Mono<ChatRequest> safeRequest = request != null ? request : Mono.empty();
+
+        return safeRequest
+                .defaultIfEmpty(new ChatRequest(null))
+                .flatMapMany(chatRequest -> {
+                    String message = chatRequest != null ? chatRequest.message() : null;
+
+                    if (!StringUtils.hasText(message)) {
+                        return Flux.just(errorEvent("Tin nhắn không được để trống."));
+                    }
+
+                    String userId = jwt.getSubject();
+
+                    return chatbotService.stream(message.trim(), userId)
+                            .filter(chunk -> chunk != null && !chunk.isEmpty())
+                            .map(this::messageEvent)
+                            .concatWithValues(doneEvent());
+                })
                 .onErrorResume(ex -> {
                     log.error("Chatbot stream failed", ex);
-
-                    return Flux.just(
-                            ServerSentEvent.builder("Xin lỗi, chatbot hiện đang gặp lỗi. Vui lòng thử lại sau.")
-                                    .event("error")
-                                    .build()
-                    );
+                    return Flux.just(errorEvent(chatbotService.toClientMessage(ex)));
                 });
+    }
+
+    private ServerSentEvent<String> messageEvent(String chunk) {
+        return ServerSentEvent.builder(chunk)
+                .event("message")
+                .build();
+    }
+
+    private ServerSentEvent<String> doneEvent() {
+        return ServerSentEvent.builder("[DONE]")
+                .event("done")
+                .build();
+    }
+
+    private ServerSentEvent<String> errorEvent(String message) {
+        return ServerSentEvent.builder(message)
+                .event("error")
+                .build();
     }
 }
