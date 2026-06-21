@@ -3,25 +3,25 @@
 import {
   BedDouble,
   ChevronLeft,
+  ChevronRight,
   History,
   ListFilter,
   MessageCircleQuestion,
   Plus,
   SendHorizontal,
   Sparkles,
-  Star,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  ChatbotAuthenticationError,
   type ChatbotListingCard,
-  type ChatbotStreamMode,
   streamChatbotResponse,
 } from "@/api/endpoints/chatbot";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,15 @@ const createInitialMessages = (): ChatMessage[] => [
 ];
 
 const markdownComponents: Components = {
+  h1: ({ className, ...props }) => (
+    <h1 className={cn("mb-2 text-lg font-bold", className)} {...props} />
+  ),
+  h2: ({ className, ...props }) => (
+    <h2 className={cn("mb-2 text-base font-bold", className)} {...props} />
+  ),
+  h3: ({ className, ...props }) => (
+    <h3 className={cn("mb-2 text-sm font-bold", className)} {...props} />
+  ),
   p: ({ className, ...props }) => (
     <p className={cn("mb-2 leading-relaxed last:mb-0", className)} {...props} />
   ),
@@ -133,6 +142,88 @@ function ChatMarkdown({ content }: { content: string }) {
   );
 }
 
+function formatLabel(value?: string) {
+  return value?.replaceAll("_", " ").toLowerCase();
+}
+
+function ChatbotListingCardItem({
+  listing,
+  onAskListing,
+}: {
+  listing: ChatbotListingCard;
+  onAskListing: (listing: ChatbotListingCard) => void;
+}) {
+  return (
+    <article
+      className="flex min-h-[330px] w-[78%] min-w-[220px] max-w-[260px] shrink-0 snap-start flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm sm:w-[238px] sm:min-w-[238px]"
+      data-chatbot-listing-card
+    >
+      <div className="relative aspect-[4/3] bg-neutral-100">
+        <Image
+          src={listing.imageUrl}
+          alt={listing.title}
+          fill
+          className="object-cover"
+          sizes="(max-width: 640px) 92vw, 250px"
+        />
+        {listing.badge ? (
+          <span className="absolute left-2 top-2 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-neutral-950 shadow-sm">
+            {listing.badge}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex flex-1 flex-col space-y-3 p-3">
+        <div>
+          <h3 className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-neutral-950">
+            {listing.title}
+          </h3>
+          <p className="line-clamp-1 text-xs text-neutral-500">
+            {listing.location}
+          </p>
+        </div>
+
+        <div className="space-y-1 text-xs text-neutral-600">
+          {listing.maxGuests ? <p>{listing.maxGuests} khách</p> : null}
+          <p className="line-clamp-1">
+            {[formatLabel(listing.roomType), formatLabel(listing.propertyType)]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+
+        {listing.priceLabel ? (
+          <p className="mt-auto line-clamp-1 text-xs font-semibold text-neutral-950">
+            {listing.priceLabel}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="border-t border-neutral-200">
+        <Button
+          asChild
+          className="h-10 w-full justify-start rounded-none px-3 text-[#006ce4]"
+          variant="ghost"
+        >
+          <Link href={listing.href}>
+            <BedDouble className="size-4" />
+            Xem chi tiết
+          </Link>
+        </Button>
+        <Button
+          className="h-10 w-full justify-start rounded-none border-t border-neutral-100 px-3 text-[#006ce4]"
+          onClick={() => onAskListing(listing)}
+          type="button"
+          variant="ghost"
+        >
+          <MessageCircleQuestion className="size-4" />
+          Hỏi về phòng này
+        </Button>
+      </div>
+    </article>
+  );
+}
+
 function ChatbotListingCards({
   listings,
   onAskListing,
@@ -140,93 +231,102 @@ function ChatbotListingCards({
   listings: ChatbotListingCard[];
   onAskListing: (listing: ChatbotListingCard) => void;
 }) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollPrevious, setCanScrollPrevious] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const container = scrollContainerRef.current;
+
+    if (!container) {
+      setCanScrollPrevious(false);
+      setCanScrollNext(false);
+      return;
+    }
+
+    const maxScrollLeft = container.scrollWidth - container.clientWidth;
+
+    setCanScrollPrevious(container.scrollLeft > 4);
+    setCanScrollNext(container.scrollLeft < maxScrollLeft - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+  });
+
+  useEffect(() => {
+    window.addEventListener("resize", updateScrollState);
+
+    return () => {
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [updateScrollState]);
+
+  const scrollListingCards = useCallback((direction: "previous" | "next") => {
+    const container = scrollContainerRef.current;
+
+    if (!container) return;
+
+    const firstCard = container.querySelector<HTMLElement>(
+      "[data-chatbot-listing-card]",
+    );
+    const cardGap = 12;
+    const distance =
+      (firstCard?.offsetWidth ?? container.clientWidth * 0.82) + cardGap;
+
+    container.scrollBy({
+      left: direction === "previous" ? -distance : distance,
+      behavior: "smooth",
+    });
+  }, []);
+
   if (listings.length === 0) return null;
 
   return (
-    <div className="mt-4 space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {listings.map((listing) => (
-          <article
-            className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm"
-            key={listing.id}
-          >
-            <div className="relative aspect-[4/3] bg-neutral-100">
-              <Image
-                src={listing.imageUrl}
-                alt={listing.title}
-                fill
-                className="object-cover"
-                sizes="(max-width: 640px) 92vw, 250px"
-              />
-              {listing.badge ? (
-                <span className="absolute left-2 top-2 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-neutral-950 shadow-sm">
-                  {listing.badge}
-                </span>
-              ) : null}
-            </div>
+    <div className="mt-4 w-full min-w-0 space-y-3">
+      <section
+        aria-label="Danh sach phong goi y"
+        aria-roledescription="carousel"
+        className="relative w-full min-w-0"
+      >
+        <div
+          className="flex w-full snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          onScroll={updateScrollState}
+          ref={scrollContainerRef}
+        >
+          {listings.map((listing) => (
+            <ChatbotListingCardItem
+              key={listing.id}
+              listing={listing}
+              onAskListing={onAskListing}
+            />
+          ))}
+        </div>
 
-            <div className="space-y-3 p-3">
-              <div>
-                <div className="flex items-center gap-0.5 text-[#febb02]">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Star
-                      className="size-3 fill-current"
-                      key={`${listing.id}-star-${index}`}
-                    />
-                  ))}
-                </div>
-                <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-neutral-950">
-                  {listing.title}
-                </h3>
-                <p className="line-clamp-1 text-xs text-neutral-500">
-                  {listing.location}
-                </p>
-              </div>
+        <Button
+          aria-label="Cuon danh sach phong sang trai"
+          className="absolute left-1 top-1/2 z-10 size-8 -translate-y-1/2 rounded-full border-neutral-200 bg-white/95 text-neutral-950 shadow-md hover:bg-white disabled:hidden"
+          disabled={!canScrollPrevious}
+          onClick={() => scrollListingCards("previous")}
+          size="icon-sm"
+          type="button"
+          variant="outline"
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
 
-              <div className="flex items-center gap-2">
-                {typeof listing.rating === "number" ? (
-                  <span className="rounded bg-[#003b95] px-1.5 py-1 text-xs font-bold text-white">
-                    {listing.rating.toFixed(1)}
-                  </span>
-                ) : null}
-                <span className="line-clamp-1 text-xs text-neutral-600">
-                  {listing.reviewCount
-                    ? `Tuyệt hảo · ${listing.reviewCount} đánh giá`
-                    : listing.priceLabel}
-                </span>
-              </div>
-
-              {listing.priceLabel ? (
-                <p className="line-clamp-1 text-xs font-semibold text-neutral-950">
-                  {listing.priceLabel}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="border-t border-neutral-200">
-              <Button
-                asChild
-                className="h-10 w-full justify-start rounded-none px-3 text-[#006ce4]"
-                variant="ghost"
-              >
-                <Link href={listing.href ?? "/search"}>
-                  <BedDouble className="size-4" />
-                  Xem chi tiết
-                </Link>
-              </Button>
-              <Button
-                className="h-10 w-full justify-start rounded-none border-t border-neutral-100 px-3 text-[#006ce4]"
-                onClick={() => onAskListing(listing)}
-                type="button"
-                variant="ghost"
-              >
-                <MessageCircleQuestion className="size-4" />
-                Đặt câu hỏi
-              </Button>
-            </div>
-          </article>
-        ))}
-      </div>
+        <Button
+          aria-label="Cuon danh sach phong sang phai"
+          className="absolute right-1 top-1/2 z-10 size-8 -translate-y-1/2 rounded-full border-neutral-200 bg-white/95 text-neutral-950 shadow-md hover:bg-white disabled:hidden"
+          disabled={!canScrollNext}
+          onClick={() => scrollListingCards("next")}
+          size="icon-sm"
+          type="button"
+          variant="outline"
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+      </section>
 
       <Button
         asChild
@@ -235,7 +335,7 @@ function ChatbotListingCards({
       >
         <Link href="/search">
           <ListFilter className="size-4" />
-          Xem tất cả kết quả
+          Xem thêm trên trang tìm kiếm
         </Link>
       </Button>
     </div>
@@ -257,10 +357,10 @@ function MessageBubble({
     >
       <div
         className={cn(
-          "max-w-[92%] text-sm leading-relaxed",
+          "text-sm leading-relaxed",
           isUser
-            ? "rounded-2xl rounded-br-md bg-[#d9d9d9] px-4 py-3 text-neutral-950"
-            : "w-full",
+            ? "max-w-[92%] rounded-2xl rounded-br-md bg-[#d9d9d9] px-4 py-3 text-neutral-950"
+            : "w-full min-w-0",
         )}
       >
         {isUser ? (
@@ -268,14 +368,14 @@ function MessageBubble({
         ) : (
           <div className="space-y-2">
             {message.content ? (
-              <div className="rounded-2xl rounded-tl-md bg-[#f3f3f3] px-4 py-3 text-neutral-900">
+              <div className="max-w-[92%] rounded-2xl rounded-tl-md bg-[#f3f3f3] px-4 py-3 text-neutral-900">
                 <ChatMarkdown content={message.content} />
                 {message.isStreaming ? (
                   <span className="ml-1 inline-flex size-1.5 animate-pulse rounded-full bg-neutral-500" />
                 ) : null}
               </div>
             ) : (
-              <div className="inline-flex items-center gap-1.5 rounded-2xl rounded-tl-md bg-[#f3f3f3] px-4 py-3">
+              <div className="inline-flex max-w-[92%] items-center gap-1.5 rounded-2xl rounded-tl-md bg-[#f3f3f3] px-4 py-3">
                 <span className="size-1.5 animate-bounce rounded-full bg-neutral-500 [animation-delay:-0.2s]" />
                 <span className="size-1.5 animate-bounce rounded-full bg-neutral-500 [animation-delay:-0.1s]" />
                 <span className="size-1.5 animate-bounce rounded-full bg-neutral-500" />
@@ -300,7 +400,6 @@ export default function ChatbotWidget() {
   );
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamMode, setStreamMode] = useState<ChatbotStreamMode>("live");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activeAssistantIdRef = useRef<string | null>(null);
@@ -372,7 +471,6 @@ export default function ChatbotWidget() {
       await streamChatbotResponse({
         message: trimmedMessage,
         signal: controller.signal,
-        onModeChange: setStreamMode,
         onToken: (token) => {
           if (activeAssistantIdRef.current !== assistantMessage.id) return;
 
@@ -389,17 +487,28 @@ export default function ChatbotWidget() {
             listings,
           }));
         },
+        onError: (message) => {
+          if (activeAssistantIdRef.current !== assistantMessage.id) return;
+
+          updateAssistantMessage(assistantMessage.id, (currentMessage) => ({
+            ...currentMessage,
+            content: currentMessage.content || message,
+          }));
+        },
       });
     } catch (error) {
       if (
         !(error instanceof DOMException && error.name === "AbortError") &&
         activeAssistantIdRef.current === assistantMessage.id
       ) {
+        const fallbackMessage =
+          error instanceof ChatbotAuthenticationError
+            ? error.message
+            : "Xin lỗi, mình chưa thể kết nối Chat AI lúc này. Bạn thử lại sau nhé.";
+
         updateAssistantMessage(assistantMessage.id, (message) => ({
           ...message,
-          content:
-            message.content ||
-            "Xin lỗi, mình chưa thể kết nối Chat AI lúc này. Bạn thử lại sau nhé.",
+          content: message.content || fallbackMessage,
         }));
       }
     } finally {
@@ -427,7 +536,6 @@ export default function ChatbotWidget() {
     setIsStreaming(false);
     setInput("");
     setMessages(createInitialMessages());
-    setStreamMode("live");
   };
 
   const handleAskListing = (listing: ChatbotListingCard) => {
@@ -487,15 +595,10 @@ export default function ChatbotWidget() {
             </DialogPrimitive.Close>
 
             <DialogPrimitive.Title className="absolute left-1/2 -translate-x-1/2 text-base font-bold text-neutral-950">
-              Chat AI (beta)
+              Chat AI
             </DialogPrimitive.Title>
 
             <div className="flex items-center gap-1">
-              {streamMode === "mock" ? (
-                <span className="hidden rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800 sm:inline">
-                  Mock
-                </span>
-              ) : null}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -590,11 +693,8 @@ export default function ChatbotWidget() {
               </Button>
             </div>
             <p className="mx-auto mt-3 max-w-[520px] text-center text-xs text-neutral-500">
-              Output may be inaccurate. Read{" "}
-              <Link className="font-medium text-[#006ce4]" href="/">
-                privacy & usage terms
-              </Link>
-              .
+              Nội dung AI có thể chưa chính xác. Vui lòng kiểm tra lại thông tin
+              trước khi đặt phòng.
             </p>
           </form>
         </DialogPrimitive.Content>

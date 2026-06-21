@@ -1,15 +1,18 @@
-export type ChatbotStreamMode = "live" | "mock";
+import { authStorage } from "@/lib/auth-storage";
 
 export type ChatbotListingCard = {
   id: string;
+  listingId: string;
   title: string;
   location: string;
   imageUrl: string;
-  rating?: number;
-  reviewCount?: number;
   priceLabel?: string;
-  href?: string;
+  href: string;
   badge?: string;
+  maxGuests?: number;
+  roomType?: string;
+  propertyType?: string;
+  instantBook?: boolean;
 };
 
 export type ChatbotStreamOptions = {
@@ -17,11 +20,10 @@ export type ChatbotStreamOptions = {
   signal?: AbortSignal;
   onToken: (token: string) => void;
   onListings?: (listings: ChatbotListingCard[]) => void;
-  onModeChange?: (mode: ChatbotStreamMode) => void;
+  onError?: (message: string) => void;
 };
 
 type StreamPayload = {
-  type?: string;
   token?: string;
   delta?: string;
   content?: string;
@@ -31,35 +33,29 @@ type StreamPayload = {
   data?: unknown;
 };
 
+type SseFrame = {
+  event: string;
+  data: string;
+};
+
+type AuthRefreshResponse = {
+  access_token?: string;
+  accessToken?: string;
+  data?: {
+    access_token?: string;
+    accessToken?: string;
+  };
+};
+
+export class ChatbotAuthenticationError extends Error {
+  constructor(message = "Bạn cần đăng nhập để sử dụng Chat AI.") {
+    super(message);
+    this.name = "ChatbotAuthenticationError";
+  }
+}
+
 const fallbackImage =
   "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=1200&auto=format&fit=crop";
-
-const mockListings: ChatbotListingCard[] = [
-  {
-    id: "mock-riverside-suite",
-    title: "Riverside Suite Saigon",
-    location: "TP. Hồ Chí Minh, Quận 1",
-    imageUrl:
-      "https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=1200&auto=format&fit=crop",
-    rating: 9.1,
-    reviewCount: 284,
-    priceLabel: "Từ 1.250.000đ/đêm",
-    href: "/search?city=Ho%20Chi%20Minh",
-    badge: "Gần trung tâm",
-  },
-  {
-    id: "mock-garden-resort",
-    title: "Garden Pool Resort",
-    location: "Đà Nẵng, Ngũ Hành Sơn",
-    imageUrl:
-      "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=1200&auto=format&fit=crop",
-    rating: 8.8,
-    reviewCount: 167,
-    priceLabel: "Từ 1.780.000đ/đêm",
-    href: "/search?city=Da%20Nang",
-    badge: "Hồ bơi riêng",
-  },
-];
 
 const isAbortError = (error: unknown) => {
   return error instanceof DOMException && error.name === "AbortError";
@@ -70,11 +66,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 };
 
 const toStringValue = (value: unknown) => {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 };
 
 const toNumberValue = (value: unknown) => {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const formatCurrency = (amount: number, currency = "VND") => {
@@ -85,50 +87,100 @@ const formatCurrency = (amount: number, currency = "VND") => {
   }).format(amount);
 };
 
-const getChatbotStreamUrl = () => {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-  const prefix = process.env.NEXT_PUBLIC_PREFIX ?? "/api/v1";
-  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
-  const normalizedPrefix = prefix.startsWith("/") ? prefix : `/${prefix}`;
+const getApiBaseUrl = () => {
+  return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/+$/, "");
+};
 
-  return `${normalizedBaseUrl}${normalizedPrefix}/chatbot/stream`;
+const getApiPrefix = () => {
+  const prefix = process.env.NEXT_PUBLIC_PREFIX ?? "/api/v1";
+  return prefix.startsWith("/") ? prefix : `/${prefix}`;
+};
+
+const getChatbotStreamUrl = () => {
+  return `${getApiBaseUrl()}${getApiPrefix()}/chatbot/stream`;
+};
+
+const getRefreshUrl = () => {
+  return `${getApiBaseUrl()}${getApiPrefix()}/users/auth/refresh`;
+};
+
+const extractAccessToken = (payload: AuthRefreshResponse | null) => {
+  return (
+    payload?.data?.access_token ??
+    payload?.data?.accessToken ??
+    payload?.access_token ??
+    payload?.accessToken ??
+    null
+  );
+};
+
+const refreshAccessToken = async () => {
+  const response = await fetch(getRefreshUrl(), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+    credentials: "include",
+  });
+
+  if (!response.ok) return null;
+
+  const payload = (await response
+    .json()
+    .catch(() => null)) as AuthRefreshResponse | null;
+  const token = extractAccessToken(payload);
+
+  if (token) {
+    authStorage.setAccessToken(token);
+  }
+
+  return token;
 };
 
 const normalizeListing = (value: unknown): ChatbotListingCard | null => {
   if (!isRecord(value)) return null;
 
-  const id = toStringValue(value.id) ?? toStringValue(value.listingId);
+  const listingId =
+    toStringValue(value.listingId) ?? toStringValue(value.id) ?? null;
+  if (!listingId) return null;
+
   const title =
     toStringValue(value.title) ?? toStringValue(value.name) ?? "Nơi lưu trú";
   const imageUrl =
     toStringValue(value.imageUrl) ??
+    toStringValue(value.coverPhoto) ??
     toStringValue(value.coverImageUrl) ??
     toStringValue(value.thumbnailUrl) ??
     fallbackImage;
   const city = toStringValue(value.city);
   const country = toStringValue(value.country);
-  const location =
-    toStringValue(value.location) ||
-    [city, country].filter(Boolean).join(", ") ||
-    "Việt Nam";
   const basePrice = toNumberValue(value.basePrice);
   const currency = toStringValue(value.currency) ?? "VND";
-  const priceLabel =
-    toStringValue(value.priceLabel) ??
-    (basePrice ? `${formatCurrency(basePrice, currency)}/đêm` : undefined);
+  const instantBook = value.instantBook === true;
 
   return {
-    id: id ?? title,
+    id: listingId,
+    listingId,
     title,
-    location,
+    location:
+      toStringValue(value.location) ??
+      [city, country].filter(Boolean).join(", ") ??
+      "Việt Nam",
     imageUrl,
-    rating: toNumberValue(value.rating) ?? undefined,
-    reviewCount: toNumberValue(value.reviewCount) ?? undefined,
-    priceLabel,
-    href:
-      toStringValue(value.href) ??
-      (id ? `/rooms/${encodeURIComponent(id)}` : "/search"),
-    badge: toStringValue(value.badge) ?? undefined,
+    priceLabel:
+      toStringValue(value.priceLabel) ??
+      (basePrice !== null
+        ? `${formatCurrency(basePrice, currency)}/đêm`
+        : undefined),
+    href: `/rooms/${encodeURIComponent(listingId)}`,
+    badge:
+      toStringValue(value.badge) ?? (instantBook ? "Instant Book" : undefined),
+    maxGuests: toNumberValue(value.maxGuests) ?? undefined,
+    roomType: toStringValue(value.roomType) ?? undefined,
+    propertyType: toStringValue(value.propertyType) ?? undefined,
+    instantBook,
   };
 };
 
@@ -140,12 +192,11 @@ const normalizeListings = (value: unknown): ChatbotListingCard[] => {
     .filter((listing): listing is ChatbotListingCard => Boolean(listing));
 };
 
-const emitPayload = (
+const emitLegacyPayload = (
   data: string,
   options: Pick<ChatbotStreamOptions, "onToken" | "onListings">,
 ) => {
   const trimmed = data.trim();
-
   if (trimmed === "[DONE]") return;
 
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -178,31 +229,68 @@ const emitPayload = (
   options.onToken(data);
 };
 
-const readSseFrame = (
-  frame: string,
-  options: Pick<ChatbotStreamOptions, "onToken" | "onListings">,
-) => {
-  const lines = frame.split("\n");
-  const dataLines = lines
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length));
+const parseSseFrame = (frame: string): SseFrame | null => {
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const rawLine of frame.split("\n")) {
+    if (rawLine.startsWith("event:")) {
+      event = rawLine.slice("event:".length).trim() || "message";
+      continue;
+    }
+
+    if (rawLine.startsWith("data:")) {
+      const rawData = rawLine.slice("data:".length);
+      dataLines.push(rawData.startsWith(" ") ? rawData.slice(1) : rawData);
+    }
+  }
 
   if (dataLines.length === 0) {
     const rawFrame = frame.trim();
+    return rawFrame ? { event: "message", data: rawFrame } : null;
+  }
 
-    if (rawFrame.length > 0) {
-      emitPayload(rawFrame, options);
-    }
+  return {
+    event,
+    data: dataLines.join("\n"),
+  };
+};
 
+const readSseFrame = (
+  frame: string,
+  options: Pick<ChatbotStreamOptions, "onToken" | "onListings" | "onError">,
+) => {
+  const parsedFrame = parseSseFrame(frame);
+  if (!parsedFrame) return;
+
+  if (parsedFrame.event === "done" || parsedFrame.data.trim() === "[DONE]") {
     return;
   }
 
-  emitPayload(dataLines.join("\n"), options);
+  if (parsedFrame.event === "error") {
+    options.onError?.(parsedFrame.data);
+    return;
+  }
+
+  if (parsedFrame.event === "listing_cards") {
+    const listings = normalizeListings(JSON.parse(parsedFrame.data));
+    if (listings.length > 0) {
+      options.onListings?.(listings);
+    }
+    return;
+  }
+
+  // Backend mới gửi event `message` là token Markdown thuần. Nhánh legacy giữ lại
+  // để client vẫn chịu được payload JSON cũ nếu môi trường chưa deploy đồng bộ.
+  emitLegacyPayload(parsedFrame.data, options);
 };
 
 const consumeSseStream = async (
   body: ReadableStream<Uint8Array>,
-  options: Pick<ChatbotStreamOptions, "signal" | "onToken" | "onListings">,
+  options: Pick<
+    ChatbotStreamOptions,
+    "signal" | "onToken" | "onListings" | "onError"
+  >,
 ) => {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -214,7 +302,6 @@ const consumeSseStream = async (
     }
 
     const { value, done } = await reader.read();
-
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
@@ -229,109 +316,70 @@ const consumeSseStream = async (
   }
 
   const remaining = `${buffer}${decoder.decode()}`.trim();
-
   if (remaining.length > 0) {
     readSseFrame(remaining, options);
   }
 };
 
-const createMockResponse = (message: string) => {
-  const normalizedMessage = message
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d");
-  const destination = normalizedMessage.includes("da nang")
-    ? "Đà Nẵng"
-    : normalizedMessage.includes("nha trang")
-      ? "Nha Trang"
-      : normalizedMessage.includes("ha noi")
-        ? "Hà Nội"
-        : "TP. Hồ Chí Minh";
-
-  return `Mình tìm được một vài gợi ý phù hợp cho chuyến đi đến **${destination}**.
-
-**Tiêu chí nên ưu tiên**
-- Vị trí thuận tiện để di chuyển và gần khu ăn uống.
-- Điểm đánh giá từ khách trước đó từ 8.5 trở lên.
-- Chính sách hủy linh hoạt nếu lịch trình có thể thay đổi.
-
-Bên dưới là một số lựa chọn mẫu để bạn kiểm tra UI listing cards trong chat.`;
-};
-
-const sleep = (duration: number) =>
-  new Promise((resolve) => window.setTimeout(resolve, duration));
-
-const streamMockChatbotResponse = async (options: ChatbotStreamOptions) => {
-  const response = createMockResponse(options.message);
-  const tokens = response.match(/\S+\s*/g) ?? [response];
-  let listingsEmitted = false;
-
-  for (const [index, token] of tokens.entries()) {
-    if (options.signal?.aborted) {
-      throw new DOMException("The stream was aborted.", "AbortError");
-    }
-
-    if (!listingsEmitted && index > 24) {
-      options.onListings?.(mockListings);
-      listingsEmitted = true;
-    }
-
-    options.onToken(token);
-    await sleep(24);
-  }
-
-  if (!listingsEmitted) {
-    options.onListings?.(mockListings);
-  }
+const requestChatbotStream = async (
+  options: ChatbotStreamOptions,
+  token: string,
+) => {
+  return fetch(getChatbotStreamUrl(), {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ message: options.message }),
+    credentials: "include",
+    signal: options.signal,
+  });
 };
 
 export const streamChatbotResponse = async (
   options: ChatbotStreamOptions,
-): Promise<ChatbotStreamMode> => {
-  const forceMock = process.env.NEXT_PUBLIC_CHATBOT_MOCK_STREAMING === "true";
+): Promise<void> => {
+  let token = authStorage.getAccessToken();
 
-  if (forceMock) {
-    options.onModeChange?.("mock");
-    await streamMockChatbotResponse(options);
-    return "mock";
+  if (!token) {
+    throw new ChatbotAuthenticationError();
+  }
+
+  let response = await requestChatbotStream(options, token);
+
+  if (response.status === 401) {
+    token = await refreshAccessToken();
+
+    if (!token) {
+      throw new ChatbotAuthenticationError();
+    }
+
+    response = await requestChatbotStream(options, token);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new ChatbotAuthenticationError();
+    }
+
+    throw new Error("Chatbot stream endpoint is not available.");
+  }
+
+  if (!response.body || !contentType.includes("text/event-stream")) {
+    throw new Error("Chatbot response is not a valid SSE stream.");
   }
 
   try {
-    const response = await fetch(getChatbotStreamUrl(), {
-      method: "POST",
-      headers: {
-        Accept: "text/event-stream",
-        "Content-Type": "application/json",
-        Authorization: `Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJ5dm1TVHRCbkxsakhaTHVSS3Y3eUtvSDJkeG5YcUxHeTRYYWpKWS12a2RRIn0.eyJleHAiOjE3ODE4OTg2ODUsImlhdCI6MTc4MTg5Njk0NSwianRpIjoib25ydHJvOjNkMjRjNzE5LWU4NjctNjc4MS0zZGVjLTE2NWE4ZDUyNDg2MiIsImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODA4MC9yZWFsbXMvYWlyYm5iIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6ImUwNTg4ZDU3LTJjNzMtNDNiNy1iMGY1LWQ1OTUyZDkzODU0YiIsInR5cCI6IkJlYXJlciIsImF6cCI6InVzZXJfc2VydmljZSIsInNpZCI6IkgyZkJ2b3NNOFdhLUVTWTU4T1ZxQTlKZSIsImFjciI6IjEiLCJhbGxvd2VkLW9yaWdpbnMiOlsiKiJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJkZWZhdWx0LXJvbGVzLWFpcmJuYiIsInVtYV9hdXRob3JpemF0aW9uIiwiVVNFUiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoib3BlbmlkIGVtYWlsIHByb2ZpbGUiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsIm5hbWUiOiJKYW1lcyBCb25kIiwicHJlZmVycmVkX3VzZXJuYW1lIjoiaGVsbG8iLCJnaXZlbl9uYW1lIjoiSmFtZXMiLCJmYW1pbHlfbmFtZSI6IkJvbmQiLCJlbWFpbCI6InZvdmFudHVhbjc3MDJAZ21haWwuY29tIn0.VrPPCi5YLEVCoaiQ3A8XHu75SeoC_d-HFS9sRJ4JpulzTBRkp0ZZBdc-aFBk8MJvqSRgxMUxIS-cOqJUcqM_HSUJvAekbJkrMhA6vIUVizd99rx757Z8U5KjPKXIAwVDqonjxINIQqX8zoXACe3eyPr_7MfskW7iaKE0HHKLyDgiceGWvIY5YukMLl4KJAIXC-20fIf57MMA-mASz02HejgK5lDpSC287svjaCgSsgHYqV1iiR0gksBMnSSi80H5hga9i5EXBZA7QhYcJWKr6kmiHiMX5c8f5LmxP5Kaqoh1DmAg_NCiK0rpIbyixAcYFWv-Fq5Y0ijRTUi3kj-6NA`,
-      },
-      body: JSON.stringify({ message: options.message }),
-      credentials: "include",
-      signal: options.signal,
-    });
-
-    const contentType = response.headers.get("content-type") ?? "";
-
-    if (
-      !response.ok ||
-      !response.body ||
-      !contentType.includes("text/event-stream")
-    ) {
-      throw new Error("Chatbot stream endpoint is not available.");
-    }
-
-    options.onModeChange?.("live");
     await consumeSseStream(response.body, options);
-
-    return "live";
   } catch (error) {
     if (isAbortError(error) || options.signal?.aborted) {
       throw error;
     }
 
-    options.onModeChange?.("mock");
-    await streamMockChatbotResponse(options);
-
-    return "mock";
+    throw error;
   }
 };
