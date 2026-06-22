@@ -2,8 +2,6 @@ package com.chatbotservice.tool;
 
 import com.chatbotservice.client.ListingFeignClient;
 import com.chatbotservice.configuration.ChatbotProperties;
-import com.chatbotservice.conversation.ConversationListingContext;
-import com.chatbotservice.conversation.ConversationListingContextStore;
 import com.chatbotservice.dto.listing.AmenityResponse;
 import com.chatbotservice.dto.listing.ApiResponse;
 import com.chatbotservice.dto.listing.HouseRulesResponse;
@@ -22,33 +20,26 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.text.Normalizer;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 
 @Component
 @Slf4j
 public class ListingTool {
     private static final String LISTING_CARDS_CONTEXT_KEY = "listingCards";
-    private static final String CONVERSATION_KEY_CONTEXT_KEY = "conversationKey";
-    private static final String CURRENT_MESSAGE_CONTEXT_KEY = "currentMessage";
 
     private final ListingFeignClient listingFeignClient;
     private final ChatbotProperties properties;
-    private final ConversationListingContextStore listingContextStore;
 
     public ListingTool(
             ListingFeignClient listingFeignClient,
-            ChatbotProperties properties,
-            ConversationListingContextStore listingContextStore
+            ChatbotProperties properties
     ) {
         this.listingFeignClient = listingFeignClient;
         this.properties = properties;
-        this.listingContextStore = listingContextStore;
     }
 
     @Tool(
@@ -121,7 +112,6 @@ public class ListingTool {
                 sortBy
         );
 
-        ConversationListingContext previousContext = previousContext(toolContext).orElse(null);
         SearchFilters filters = mergeWithConversationContext(
                 keyword,
                 city,
@@ -142,9 +132,7 @@ public class ListingTool {
                 maxPrice,
                 checkIn,
                 checkOut,
-                sortBy,
-                currentMessage(toolContext),
-                previousContext
+                sortBy
         );
 
         if (filters.minPrice() != null && filters.maxPrice() != null
@@ -199,15 +187,6 @@ public class ListingTool {
                     .toList();
 
             addListingCardsToContext(toolContext, listingCards);
-            saveConversationContext(
-                    toolContext,
-                    filters,
-                    propertyTypes,
-                    roomTypes,
-                    normalizedAmenityNames,
-                    normalizedSortBy,
-                    listingCards
-            );
 
             return formatResults(listings);
         } catch (Exception exception) {
@@ -239,51 +218,6 @@ public class ListingTool {
         typedCards.addAll(listingCards);
     }
 
-    private void saveConversationContext(
-            ToolContext toolContext,
-            SearchFilters filters,
-            List<String> propertyTypes,
-            List<String> roomTypes,
-            List<String> amenityNames,
-            String sortBy,
-            List<ListingCardResponse> listingCards
-    ) {
-        String conversationKey = stringContextValue(toolContext, CONVERSATION_KEY_CONTEXT_KEY);
-        if (!StringUtils.hasText(conversationKey)) {
-            return;
-        }
-
-        listingContextStore.save(
-                conversationKey,
-                new ConversationListingContext(
-                        normalizeNullable(filters.keyword()),
-                        normalizeCityName(filters.city()),
-                        normalizeNullable(filters.state()),
-                        normalizeNullable(filters.country()),
-                        filters.guests(),
-                        firstValue(propertyTypes),
-                        firstValue(roomTypes),
-                        filters.minBedrooms(),
-                        filters.minBeds(),
-                        filters.minBathrooms(),
-                        filters.instantBook(),
-                        amenityNames,
-                        filters.latitude(),
-                        filters.longitude(),
-                        filters.radiusKm(),
-                        filters.minPrice(),
-                        filters.maxPrice(),
-                        filters.checkIn(),
-                        filters.checkOut(),
-                        sortBy,
-                        lowestPrice(listingCards),
-                        highestPrice(listingCards),
-                        listingCards,
-                        Instant.now()
-                )
-        );
-    }
-
     private SearchFilters mergeWithConversationContext(
             String keyword,
             String city,
@@ -304,9 +238,7 @@ public class ListingTool {
             BigDecimal maxPrice,
             LocalDate checkIn,
             LocalDate checkOut,
-            String sortBy,
-            String currentMessage,
-            ConversationListingContext previousContext
+            String sortBy
     ) {
         return new SearchFilters(
                 keyword,
@@ -330,155 +262,10 @@ public class ListingTool {
                 checkOut,
                 sortBy
         );
-
-//        if (previousContext == null) {
-//            return new SearchFilters(
-//                    keyword,
-//                    city,
-//                    state,
-//                    country,
-//                    guests,
-//                    propertyType,
-//                    roomType,
-//                    minBedrooms,
-//                    minBeds,
-//                    minBathrooms,
-//                    instantBook,
-//                    normalizeAmenityNames(amenityNames),
-//                    latitude,
-//                    longitude,
-//                    radiusKm,
-//                    minPrice,
-//                    maxPrice,
-//                    checkIn,
-//                    checkOut,
-//                    sortBy
-//            );
-//        }
-//
-//        boolean asksForCheaperListings = containsAny(
-//                currentMessage,
-//                "re hon",
-//                "gia thap hon",
-//                "thap hon",
-//                "cheaper",
-//                "less expensive"
-//        );
-//        boolean asksForMoreExpensiveListings = containsAny(
-//                currentMessage,
-//                "dat hon",
-//                "mac hon",
-//                "cao cap hon",
-//                "more expensive"
-//        );
-//
-//        String effectiveKeyword = StringUtils.hasText(keyword) ? keyword : previousContext.keyword();
-//        String effectiveCity = StringUtils.hasText(city) ? city : previousContext.city();
-//        String effectiveState = StringUtils.hasText(state) ? state : previousContext.state();
-//        String effectiveCountry = StringUtils.hasText(country) ? country : previousContext.country();
-//        Integer effectiveGuests = guests != null ? guests : previousContext.guests();
-//        String effectivePropertyType = StringUtils.hasText(propertyType) ? propertyType : previousContext.propertyType();
-//        String effectiveRoomType = StringUtils.hasText(roomType) ? roomType : previousContext.roomType();
-//        Integer effectiveMinBedrooms = minBedrooms != null ? minBedrooms : previousContext.minBedrooms();
-//        Integer effectiveMinBeds = minBeds != null ? minBeds : previousContext.minBeds();
-//        BigDecimal effectiveMinBathrooms = minBathrooms != null ? minBathrooms : previousContext.minBathrooms();
-//        Boolean effectiveInstantBook = instantBook != null ? instantBook : previousContext.instantBook();
-//        List<String> effectiveAmenityNames = hasValues(amenityNames)
-//                ? normalizeAmenityNames(amenityNames)
-//                : previousContext.amenityNames();
-//        BigDecimal effectiveLatitude = latitude != null ? latitude : previousContext.latitude();
-//        BigDecimal effectiveLongitude = longitude != null ? longitude : previousContext.longitude();
-//        Double effectiveRadiusKm = radiusKm != null ? radiusKm : previousContext.radiusKm();
-//        LocalDate effectiveCheckIn = checkIn != null ? checkIn : previousContext.checkIn();
-//        LocalDate effectiveCheckOut = checkOut != null ? checkOut : previousContext.checkOut();
-//        BigDecimal effectiveMinPrice = minPrice != null ? minPrice : previousContext.minPrice();
-//        BigDecimal effectiveMaxPrice = maxPrice != null ? maxPrice : previousContext.maxPrice();
-//        String effectiveSortBy = StringUtils.hasText(sortBy) ? sortBy : previousContext.sortBy();
-//
-//        // This deterministic fallback protects follow-up searches when the model calls
-//        // the tool with incomplete arguments, for example "con can nao re hon khong?".
-//        if (asksForCheaperListings && maxPrice == null && previousContext.lowestPrice() != null) {
-//            effectiveMaxPrice = priceBelow(previousContext.lowestPrice());
-//            effectiveSortBy = "PRICE_ASC";
-//            if (minPrice == null) {
-//                effectiveMinPrice = null;
-//            }
-//        }
-//
-//        if (asksForMoreExpensiveListings && minPrice == null && previousContext.highestPrice() != null) {
-//            effectiveMinPrice = priceAbove(previousContext.highestPrice());
-//            effectiveSortBy = "PRICE_DESC";
-//            if (maxPrice == null) {
-//                effectiveMaxPrice = null;
-//            }
-//        }
-//
-//        return new SearchFilters(
-//                effectiveKeyword,
-//                effectiveCity,
-//                effectiveState,
-//                effectiveCountry,
-//                effectiveGuests,
-//                effectivePropertyType,
-//                effectiveRoomType,
-//                effectiveMinBedrooms,
-//                effectiveMinBeds,
-//                effectiveMinBathrooms,
-//                effectiveInstantBook,
-//                effectiveAmenityNames,
-//                effectiveLatitude,
-//                effectiveLongitude,
-//                effectiveRadiusKm,
-//                effectiveMinPrice,
-//                effectiveMaxPrice,
-//                effectiveCheckIn,
-//                effectiveCheckOut,
-//                effectiveSortBy
-//        );
-    }
-
-    private Optional<ConversationListingContext> previousContext(ToolContext toolContext) {
-        return listingContextStore.find(stringContextValue(toolContext, CONVERSATION_KEY_CONTEXT_KEY));
-    }
-
-    private String currentMessage(ToolContext toolContext) {
-        return stringContextValue(toolContext, CURRENT_MESSAGE_CONTEXT_KEY);
-    }
-
-    private String stringContextValue(ToolContext toolContext, String key) {
-        if (toolContext == null || toolContext.getContext() == null) {
-            return null;
-        }
-
-        Object value = toolContext.getContext().get(key);
-        return value != null ? value.toString() : null;
-    }
-
-    private boolean containsAny(String message, String... candidates) {
-        if (!StringUtils.hasText(message)) {
-            return false;
-        }
-
-        String normalized = normalizeSearchText(message);
-        for (String candidate : candidates) {
-            if (normalized.contains(candidate)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private List<String> singleValueList(String value) {
         return StringUtils.hasText(value) ? List.of(value) : null;
-    }
-
-    private String firstValue(List<String> values) {
-        return values != null && !values.isEmpty() ? values.getFirst() : null;
-    }
-
-    private boolean hasValues(List<String> values) {
-        return values != null && values.stream().anyMatch(StringUtils::hasText);
     }
 
     private List<String> normalizeAmenityNames(List<String> values) {
@@ -597,30 +384,6 @@ public class ListingTool {
                 .replace('\u0110', 'D');
 
         return normalized.toLowerCase(Locale.ROOT);
-    }
-
-    private BigDecimal priceBelow(BigDecimal price) {
-        return price.compareTo(BigDecimal.ONE) > 0 ? price.subtract(BigDecimal.ONE) : price;
-    }
-
-    private BigDecimal priceAbove(BigDecimal price) {
-        return price.add(BigDecimal.ONE);
-    }
-
-    private BigDecimal lowestPrice(List<ListingCardResponse> listingCards) {
-        return listingCards.stream()
-                .map(ListingCardResponse::basePrice)
-                .filter(Objects::nonNull)
-                .min(BigDecimal::compareTo)
-                .orElse(null);
-    }
-
-    private BigDecimal highestPrice(List<ListingCardResponse> listingCards) {
-        return listingCards.stream()
-                .map(ListingCardResponse::basePrice)
-                .filter(Objects::nonNull)
-                .max(BigDecimal::compareTo)
-                .orElse(null);
     }
 
     private ListingCardResponse toCardResponse(ListingResponse listing) {

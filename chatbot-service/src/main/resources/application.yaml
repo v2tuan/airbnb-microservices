@@ -33,8 +33,6 @@ chatbot:
   response-timeout: ${CHATBOT_RESPONSE_TIMEOUT:60s}
   memory:
     max-messages: ${CHATBOT_MEMORY_MAX_MESSAGES:20}
-  conversation:
-    context-ttl: ${CHATBOT_CONVERSATION_CONTEXT_TTL:2h}
   listing:
     timeout: ${LISTING_SERVICE_TIMEOUT:3s}
     max-results: ${CHATBOT_LISTING_MAX_RESULTS:6}
