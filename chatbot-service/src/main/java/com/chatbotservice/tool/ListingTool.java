@@ -2,6 +2,8 @@ package com.chatbotservice.tool;
 
 import com.chatbotservice.client.ListingFeignClient;
 import com.chatbotservice.configuration.ChatbotProperties;
+import com.chatbotservice.conversation.ConversationListingContext;
+import com.chatbotservice.conversation.ConversationListingContextStore;
 import com.chatbotservice.dto.listing.ApiResponse;
 import com.chatbotservice.dto.listing.ListingCardResponse;
 import com.chatbotservice.dto.listing.ListingPhotoResponse;
@@ -12,22 +14,36 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 @Component
 @Slf4j
 public class ListingTool {
+    private static final String LISTING_CARDS_CONTEXT_KEY = "listingCards";
+    private static final String CONVERSATION_KEY_CONTEXT_KEY = "conversationKey";
+    private static final String CURRENT_MESSAGE_CONTEXT_KEY = "currentMessage";
+
     private final ListingFeignClient listingFeignClient;
     private final ChatbotProperties properties;
+    private final ConversationListingContextStore listingContextStore;
 
-    public ListingTool(ListingFeignClient listingFeignClient, ChatbotProperties properties) {
+    public ListingTool(
+            ListingFeignClient listingFeignClient,
+            ChatbotProperties properties,
+            ConversationListingContextStore listingContextStore
+    ) {
         this.listingFeignClient = listingFeignClient;
         this.properties = properties;
+        this.listingContextStore = listingContextStore;
     }
 
     @Tool(
@@ -53,21 +69,38 @@ public class ListingTool {
             LocalDate checkOut,
             ToolContext toolContext
     ) {
-        if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+        // Ghi log tất cả các tham số trên một dòng (Dễ parse log bằng các công cụ như ELK, Splunk)
+        log.info("Searching listings with params - City: {}, Guests: {}, MinPrice: {}, MaxPrice: {}, CheckIn: {}, CheckOut: {}",
+                city, guests, minPrice, maxPrice, checkIn, checkOut);
+
+        ConversationListingContext previousContext = previousContext(toolContext).orElse(null);
+        SearchFilters filters = mergeWithConversationContext(
+                city,
+                guests,
+                minPrice,
+                maxPrice,
+                checkIn,
+                checkOut,
+                currentMessage(toolContext),
+                previousContext
+        );
+
+        if (filters.minPrice() != null && filters.maxPrice() != null
+                && filters.minPrice().compareTo(filters.maxPrice()) > 0) {
             return "INVALID_SEARCH_FILTER: minPrice must be less than or equal to maxPrice.";
         }
 
-        if (checkIn != null && checkOut != null && !checkOut.isAfter(checkIn)) {
+        if (filters.checkIn() != null && filters.checkOut() != null && !filters.checkOut().isAfter(filters.checkIn())) {
             return "INVALID_SEARCH_FILTER: checkOut must be after checkIn.";
         }
 
         try {
             ApiResponse<List<ListingResponse>> response = listingFeignClient
-                    .searchListings(city, guests, checkIn, checkOut);
+                    .searchListings(filters.city(), filters.guests(), filters.checkIn(), filters.checkOut());
 
             List<ListingResponse> listings = safeData(response)
                     .stream()
-                    .filter(listing -> matchesPrice(listing, minPrice, maxPrice))
+                    .filter(listing -> matchesPrice(listing, filters.minPrice(), filters.maxPrice()))
                     .sorted(Comparator.comparing(this::basePriceOrMax))
                     .limit(properties.listing().maxResults())
                     .toList();
@@ -76,7 +109,12 @@ public class ListingTool {
                 return "NO_LISTINGS_FOUND: No active listings matched the requested filters.";
             }
 
-            addListingCardsToContext(toolContext, listings);
+            List<ListingCardResponse> listingCards = listings.stream()
+                    .map(this::toCardResponse)
+                    .toList();
+
+            addListingCardsToContext(toolContext, listingCards);
+            saveConversationContext(toolContext, filters, listingCards);
 
             return formatResults(listings);
         } catch (Exception exception) {
@@ -92,12 +130,12 @@ public class ListingTool {
     }
 
     @SuppressWarnings("unchecked")
-    private void addListingCardsToContext(ToolContext toolContext, List<ListingResponse> listings) {
+    private void addListingCardsToContext(ToolContext toolContext, List<ListingCardResponse> listingCards) {
         if (toolContext == null || toolContext.getContext() == null) {
             return;
         }
 
-        Object value = toolContext.getContext().get("listingCards");
+        Object value = toolContext.getContext().get(LISTING_CARDS_CONTEXT_KEY);
         if (!(value instanceof List<?> cards)) {
             return;
         }
@@ -105,9 +143,161 @@ public class ListingTool {
         // ToolContext is Spring AI's per-request runtime map. It is not sent to the model,
         // so this is a safe place to collect structured card data for the SSE response.
         List<ListingCardResponse> typedCards = (List<ListingCardResponse>) cards;
-        listings.stream()
-                .map(this::toCardResponse)
-                .forEach(typedCards::add);
+        typedCards.addAll(listingCards);
+    }
+
+    private void saveConversationContext(
+            ToolContext toolContext,
+            SearchFilters filters,
+            List<ListingCardResponse> listingCards
+    ) {
+        String conversationKey = stringContextValue(toolContext, CONVERSATION_KEY_CONTEXT_KEY);
+        if (!StringUtils.hasText(conversationKey)) {
+            return;
+        }
+
+        listingContextStore.save(
+                conversationKey,
+                new ConversationListingContext(
+                        filters.city(),
+                        filters.guests(),
+                        filters.minPrice(),
+                        filters.maxPrice(),
+                        filters.checkIn(),
+                        filters.checkOut(),
+                        lowestPrice(listingCards),
+                        highestPrice(listingCards),
+                        listingCards,
+                        Instant.now()
+                )
+        );
+    }
+
+    private SearchFilters mergeWithConversationContext(
+            String city,
+            Integer guests,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            LocalDate checkIn,
+            LocalDate checkOut,
+            String currentMessage,
+            ConversationListingContext previousContext
+    ) {
+        return new SearchFilters(city, guests, minPrice, maxPrice, checkIn, checkOut);
+
+//        if (previousContext == null) {
+//            return new SearchFilters(city, guests, minPrice, maxPrice, checkIn, checkOut);
+//        }
+//
+//        boolean asksForCheaperListings = containsAny(
+//                currentMessage,
+//                "rẻ hơn",
+//                "re hon",
+//                "giá thấp hơn",
+//                "gia thap hon",
+//                "thấp hơn",
+//                "thap hon",
+//                "cheaper",
+//                "less expensive"
+//        );
+//        boolean asksForMoreExpensiveListings = containsAny(
+//                currentMessage,
+//                "đắt hơn",
+//                "dat hon",
+//                "mắc hơn",
+//                "mac hon",
+//                "cao cấp hơn",
+//                "cao cap hon",
+//                "more expensive"
+//        );
+//
+//        String effectiveCity = StringUtils.hasText(city) ? city : previousContext.city();
+//        Integer effectiveGuests = guests != null ? guests : previousContext.guests();
+//        LocalDate effectiveCheckIn = checkIn != null ? checkIn : previousContext.checkIn();
+//        LocalDate effectiveCheckOut = checkOut != null ? checkOut : previousContext.checkOut();
+//        BigDecimal effectiveMinPrice = minPrice != null ? minPrice : previousContext.minPrice();
+//        BigDecimal effectiveMaxPrice = maxPrice != null ? maxPrice : previousContext.maxPrice();
+//
+//        // LLMs usually infer "rẻ hơn" from chat memory, but this deterministic fallback
+//        // keeps tool behavior correct when the model calls search_listings without a price.
+//        if (asksForCheaperListings && maxPrice == null && previousContext.lowestPrice() != null) {
+//            effectiveMaxPrice = priceBelow(previousContext.lowestPrice());
+//            if (minPrice == null) {
+//                effectiveMinPrice = null;
+//            }
+//        }
+//
+//        if (asksForMoreExpensiveListings && minPrice == null && previousContext.highestPrice() != null) {
+//            effectiveMinPrice = priceAbove(previousContext.highestPrice());
+//            if (maxPrice == null) {
+//                effectiveMaxPrice = null;
+//            }
+//        }
+//
+//        return new SearchFilters(
+//                effectiveCity,
+//                effectiveGuests,
+//                effectiveMinPrice,
+//                effectiveMaxPrice,
+//                effectiveCheckIn,
+//                effectiveCheckOut
+//        );
+    }
+
+    private Optional<ConversationListingContext> previousContext(ToolContext toolContext) {
+        return listingContextStore.find(stringContextValue(toolContext, CONVERSATION_KEY_CONTEXT_KEY));
+    }
+
+    private String currentMessage(ToolContext toolContext) {
+        return stringContextValue(toolContext, CURRENT_MESSAGE_CONTEXT_KEY);
+    }
+
+    private String stringContextValue(ToolContext toolContext, String key) {
+        if (toolContext == null || toolContext.getContext() == null) {
+            return null;
+        }
+
+        Object value = toolContext.getContext().get(key);
+        return value != null ? value.toString() : null;
+    }
+
+    private boolean containsAny(String message, String... candidates) {
+        if (!StringUtils.hasText(message)) {
+            return false;
+        }
+
+        String normalized = message.toLowerCase(Locale.ROOT);
+        for (String candidate : candidates) {
+            if (normalized.contains(candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private BigDecimal priceBelow(BigDecimal price) {
+        return price.compareTo(BigDecimal.ONE) > 0 ? price.subtract(BigDecimal.ONE) : price;
+    }
+
+    private BigDecimal priceAbove(BigDecimal price) {
+        return price.add(BigDecimal.ONE);
+    }
+
+    private BigDecimal lowestPrice(List<ListingCardResponse> listingCards) {
+        return listingCards.stream()
+                .map(ListingCardResponse::basePrice)
+                .filter(Objects::nonNull)
+                .min(BigDecimal::compareTo)
+                .orElse(null);
+    }
+
+    private BigDecimal highestPrice(List<ListingCardResponse> listingCards) {
+        return listingCards.stream()
+                .map(ListingCardResponse::basePrice)
+                .filter(Objects::nonNull)
+                .max(BigDecimal::compareTo)
+                .orElse(null);
     }
 
     private ListingCardResponse toCardResponse(ListingResponse listing) {
@@ -199,5 +389,15 @@ public class ListingTool {
 
     private String nullToDash(Object value) {
         return value != null ? value.toString() : "-";
+    }
+
+    private record SearchFilters(
+            String city,
+            Integer guests,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            LocalDate checkIn,
+            LocalDate checkOut
+    ) {
     }
 }

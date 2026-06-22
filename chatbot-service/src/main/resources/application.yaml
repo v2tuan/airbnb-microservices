@@ -9,7 +9,7 @@ spring:
       genai:
         api-key: ${GEMINI_API_KEY:}
         chat:
-          model: ${GEMINI_MODEL:gemini-2.5-flash}
+          model: ${GEMINI_MODEL:gemini-3.1-flash-lite}
           temperature: ${GEMINI_TEMPERATURE:0.3}
           max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
 
@@ -31,6 +31,10 @@ eureka:
 
 chatbot:
   response-timeout: ${CHATBOT_RESPONSE_TIMEOUT:60s}
+  memory:
+    max-messages: ${CHATBOT_MEMORY_MAX_MESSAGES:20}
+  conversation:
+    context-ttl: ${CHATBOT_CONVERSATION_CONTEXT_TTL:2h}
   listing:
     timeout: ${LISTING_SERVICE_TIMEOUT:3s}
     max-results: ${CHATBOT_LISTING_MAX_RESULTS:6}

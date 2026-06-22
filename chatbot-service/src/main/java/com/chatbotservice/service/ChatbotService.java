@@ -1,6 +1,7 @@
 package com.chatbotservice.service;
 
 import com.chatbotservice.configuration.ChatbotProperties;
+import com.chatbotservice.conversation.ConversationListingContextStore;
 import com.chatbotservice.dto.ChatResponse;
 import com.chatbotservice.dto.ChatStreamEvent;
 import com.chatbotservice.dto.listing.ListingCardResponse;
@@ -9,7 +10,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -18,12 +22,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeoutException;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class ChatbotService {
     private static final String LISTING_CARDS_CONTEXT_KEY = "listingCards";
+    private static final String CONVERSATION_KEY_CONTEXT_KEY = "conversationKey";
+    private static final String CURRENT_MESSAGE_CONTEXT_KEY = "currentMessage";
+    private static final Pattern SAFE_CONVERSATION_ID = Pattern.compile("[A-Za-z0-9_-]{1,80}");
 
     private static final String SYSTEM_PROMPT = """
             Bạn là trợ lý AI cho hệ thống Airbnb clone.
@@ -44,49 +53,73 @@ public class ChatbotService {
     private final ListingTool listingTool;
     private final ChatbotProperties properties;
     private final ObjectMapper objectMapper;
+    private final ConversationListingContextStore listingContextStore;
 
     public ChatbotService(
             ChatClient.Builder builder,
             ListingTool listingTool,
             ChatbotProperties properties,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ChatMemory chatMemory,
+            ConversationListingContextStore listingContextStore
     ) {
-        this.chatClient = builder.build();
+        // MessageChatMemoryAdvisor is the Spring AI component that turns this service
+        // from single-turn into multi-turn: on every request it loads recent messages
+        // by ChatMemory.CONVERSATION_ID and appends them to the prompt, then saves the
+        // final user/assistant exchange after the model finishes.
+        this.chatClient = builder
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .build();
         this.listingTool = listingTool;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.listingContextStore = listingContextStore;
     }
 
     public ChatResponse chat(String message, String userId) {
+        return chat(message, userId, null);
+    }
+
+    public ChatResponse chat(String message, String userId, String conversationId) {
         List<ListingCardResponse> listingCards = new ArrayList<>();
+        ConversationScope conversation = conversationScope(userId, conversationId);
 
         String answer = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
+                .system(systemPrompt(conversation.memoryKey()))
                 .user(message)
                 .tools(listingTool)
-                .toolContext(toolContext(userId, listingCards))
+                .toolContext(toolContext(userId, conversation.memoryKey(), message, listingCards))
+                .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, conversation.memoryKey()))
                 .call()
                 .content();
 
         return new ChatResponse(answer);
     }
 
-    public Flux<ChatStreamEvent> stream(String message, String userId) {
+    public Flux<ChatStreamEvent> stream(String message, String userId, String conversationId) {
         List<ListingCardResponse> listingCards = Collections.synchronizedList(new ArrayList<>());
+        ConversationScope conversation = conversationScope(userId, conversationId);
 
         Flux<ChatStreamEvent> messageStream = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
+                .system(systemPrompt(conversation.memoryKey()))
                 .user(message)
                 .tools(listingTool)
-                .toolContext(toolContext(userId, listingCards))
+                .toolContext(toolContext(userId, conversation.memoryKey(), message, listingCards))
+                .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, conversation.memoryKey()))
                 .stream()
                 .content()
                 .map(ChatStreamEvent::message)
                 .timeout(properties.responseTimeout());
 
+        // Send the public conversation id before token streaming starts. The frontend
+        // stores it and sends it back on the next turn, while the server stores memory
+        // under a user-scoped key so one user cannot access another user's conversation.
+        Flux<ChatStreamEvent> conversationEvent = Flux.just(ChatStreamEvent.conversationId(conversation.publicId()));
+
         // The model response remains token-streamed. After it completes, emit one structured
         // JSON event so the frontend can render ListingCard components without parsing Markdown.
-        return messageStream.concatWith(Mono.defer(() -> listingCardsEvent(listingCards)));
+        return conversationEvent.concatWith(messageStream)
+                .concatWith(Mono.defer(() -> listingCardsEvent(listingCards)));
     }
 
     public String toClientMessage(Throwable exception) {
@@ -99,11 +132,47 @@ public class ChatbotService {
         return "Xin lỗi, chatbot đang gặp lỗi. Vui lòng thử lại sau.";
     }
 
-    private Map<String, Object> toolContext(String userId, List<ListingCardResponse> listingCards) {
+    private Map<String, Object> toolContext(
+            String userId,
+            String conversationKey,
+            String currentMessage,
+            List<ListingCardResponse> listingCards
+    ) {
         return Map.of(
                 "userId", userId,
+                CONVERSATION_KEY_CONTEXT_KEY, conversationKey,
+                CURRENT_MESSAGE_CONTEXT_KEY, currentMessage,
                 LISTING_CARDS_CONTEXT_KEY, listingCards
         );
+    }
+
+    private String systemPrompt(String conversationKey) {
+        String listingContext = listingContextStore.promptBlock(conversationKey);
+        if (!StringUtils.hasText(listingContext)) {
+            return SYSTEM_PROMPT;
+        }
+
+        // ChatMemory stores natural-language conversation history. This extra block is
+        // a compact, structured domain memory for the latest listing search, so follow-up
+        // questions like "rẻ hơn" or "căn thứ 2" have reliable filters and listing ids.
+        return SYSTEM_PROMPT + "\n\n" + listingContext;
+    }
+
+    private ConversationScope conversationScope(String userId, String requestedConversationId) {
+        String publicConversationId = normalizeConversationId(requestedConversationId);
+
+        // The public id is safe to expose to the browser. The internal memory key is
+        // additionally scoped by userId from JWT, preventing cross-user conversation reuse
+        // even if a client guesses or replays another public conversation id.
+        return new ConversationScope(publicConversationId, userId + ":" + publicConversationId);
+    }
+
+    private String normalizeConversationId(String conversationId) {
+        if (StringUtils.hasText(conversationId) && SAFE_CONVERSATION_ID.matcher(conversationId).matches()) {
+            return conversationId;
+        }
+
+        return UUID.randomUUID().toString();
     }
 
     private Mono<ChatStreamEvent> listingCardsEvent(List<ListingCardResponse> listingCards) {
@@ -117,5 +186,8 @@ public class ChatbotService {
             log.warn("Failed to serialize listing cards for SSE", exception);
             return Mono.empty();
         }
+    }
+
+    private record ConversationScope(String publicId, String memoryKey) {
     }
 }

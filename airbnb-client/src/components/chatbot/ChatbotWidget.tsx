@@ -55,6 +55,28 @@ const createInitialMessages = (): ChatMessage[] => [
   },
 ];
 
+const CHATBOT_CONVERSATION_ID_STORAGE_KEY = "airbnb_chatbot_conversation_id";
+
+const readStoredConversationId = () => {
+  if (typeof window === "undefined") return null;
+
+  return sessionStorage.getItem(CHATBOT_CONVERSATION_ID_STORAGE_KEY);
+};
+
+const storeConversationId = (conversationId: string | null) => {
+  if (typeof window === "undefined") return;
+
+  // Keep the id in sessionStorage so route changes in the same browser tab keep
+  // sending the same backend conversation id. We intentionally use sessionStorage
+  // instead of localStorage so a very old chat does not silently affect future days.
+  if (conversationId) {
+    sessionStorage.setItem(CHATBOT_CONVERSATION_ID_STORAGE_KEY, conversationId);
+    return;
+  }
+
+  sessionStorage.removeItem(CHATBOT_CONVERSATION_ID_STORAGE_KEY);
+};
+
 const markdownComponents: Components = {
   h1: ({ className, ...props }) => (
     <h1 className={cn("mb-2 text-lg font-bold", className)} {...props} />
@@ -398,6 +420,9 @@ export default function ChatbotWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     createInitialMessages(),
   );
+  const [conversationId, setConversationId] = useState<string | null>(() =>
+    readStoredConversationId(),
+  );
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -470,7 +495,14 @@ export default function ChatbotWidget() {
     try {
       await streamChatbotResponse({
         message: trimmedMessage,
+        conversationId,
         signal: controller.signal,
+        onConversationId: (nextConversationId) => {
+          if (activeAssistantIdRef.current !== assistantMessage.id) return;
+
+          setConversationId(nextConversationId);
+          storeConversationId(nextConversationId);
+        },
         onToken: (token) => {
           if (activeAssistantIdRef.current !== assistantMessage.id) return;
 
@@ -535,6 +567,8 @@ export default function ChatbotWidget() {
     abortRef.current = null;
     setIsStreaming(false);
     setInput("");
+    setConversationId(null);
+    storeConversationId(null);
     setMessages(createInitialMessages());
   };
 

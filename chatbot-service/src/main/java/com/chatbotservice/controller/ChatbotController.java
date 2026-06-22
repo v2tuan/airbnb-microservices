@@ -46,7 +46,7 @@ public class ChatbotController {
         Mono<ChatRequest> safeRequest = request != null ? request : Mono.empty();
 
         return safeRequest
-                .defaultIfEmpty(new ChatRequest(null))
+                .defaultIfEmpty(new ChatRequest(null, null))
                 .flatMapMany(chatRequest -> {
                     String message = chatRequest != null ? chatRequest.message() : null;
 
@@ -56,7 +56,7 @@ public class ChatbotController {
 
                     String userId = jwt.getSubject();
 
-                    return chatbotService.stream(message.trim(), userId)
+                    return chatbotService.stream(message.trim(), userId, chatRequest.conversationId())
                             .filter(event -> event != null && event.data() != null && !event.data().isEmpty())
                             .map(this::streamEvent)
                             .concatWithValues(doneEvent());

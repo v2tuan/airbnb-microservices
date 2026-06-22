@@ -17,8 +17,10 @@ export type ChatbotListingCard = {
 
 export type ChatbotStreamOptions = {
   message: string;
+  conversationId?: string | null;
   signal?: AbortSignal;
   onToken: (token: string) => void;
+  onConversationId?: (conversationId: string) => void;
   onListings?: (listings: ChatbotListingCard[]) => void;
   onError?: (message: string) => void;
 };
@@ -258,7 +260,10 @@ const parseSseFrame = (frame: string): SseFrame | null => {
 
 const readSseFrame = (
   frame: string,
-  options: Pick<ChatbotStreamOptions, "onToken" | "onListings" | "onError">,
+  options: Pick<
+    ChatbotStreamOptions,
+    "onToken" | "onConversationId" | "onListings" | "onError"
+  >,
 ) => {
   const parsedFrame = parseSseFrame(frame);
   if (!parsedFrame) return;
@@ -269,6 +274,11 @@ const readSseFrame = (
 
   if (parsedFrame.event === "error") {
     options.onError?.(parsedFrame.data);
+    return;
+  }
+
+  if (parsedFrame.event === "conversation_id") {
+    options.onConversationId?.(parsedFrame.data.trim());
     return;
   }
 
@@ -289,7 +299,7 @@ const consumeSseStream = async (
   body: ReadableStream<Uint8Array>,
   options: Pick<
     ChatbotStreamOptions,
-    "signal" | "onToken" | "onListings" | "onError"
+    "signal" | "onToken" | "onConversationId" | "onListings" | "onError"
   >,
 ) => {
   const reader = body.getReader();
@@ -325,6 +335,10 @@ const requestChatbotStream = async (
   options: ChatbotStreamOptions,
   token: string,
 ) => {
+  const requestBody = options.conversationId
+    ? { message: options.message, conversationId: options.conversationId }
+    : { message: options.message };
+
   return fetch(getChatbotStreamUrl(), {
     method: "POST",
     headers: {
@@ -332,7 +346,7 @@ const requestChatbotStream = async (
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message: options.message }),
+    body: JSON.stringify(requestBody),
     credentials: "include",
     signal: options.signal,
   });
