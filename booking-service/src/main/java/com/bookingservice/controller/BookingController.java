@@ -18,6 +18,8 @@ import com.bookingservice.dto.request.WaiveHostPenaltyRequest;
 import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
+import com.bookingservice.dto.response.AdminReservationDetailResponse;
+import com.bookingservice.dto.response.AdminReservationSummaryResponse;
 import com.bookingservice.dto.response.ComplaintResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
@@ -316,6 +318,57 @@ public class BookingController {
                 .success(true)
                 .message("Get admin complaints success")
                 .data(complaintService.getAdminComplaints(status))
+                .build());
+    }
+
+    @GetMapping("/admin/reservations")
+    public ResponseEntity<ApiResponse<List<AdminReservationSummaryResponse>>> getAdminReservations(
+            @RequestParam(required = false) List<BookingStatus> statuses,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkInFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkInTo,
+            @RequestParam(required = false) String guest,
+            @RequestParam(required = false) String host,
+            @RequestParam(required = false) String listing,
+            @RequestParam(required = false) String bookingCode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size
+    ) {
+        return ResponseEntity.ok(ApiResponse.<List<AdminReservationSummaryResponse>>builder()
+                .success(true)
+                .message("Get admin reservations success")
+                .data(bookingService.getAdminReservations(
+                        statuses,
+                        search,
+                        checkInFrom,
+                        checkInTo,
+                        guest,
+                        host,
+                        listing,
+                        bookingCode,
+                        page,
+                        size
+                ))
+                .build());
+    }
+
+    @GetMapping("/admin/reservations/{bookingId}")
+    public ResponseEntity<ApiResponse<AdminReservationDetailResponse>> getAdminReservationDetail(
+            @PathVariable UUID bookingId
+    ) {
+        return ResponseEntity.ok(ApiResponse.<AdminReservationDetailResponse>builder()
+                .success(true)
+                .message("Get admin reservation detail success")
+                .data(bookingService.getAdminReservationDetail(bookingId))
+                .build());
+    }
+
+    @GetMapping("/admin/host-penalties")
+    public ResponseEntity<ApiResponse<List<HostPenaltyResponse>>> getAdminHostPenalties() {
+        return ResponseEntity.ok(ApiResponse.<List<HostPenaltyResponse>>builder()
+                .success(true)
+                .message("Get admin host penalties success")
+                .data(hostPenaltyService.getAdminPenalties())
                 .build());
     }
 

@@ -16,6 +16,7 @@ export type RefundStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 export type RefundBusinessCause =
   | "GUEST_CANCELLATION"
   | "HOST_CANCELLATION"
+  | "CANCELLATION_QUOTE"
   | "ADMIN_FORCE_CANCELLATION"
   | "COMPLAINT_DECISION";
 export type HostPenaltyStatus = "ACTIVE" | "WAIVED";
@@ -161,6 +162,52 @@ export interface AdminListingStatusRequest {
   suspendedUntil?: string;
 }
 
+export interface AdminPaymentOverviewSummary {
+  paymentCount: number;
+  capturedAmount: number;
+  refundCount: number;
+  refundedAmount: number;
+  pendingPayoutCount: number;
+  pendingPayoutAmount: number;
+  currency: string;
+}
+
+export interface AdminPaymentFlowPoint {
+  date: string;
+  captured: number;
+  refunded: number;
+  payout: number;
+}
+
+export interface AdminStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface AdminPayoutAgingBucket {
+  bucket: string;
+  amount: number;
+}
+
+export interface AdminPaymentQueueItem {
+  id: string;
+  type: string;
+  bookingId?: string | null;
+  status: string;
+  amount: number;
+  currency: string;
+  owner: string;
+  createdAt?: string | null;
+}
+
+export interface AdminPaymentOverview {
+  summary: AdminPaymentOverviewSummary;
+  paymentFlow: AdminPaymentFlowPoint[];
+  transactionStatus: AdminStatusCount[];
+  payoutAging: AdminPayoutAgingBucket[];
+  queue: AdminPaymentQueueItem[];
+}
+
 const authConfig = (token: string | null) => ({
   headers: token ? { Authorization: `Bearer ${token}` } : undefined,
 });
@@ -187,7 +234,6 @@ export async function listAdminReservations(
   if (query.page !== undefined) params.set("page", String(query.page));
   if (query.size !== undefined) params.set("size", String(query.size));
 
-  // TODO backend: implement GET /bookings/admin/reservations for admin-wide reservation search.
   return unwrap(
     await apiClient.get(
       `${prefix}/bookings/admin/reservations${params.toString() ? `?${params.toString()}` : ""}`,
@@ -200,7 +246,6 @@ export async function getAdminReservationDetail(
   token: string | null,
   bookingId: string,
 ): Promise<ApiResponse<AdminReservationDetail>> {
-  // TODO backend: implement GET /bookings/admin/reservations/{bookingId} with booking, party, listing, payment, refund and timeline summaries.
   return unwrap(
     await apiClient.get(
       `${prefix}/bookings/admin/reservations/${bookingId}`,
@@ -230,9 +275,16 @@ export async function forceCancelAdminBooking(
 export async function listAdminRefunds(
   token: string | null,
 ): Promise<ApiResponse<AdminRefundRecord[]>> {
-  // TODO backend: implement GET /payments/admin/refunds as read-only refund operations queue.
   return unwrap(
     await apiClient.get(`${prefix}/payments/admin/refunds`, authConfig(token)),
+  );
+}
+
+export async function getAdminPaymentOverview(
+  token: string | null,
+): Promise<ApiResponse<AdminPaymentOverview>> {
+  return unwrap(
+    await apiClient.get(`${prefix}/payments/admin/overview`, authConfig(token)),
   );
 }
 
@@ -269,7 +321,6 @@ export async function decideAdminComplaint(
 export async function listAdminHostPenalties(
   token: string | null,
 ): Promise<ApiResponse<HostPenaltyRecord[]>> {
-  // TODO backend: implement GET /bookings/admin/host-penalties for penalty queue and threshold review.
   return unwrap(
     await apiClient.get(
       `${prefix}/bookings/admin/host-penalties`,

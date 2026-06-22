@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -80,6 +81,15 @@ public class HostPenaltyService {
         HostPenalty saved = hostPenaltyRepository.save(penalty);
         publishPenaltyEvent("HOST_PENALTY_WAIVED", saved);
         return mapToResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<HostPenaltyResponse> getAdminPenalties() {
+        requireAdmin();
+        return hostPenaltyRepository.findAllByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
     private void publishPenaltyEvent(String eventType, HostPenalty penalty) {

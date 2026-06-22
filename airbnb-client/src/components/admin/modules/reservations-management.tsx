@@ -102,7 +102,7 @@ function getDetailTimeline(
     {
       key: "created",
       label: "Booking created",
-      description: "Reservation request entered Booking Flow V2.",
+      description: "Reservation request entered the booking lifecycle.",
       occurredAt: summary.createdAt,
     },
     {
@@ -273,7 +273,7 @@ export function ReservationsManagementModule() {
       <AdminPageHeader
         eyebrow="Reservations"
         title="Bookings and reservations management"
-        description="Review Booking Flow V2 reservations, filter operational queues and inspect booking detail before admin action."
+        description="Review reservations, filter operational queues and inspect booking detail before admin action."
       />
       <div className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
         <div className="grid gap-4 md:grid-cols-3">
@@ -326,7 +326,7 @@ export function ReservationsManagementModule() {
                 <SelectContent>
                   {statusOptions.map((option) => (
                     <SelectItem key={option} value={option}>
-                      {option === "ALL" ? "All V2 statuses" : option}
+                      {option === "ALL" ? "All statuses" : option}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -391,7 +391,7 @@ export function ReservationsManagementModule() {
             <div className="flex items-end">
               <div className="flex h-14 w-full items-center gap-3 rounded-full border border-[#dddddd] bg-[#f7f7f7] px-5 text-sm text-[#6a6a6a]">
                 <CalendarDays className="size-4 text-[#222222]" />
-                Booking Flow V2 only
+                Reservation lifecycle
               </div>
             </div>
           </div>
@@ -553,7 +553,7 @@ export function ReservationsManagementModule() {
                 : "Reservation detail"}
             </SheetTitle>
             <SheetDescription>
-              Booking Flow V2 detail view for operational review.
+              Reservation detail view for operational review.
             </SheetDescription>
           </SheetHeader>
 

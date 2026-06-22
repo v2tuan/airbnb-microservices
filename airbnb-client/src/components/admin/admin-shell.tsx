@@ -4,22 +4,33 @@ import {
   AlertTriangle,
   BadgeDollarSign,
   Ban,
+  ChevronDown,
   ClipboardList,
   FileClock,
   Gavel,
   Home,
   LayoutDashboard,
+  LogOut,
   Menu,
   MessageSquareWarning,
   ShieldCheck,
+  User,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { useSelector } from "react-redux";
-import { Badge } from "@/components/ui/badge";
+import { useDispatch, useSelector } from "react-redux";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -27,10 +38,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { logout } from "@/features/auth/authSlice";
 import { authStorage } from "@/lib/auth-storage";
 import { hasRealmRole, parseJwt } from "@/lib/jwt";
 import { cn } from "@/lib/utils";
-import type { RootState } from "@/store";
+import type { AppDispatch, RootState } from "@/store";
 
 const navItems = [
   {
@@ -109,6 +121,113 @@ export function useAdminToken() {
   return { token, hydrated, isAdmin };
 }
 
+function getInitials(name?: string | null, email?: string | null) {
+  const source = name?.trim() || email?.trim() || "Admin";
+  const parts = source.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return source.slice(0, 2).toUpperCase();
+}
+
+export function AdminAccountMenu({
+  operationLabel = "Admin operations",
+}: {
+  operationLabel?: string;
+}) {
+  const router = useRouter();
+  const dispatch = useDispatch<AppDispatch>();
+  const { token } = useAdminToken();
+  const authUser = useSelector((state: RootState) => state.auth.user);
+  const jwtUser = token ? parseJwt(token) : null;
+  const roles = jwtUser?.realm_access?.roles ?? [];
+  const roleLabel = roles.includes("ADMIN") ? "ADMIN" : (roles[0] ?? "USER");
+  const displayName =
+    authUser?.fullName ||
+    authUser?.name ||
+    jwtUser?.preferred_username ||
+    authUser?.email ||
+    "Admin";
+  const email = authUser?.email || jwtUser?.email;
+
+  const handleLogout = () => {
+    dispatch(logout());
+    router.push("/");
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          className="h-10 rounded-full border-[#dddddd] bg-white px-2 pr-3 shadow-none hover:bg-[#f7f7f7]"
+        >
+          <Avatar className="size-8">
+            <AvatarImage src={authUser?.avatarUrl || undefined} alt="avatar" />
+            <AvatarFallback className="bg-[#222222] text-xs font-semibold text-white">
+              {getInitials(displayName, email)}
+            </AvatarFallback>
+          </Avatar>
+          <ChevronDown className="size-4 text-[#6a6a6a]" />
+          <span className="sr-only">Open admin account menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72 rounded-[14px] bg-white">
+        <DropdownMenuLabel className="p-3">
+          <div className="flex items-start gap-3">
+            <Avatar className="size-10">
+              <AvatarImage
+                src={authUser?.avatarUrl || undefined}
+                alt="avatar"
+              />
+              <AvatarFallback className="bg-[#222222] text-xs font-semibold text-white">
+                {getInitials(displayName, email)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-[#222222]">
+                {displayName}
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-[#6a6a6a]">
+                {email ?? "No email available"}
+              </span>
+              <span className="mt-1 block truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-[#ff385c]">
+                Role: {roleLabel}
+              </span>
+              <span className="mt-1 inline-flex rounded-full border border-[#ebebeb] bg-[#f7f7f7] px-2 py-0.5 text-[11px] font-medium text-[#6a6a6a]">
+                {operationLabel}
+              </span>
+            </div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="cursor-pointer rounded-[10px]">
+          <Link href="/users/profile/about">
+            <User className="size-4" />
+            Profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="cursor-pointer rounded-[10px]">
+          <Link href="/">
+            <Home className="size-4" />
+            Public site
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="cursor-pointer rounded-[10px] text-[#c13515]"
+          onClick={handleLogout}
+        >
+          <LogOut className="size-4" />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function AdminBrandBlock({ compact = false }: { compact?: boolean }) {
   return (
     <Link href="/admin" className="flex min-w-0 items-center gap-3">
@@ -120,7 +239,7 @@ function AdminBrandBlock({ compact = false }: { compact?: boolean }) {
           Airbnb Admin
         </span>
         <span className="block truncate text-xs font-medium text-[#6a6a6a]">
-          Booking Flow V2
+          Operations
         </span>
       </span>
     </Link>
@@ -187,32 +306,8 @@ function AdminSidebar() {
     <aside className="sticky top-0 hidden h-screen w-[288px] shrink-0 border-r border-[#ebebeb] bg-white px-5 py-6 lg:flex lg:flex-col">
       <AdminBrandBlock />
 
-      <div className="mt-6 rounded-[14px] border border-[#ebebeb] bg-[#f7f7f7] p-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-[#222222]">Control plane</p>
-          <Badge
-            variant="outline"
-            className="rounded-full border-rose-100 bg-white text-[#ff385c]"
-          >
-            V2
-          </Badge>
-        </div>
-        <p className="mt-2 text-xs leading-5 text-[#6a6a6a]">
-          Admin actions are isolated from guest and host flows and preserve
-          actor-specific booking states.
-        </p>
-      </div>
-
       <div className="mt-6 flex-1 overflow-y-auto pr-1">
         <AdminNavLinks />
-      </div>
-
-      <div className="mt-6 rounded-[14px] border border-[#ebebeb] bg-white p-4">
-        <p className="text-sm font-semibold text-[#222222]">Operational rule</p>
-        <p className="mt-2 text-xs leading-5 text-[#6a6a6a]">
-          Force cancellation, refunds, complaint decisions and listing
-          suspension must remain auditable.
-        </p>
       </div>
     </aside>
   );

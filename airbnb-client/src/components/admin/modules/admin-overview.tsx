@@ -1,201 +1,735 @@
 "use client";
 
 import {
-  AlertTriangle,
+  ArrowRight,
   BadgeDollarSign,
-  Ban,
+  Banknote,
   ClipboardList,
-  FileClock,
-  Gavel,
-  MessageSquareWarning,
+  CreditCard,
 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  type AdminPaymentOverview,
+  type AdminReservationSummary,
+  getAdminPaymentOverview,
+  listAdminComplaints,
+  listAdminHostPenalties,
+  listAdminReservations,
+} from "@/api/endpoints/admin";
 import { AdminHomeLink, useAdminToken } from "@/components/admin/admin-shell";
 import {
-  AdminCard,
-  AdminMetricCard,
+  AdminErrorState,
   AdminPageHeader,
+  getAdminErrorMessage,
   TextStatusPill,
 } from "@/components/admin/admin-ui";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { parseJwt } from "@/lib/jwt";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn, formatCurrency } from "@/lib/utils";
+import type { BookingStatus } from "@/types/booking.type";
 
-const modules = [
-  {
-    href: "/admin/reservations",
-    title: "Bookings and reservations",
-    description:
-      "Review V2 lifecycle state and force cancel eligible bookings.",
-    icon: ClipboardList,
-    status: "Placeholder list API",
+type AdminDashboardData = {
+  payment: AdminPaymentOverview | null;
+  reservations: AdminReservationSummary[];
+  complaintsCount: number;
+  hostPenaltiesCount: number;
+  auditEvents: Array<{
+    eventId: string;
+    eventType: string;
+    entityType?: string | null;
+    entityId?: string | null;
+    severity: string;
+    message: string;
+    occurredAt: string;
+  }>;
+  errors: string[];
+};
+
+const emptyPaymentOverview: AdminPaymentOverview = {
+  summary: {
+    paymentCount: 0,
+    capturedAmount: 0,
+    refundCount: 0,
+    refundedAmount: 0,
+    pendingPayoutCount: 0,
+    pendingPayoutAmount: 0,
+    currency: "USD",
   },
-  {
-    href: "/admin/complaints",
-    title: "Complaints",
-    description: "Resolve escalated complaints with the V2 decision matrix.",
-    icon: MessageSquareWarning,
-    status: "Live backend API",
-  },
-  {
-    href: "/admin/refunds",
-    title: "Refunds",
-    description:
-      "Monitor refund records created by cancellation or complaint causes.",
-    icon: BadgeDollarSign,
-    status: "Placeholder list API",
-  },
-  {
-    href: "/admin/host-penalties",
-    title: "Host penalties",
-    description:
-      "Waive active host cancellation penalties with an admin reason.",
-    icon: Gavel,
-    status: "Placeholder list API",
-  },
-  {
-    href: "/admin/listings",
-    title: "Listing suspension",
-    description:
-      "Suspend or unsuspend listings without cancelling existing bookings.",
-    icon: Ban,
-    status: "Partial backend API",
-  },
-  {
-    href: "/admin/audit",
-    title: "Audit events",
-    description:
-      "Read the operational event stream for admin-sensitive actions.",
-    icon: FileClock,
-    status: "Placeholder API",
-  },
-];
+  paymentFlow: [],
+  transactionStatus: [],
+  payoutAging: [],
+  queue: [],
+};
+
+const activityChartConfig = {
+  bookings: { label: "Bookings", color: "#ff385c" },
+  complaints: { label: "Complaints", color: "#222222" },
+} satisfies ChartConfig;
+
+const statusChartConfig = {
+  count: { label: "Bookings", color: "#ff385c" },
+} satisfies ChartConfig;
+
+const paymentFlowChartConfig = {
+  captured: { label: "Captured", color: "#ff385c" },
+  refunded: { label: "Refunded", color: "#c13515" },
+  payout: { label: "Payout", color: "#222222" },
+} satisfies ChartConfig;
+
+const transactionStatusChartConfig = {
+  count: { label: "Transactions", color: "#ff385c" },
+} satisfies ChartConfig;
+
+const payoutAgingChartConfig = {
+  amount: { label: "Amount", color: "#222222" },
+} satisfies ChartConfig;
+
+function toneClasses(tone: string) {
+  return {
+    brand: "bg-rose-50 text-[#ff385c] ring-rose-100",
+    warning: "bg-amber-50 text-amber-800 ring-amber-100",
+    danger: "bg-red-50 text-red-700 ring-red-100",
+    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    neutral: "bg-[#f7f7f7] text-[#222222] ring-[#ebebeb]",
+  }[tone];
+}
+
+function statusTone(status: string) {
+  const normalized = status.toUpperCase();
+  if (normalized === "COMPLETED" || normalized === "SUCCEEDED") {
+    return "success";
+  }
+  if (
+    normalized === "PENDING" ||
+    normalized === "PROCESSING" ||
+    normalized === "PENDING_CHECKIN" ||
+    normalized === "SCHEDULED" ||
+    normalized === "RETRY"
+  ) {
+    return "warning";
+  }
+  if (normalized === "FAILED" || normalized === "CANCELLED") return "danger";
+  return "neutral";
+}
+
+function shortId(value?: string | null) {
+  return value ? value.slice(0, 8) : "Not set";
+}
+
+function formatDay(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function buildWeeklyOperations(
+  reservations: AdminReservationSummary[],
+  complaintsCount: number,
+) {
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    const key = date.toISOString().slice(0, 10);
+    return { key, day: formatDay(key), bookings: 0, complaints: 0 };
+  });
+
+  const byKey = new Map(days.map((item) => [item.key, item]));
+  reservations.forEach((reservation) => {
+    const key = reservation.createdAt?.slice(0, 10);
+    const bucket = byKey.get(key);
+    if (bucket) bucket.bookings += 1;
+  });
+
+  if (complaintsCount > 0) {
+    days[days.length - 1].complaints = complaintsCount;
+  }
+
+  return days;
+}
+
+function buildBookingStatus(reservations: AdminReservationSummary[]) {
+  const counts = new Map<BookingStatus, number>();
+  reservations.forEach((reservation) => {
+    counts.set(reservation.status, (counts.get(reservation.status) ?? 0) + 1);
+  });
+  return Array.from(counts.entries()).map(([status, count]) => ({
+    status: status.replaceAll("_", " "),
+    count,
+  }));
+}
 
 export function AdminOverviewModule() {
   const { token } = useAdminToken();
-  const jwt = token ? parseJwt(token) : null;
+  const [loading, setLoading] = useState(true);
+  const [dashboard, setDashboard] = useState<AdminDashboardData>({
+    payment: null,
+    reservations: [],
+    complaintsCount: 0,
+    hostPenaltiesCount: 0,
+    auditEvents: [],
+    errors: [],
+  });
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+
+    Promise.allSettled([
+      getAdminPaymentOverview(token),
+      listAdminReservations(token, { page: 0, size: 200 }),
+      listAdminComplaints(token),
+      listAdminHostPenalties(token),
+    ]).then((results) => {
+      if (!active) return;
+
+      const errors: string[] = [];
+      const [payment, reservations, complaints, penalties] = results;
+
+      if (payment.status === "rejected") {
+        errors.push(
+          getAdminErrorMessage(
+            payment.reason,
+            "Payment overview API is not available.",
+          ),
+        );
+      }
+      if (reservations.status === "rejected") {
+        errors.push(
+          getAdminErrorMessage(
+            reservations.reason,
+            "Reservation admin list API is not available.",
+          ),
+        );
+      }
+      if (complaints.status === "rejected") {
+        errors.push(
+          getAdminErrorMessage(
+            complaints.reason,
+            "Complaint admin API is not available.",
+          ),
+        );
+      }
+      if (penalties.status === "rejected") {
+        errors.push(
+          getAdminErrorMessage(
+            penalties.reason,
+            "Host penalty admin list API is not available.",
+          ),
+        );
+      }
+
+      setDashboard({
+        payment: payment.status === "fulfilled" ? payment.value.data : null,
+        reservations:
+          reservations.status === "fulfilled" ? reservations.value.data : [],
+        complaintsCount:
+          complaints.status === "fulfilled" ? complaints.value.data.length : 0,
+        hostPenaltiesCount:
+          penalties.status === "fulfilled" ? penalties.value.data.length : 0,
+        auditEvents: [],
+        errors,
+      });
+      setLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  const payment = dashboard.payment ?? emptyPaymentOverview;
+  const currency = payment.summary.currency || "USD";
+  const weeklyOperations = useMemo(
+    () =>
+      buildWeeklyOperations(dashboard.reservations, dashboard.complaintsCount),
+    [dashboard.reservations, dashboard.complaintsCount],
+  );
+  const bookingStatus = useMemo(
+    () => buildBookingStatus(dashboard.reservations),
+    [dashboard.reservations],
+  );
+
+  const metrics = [
+    {
+      label: "Open reservations",
+      value: dashboard.reservations.length,
+      delta: loading ? "Loading" : "Live",
+      note: "Rows returned by booking-service",
+      icon: ClipboardList,
+      tone: "brand",
+    },
+    {
+      label: "Transactions",
+      value: formatCurrency(payment.summary.capturedAmount, currency),
+      delta: `${payment.summary.paymentCount} paid`,
+      note: "Captured payment volume",
+      icon: CreditCard,
+      tone: "success",
+    },
+    {
+      label: "Payouts pending",
+      value: formatCurrency(payment.summary.pendingPayoutAmount, currency),
+      delta: `${payment.summary.pendingPayoutCount} payouts`,
+      note: "Waiting for payout cycle",
+      icon: Banknote,
+      tone: "warning",
+    },
+    {
+      label: "Refund queue",
+      value: payment.summary.refundCount,
+      delta: formatCurrency(payment.summary.refundedAmount, currency),
+      note: "Refund records from payment-service",
+      icon: BadgeDollarSign,
+      tone: "neutral",
+    },
+  ] as const;
+
+  const recentEvents = dashboard.auditEvents.slice(0, 5);
 
   return (
     <>
       <AdminPageHeader
         eyebrow="Admin operations"
-        title="Booking Flow V2 control room"
-        description="A focused operational dashboard for reservations, refunds, complaints, host penalties, listing suspensions and audit events."
+        title="Dashboard"
+        description="Live operational data for reservations, payments, payouts and admin review queues."
         action={<AdminHomeLink />}
       />
 
-      <div className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
-        <section className="overflow-hidden rounded-[20px] border border-[#dddddd] bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_2px_6px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.10)]">
-          <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="p-6 sm:p-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#dddddd] bg-white px-3 py-1 text-xs font-semibold text-[#222222]">
-                <span className="size-1.5 rounded-full bg-[#ff385c]" />
-                Live admin workspace
-              </div>
-              <h2 className="mt-5 max-w-2xl text-[22px] font-medium leading-tight tracking-[-0.02em] text-[#222222]">
-                Operate sensitive booking workflows from one governed surface.
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#6a6a6a]">
-                The dashboard keeps destructive actions near their audit
-                context, separates read-only queues from command panels, and
-                uses Booking Flow V2 actor-specific states throughout.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button
-                  asChild
-                  className="h-12 rounded-[8px] bg-[#ff385c] px-6 text-white hover:bg-[#e00b41]"
+      <main className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
+        {dashboard.errors.length ? (
+          <AdminErrorState
+            title="Some live data could not be loaded"
+            description={dashboard.errors.join(" ")}
+          />
+        ) : null}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {metrics.map((metric) => {
+            const Icon = metric.icon;
+
+            return (
+              <Card
+                key={metric.label}
+                className="rounded-[14px] border-[#dddddd] bg-white shadow-none"
+              >
+                <CardHeader className="pb-2">
+                  <CardDescription className="text-sm text-[#6a6a6a]">
+                    {metric.label}
+                  </CardDescription>
+                  <CardTitle className="text-2xl font-semibold text-[#222222]">
+                    {metric.value}
+                  </CardTitle>
+                  <CardAction>
+                    <span
+                      className={cn(
+                        "flex size-9 items-center justify-center rounded-full ring-1",
+                        toneClasses(metric.tone),
+                      )}
+                    >
+                      <Icon className="size-4" />
+                    </span>
+                  </CardAction>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="rounded-full border-[#dddddd] bg-white text-[#222222]"
+                    >
+                      {metric.delta}
+                    </Badge>
+                    <span className="text-sm text-[#6a6a6a]">
+                      {metric.note}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </section>
+
+        <div className="flex justify-end">
+          <Button
+            asChild
+            className="h-10 rounded-[8px] bg-[#ff385c] px-4 text-white hover:bg-[#e00b41]"
+          >
+            <Link href="/admin/refunds">
+              Open payment queue
+              <ArrowRight className="ml-2 size-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <section className="space-y-4">
+          <div>
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Weekly operations
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Booking rows and currently escalated complaints.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={activityChartConfig}
+                  className="h-[300px] w-full"
                 >
-                  <Link href="/admin/reservations">Review reservations</Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="h-12 rounded-[8px] px-6"
+                  <AreaChart data={weeklyOperations}>
+                    <CartesianGrid vertical={false} stroke="#ebebeb" />
+                    <XAxis
+                      dataKey="day"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                    />
+                    <YAxis hide />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Area
+                      dataKey="bookings"
+                      type="natural"
+                      fill="#fff1f3"
+                      stroke="#ff385c"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      dataKey="complaints"
+                      type="natural"
+                      fill="transparent"
+                      stroke="#222222"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Booking status
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Current admin rows by lifecycle state.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={statusChartConfig}
+                  className="h-[300px] w-full"
                 >
-                  <Link href="/admin/complaints">Open complaints</Link>
-                </Button>
-              </div>
-            </div>
-            <div className="border-t border-[#ebebeb] bg-[#f7f7f7] p-6 sm:p-8 lg:border-l lg:border-t-0">
-              <div className="flex gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-50 text-[#ff385c]">
-                  <AlertTriangle className="size-5" />
-                </span>
-                <div>
-                  <p className="font-semibold text-[#222222]">
-                    Business boundary
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[#6a6a6a]">
-                    Admin force cancellation is allowed only for CONFIRMED or
-                    CHECKED_IN bookings. Listing suspension must not auto-cancel
-                    existing bookings. Complaint full refund on CHECKED_IN
-                    changes the booking to CANCELLED_BY_ADMIN.
-                  </p>
-                </div>
-              </div>
-            </div>
+                  <BarChart data={bookingStatus} layout="vertical">
+                    <CartesianGrid horizontal={false} stroke="#ebebeb" />
+                    <XAxis type="number" hide />
+                    <YAxis
+                      dataKey="status"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      width={110}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="count" fill="#ff385c" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Recent admin events
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Events returned by the admin audit endpoint.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Event</TableHead>
+                      <TableHead>Entity</TableHead>
+                      <TableHead>Severity</TableHead>
+                      <TableHead className="text-right">Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentEvents.length ? (
+                      recentEvents.map((item) => (
+                        <TableRow key={item.eventId}>
+                          <TableCell className="font-medium text-[#222222]">
+                            {item.message || item.eventType}
+                          </TableCell>
+                          <TableCell className="text-[#6a6a6a]">
+                            {item.entityType ?? "Entity"} /{" "}
+                            {shortId(item.entityId)}
+                          </TableCell>
+                          <TableCell className="text-[#6a6a6a]">
+                            {item.severity}
+                          </TableCell>
+                          <TableCell className="text-right text-[#6a6a6a]">
+                            {formatDay(item.occurredAt)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className="h-24 text-center text-[#6a6a6a]"
+                        >
+                          No audit events returned.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           </div>
         </section>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <AdminMetricCard
-            accent="brand"
-            label="Signed in as"
-            value={jwt?.preferred_username ?? "Admin"}
-            note="Realm role ADMIN verified on the client."
-          />
-          <AdminMetricCard
-            accent="success"
-            label="Booking status policy"
-            value="V2"
-            note="Legacy paid and generic cancelled booking statuses are excluded."
-          />
-          <AdminMetricCard
-            accent="warning"
-            label="Normal user refunds"
-            value="Blocked"
-            note="Refunds originate only from business causes."
-          />
-        </div>
+        <section className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Payment flow
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Captured payments, refunds and host payouts from
+                  payment-service.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={paymentFlowChartConfig}
+                  className="h-[320px] w-full"
+                >
+                  <LineChart
+                    data={payment.paymentFlow.map((item) => ({
+                      ...item,
+                      day: formatDay(item.date),
+                    }))}
+                  >
+                    <CartesianGrid vertical={false} stroke="#ebebeb" />
+                    <XAxis
+                      dataKey="day"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                    />
+                    <YAxis hide />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line
+                      dataKey="captured"
+                      type="monotone"
+                      stroke="#ff385c"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      dataKey="refunded"
+                      type="monotone"
+                      stroke="#c13515"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      dataKey="payout"
+                      type="monotone"
+                      stroke="#222222"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
 
-        <div className="grid gap-4 xl:grid-cols-2">
-          {modules.map((module) => {
-            const Icon = module.icon;
-            return (
-              <AdminCard key={module.href} className="group p-0">
-                <Link href={module.href} className="block p-5">
-                  <div className="flex items-start gap-4">
-                    <span className="flex size-12 shrink-0 items-center justify-center rounded-[14px] bg-[#f7f7f7] text-[#222222] ring-1 ring-[#ebebeb] transition group-hover:text-[#ff385c]">
-                      <Icon className="size-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-base font-semibold text-[#222222]">
-                          {module.title}
-                        </h2>
-                        <TextStatusPill
-                          tone={
-                            module.status.includes("Live")
-                              ? "success"
-                              : "warning"
-                          }
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Payout aging
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Pending payout amount by age bucket.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={payoutAgingChartConfig}
+                  className="h-[320px] w-full"
+                >
+                  <BarChart data={payment.payoutAging}>
+                    <CartesianGrid vertical={false} stroke="#ebebeb" />
+                    <XAxis
+                      dataKey="bucket"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                    />
+                    <YAxis hide />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="amount"
+                      fill="#222222"
+                      radius={[8, 8, 0, 0]}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Transaction status
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Payment records grouped by settlement state.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer
+                  config={transactionStatusChartConfig}
+                  className="h-[280px] w-full"
+                >
+                  <BarChart data={payment.transactionStatus} layout="vertical">
+                    <CartesianGrid horizontal={false} stroke="#ebebeb" />
+                    <XAxis type="number" hide />
+                    <YAxis
+                      dataKey="status"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      width={112}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="count" fill="#ff385c" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base font-semibold text-[#222222]">
+                  Payment operations queue
+                </CardTitle>
+                <CardDescription className="text-[#6a6a6a]">
+                  Transactions, refunds and payouts that need admin attention.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Record</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Booking</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payment.queue.length ? (
+                      payment.queue.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-[#222222]">
+                                {shortId(item.id)}
+                              </p>
+                              <p className="text-xs text-[#6a6a6a]">
+                                {item.owner}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-[#6a6a6a]">
+                            {item.type}
+                          </TableCell>
+                          <TableCell className="text-[#6a6a6a]">
+                            {shortId(item.bookingId)}
+                          </TableCell>
+                          <TableCell>
+                            <TextStatusPill
+                              tone={
+                                statusTone(item.status) as
+                                  | "neutral"
+                                  | "success"
+                                  | "warning"
+                                  | "danger"
+                                  | "brand"
+                              }
+                            >
+                              {item.status}
+                            </TextStatusPill>
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-[#222222]">
+                            {formatCurrency(item.amount, item.currency)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          className="h-24 text-center text-[#6a6a6a]"
                         >
-                          {module.status}
-                        </TextStatusPill>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[#6a6a6a]">
-                        {module.description}
-                      </p>
-                      <p className="mt-4 text-sm font-semibold text-[#222222]">
-                        Open module
-                      </p>
-                    </div>
-                  </div>
-                </Link>
-              </AdminCard>
-            );
-          })}
-        </div>
-      </div>
+                          No payment operations require attention.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      </main>
     </>
   );
 }

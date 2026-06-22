@@ -14,6 +14,8 @@ import com.bookingservice.dto.request.UpdateBookingStatusRequest;
 import com.bookingservice.dto.response.BookingDetailResponse;
 import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
+import com.bookingservice.dto.response.AdminReservationDetailResponse;
+import com.bookingservice.dto.response.AdminReservationSummaryResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostCancellationQuoteResponse;
@@ -108,6 +110,199 @@ public class BookingService {
         }
 
         return bookingRepository.findConflictingBookings(listingId, checkIn, checkOut).isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminReservationSummaryResponse> getAdminReservations(
+            List<BookingStatus> statuses,
+            String search,
+            LocalDate checkInFrom,
+            LocalDate checkInTo,
+            String guest,
+            String host,
+            String listing,
+            String bookingCode,
+            int page,
+            int size
+    ) {
+        Jwt jwt = currentJwt();
+        if (!isAdmin(jwt)) {
+            throw BusinessException.forbidden("Admin role is required");
+        }
+
+        boolean hasStatuses = statuses != null && !statuses.isEmpty();
+        List<BookingStatus> queryStatuses = hasStatuses ? statuses : List.of(BookingStatus.PENDING_PAYMENT);
+        List<Booking> bookings = bookingRepository.findReservationsForDashboard(
+                null,
+                null,
+                false,
+                queryStatuses,
+                hasStatuses,
+                checkInFrom,
+                checkInTo
+        );
+
+        List<AdminReservationSummaryResponse> filtered = bookings.stream()
+                .filter(booking -> matchesAdminReservationFilters(booking, search, guest, host, listing, bookingCode))
+                .map(this::mapToAdminReservationSummary)
+                .toList();
+
+        int safeSize = Math.max(1, Math.min(size, 200));
+        int safePage = Math.max(0, page);
+        int fromIndex = Math.min(safePage * safeSize, filtered.size());
+        int toIndex = Math.min(fromIndex + safeSize, filtered.size());
+        return filtered.subList(fromIndex, toIndex);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminReservationDetailResponse getAdminReservationDetail(UUID bookingId) {
+        Jwt jwt = currentJwt();
+        if (!isAdmin(jwt)) {
+            throw BusinessException.forbidden("Admin role is required");
+        }
+
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
+        return mapToAdminReservationDetail(booking);
+    }
+
+    private boolean matchesAdminReservationFilters(
+            Booking booking,
+            String search,
+            String guest,
+            String host,
+            String listing,
+            String bookingCode
+    ) {
+        return matchesAny(booking, search)
+                && matchesValue(booking.getGuestId(), guest)
+                && matchesValue(booking.getHostId(), host)
+                && matchesValue(booking.getListingId(), listing)
+                && matchesText(reservationCode(booking), bookingCode);
+    }
+
+    private boolean matchesAny(Booking booking, String search) {
+        if (search == null || search.isBlank()) {
+            return true;
+        }
+        return matchesText(booking.getBookingId().toString(), search)
+                || matchesText(reservationCode(booking), search)
+                || matchesValue(booking.getListingId(), search)
+                || matchesValue(booking.getGuestId(), search)
+                || matchesValue(booking.getHostId(), search);
+    }
+
+    private boolean matchesValue(UUID value, String query) {
+        return query == null || query.isBlank() || (value != null && matchesText(value.toString(), query));
+    }
+
+    private boolean matchesText(String value, String query) {
+        return query == null || query.isBlank()
+                || (value != null && value.toLowerCase().contains(query.trim().toLowerCase()));
+    }
+
+    private AdminReservationSummaryResponse mapToAdminReservationSummary(Booking booking) {
+        return AdminReservationSummaryResponse.builder()
+                .bookingId(booking.getBookingId())
+                .reservationCode(reservationCode(booking))
+                .listingId(booking.getListingId())
+                .guestId(booking.getGuestId())
+                .hostId(booking.getHostId())
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .status(booking.getStatus())
+                .paymentStatus(paymentStatus(booking))
+                .totalAmount(booking.getTotalPrice())
+                .currency(booking.getCurrency())
+                .createdAt(booking.getCreatedAt())
+                .riskFlags(adminRiskFlags(booking))
+                .build();
+    }
+
+    private AdminReservationDetailResponse mapToAdminReservationDetail(Booking booking) {
+        return AdminReservationDetailResponse.builder()
+                .bookingId(booking.getBookingId())
+                .reservationCode(reservationCode(booking))
+                .status(booking.getStatus())
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .createdAt(booking.getCreatedAt())
+                .expiresAt(booking.getExpiresAt())
+                .checkedInAt(booking.getCheckedInAt())
+                .checkedOutAt(booking.getCheckedOutAt())
+                .completedAt(booking.getCompletedAt())
+                .totalAmount(booking.getTotalPrice())
+                .currency(booking.getCurrency())
+                .guest(AdminReservationDetailResponse.PartySummary.builder()
+                        .id(booking.getGuestId())
+                        .build())
+                .host(AdminReservationDetailResponse.PartySummary.builder()
+                        .id(booking.getHostId())
+                        .build())
+                .listing(AdminReservationDetailResponse.ListingSummary.builder()
+                        .id(booking.getListingId())
+                        .build())
+                .payment(AdminReservationDetailResponse.PaymentSummary.builder()
+                        .paymentIntentId(booking.getPaymentIntentId())
+                        .status(paymentStatus(booking))
+                        .amount(BigDecimal.valueOf(booking.getTotalPrice()))
+                        .currency(booking.getCurrency())
+                        .paidAt(booking.getPaidAt())
+                        .build())
+                .refunds(List.of())
+                .timeline(List.of(
+                        timelineItem("created", "Booking created", "Reservation request was created.", booking.getCreatedAt()),
+                        timelineItem("check-in", "Check-in date", "Expected start of stay.", booking.getCheckInDate().atStartOfDay()),
+                        timelineItem("check-out", "Check-out date", "Expected end of stay.", booking.getCheckOutDate().atStartOfDay())
+                ))
+                .build();
+    }
+
+    private AdminReservationDetailResponse.TimelineItem timelineItem(
+            String key,
+            String label,
+            String description,
+            LocalDateTime occurredAt
+    ) {
+        return AdminReservationDetailResponse.TimelineItem.builder()
+                .key(key)
+                .label(label)
+                .description(description)
+                .occurredAt(occurredAt)
+                .build();
+    }
+
+    private String reservationCode(Booking booking) {
+        return booking.getBookingId().toString().substring(0, 8).toUpperCase();
+    }
+
+    private String paymentStatus(Booking booking) {
+        if (booking.getPaidAt() != null || booking.getStatus() == BookingStatus.CONFIRMED
+                || booking.getStatus() == BookingStatus.CHECKED_IN
+                || booking.getStatus() == BookingStatus.CHECKED_OUT
+                || booking.getStatus() == BookingStatus.COMPLETED) {
+            return "PAID";
+        }
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) {
+            return "PAYMENT_PENDING";
+        }
+        if (booking.getStatus() == BookingStatus.EXPIRED) {
+            return "PAYMENT_CANCELLED";
+        }
+        return null;
+    }
+
+    private List<String> adminRiskFlags(Booking booking) {
+        List<String> flags = new ArrayList<>();
+        if (booking.getStatus() == BookingStatus.PENDING_PAYMENT
+                && booking.getExpiresAt() != null
+                && booking.getExpiresAt().isBefore(LocalDateTime.now())) {
+            flags.add("PAYMENT_EXPIRED");
+        }
+        if (booking.getStatus() == BookingStatus.CANCELLED_BY_ADMIN) {
+            flags.add("ADMIN_CANCELLED");
+        }
+        return flags;
     }
 
     @Transactional(readOnly = true)

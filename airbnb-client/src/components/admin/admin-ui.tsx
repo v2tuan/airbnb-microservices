@@ -1,6 +1,7 @@
 import { AlertCircle, Inbox } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AdminAccountMenu } from "@/components/admin/admin-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,22 +77,19 @@ export function AdminPageHeader({
 }) {
   return (
     <header className="border-b border-[#ebebeb] bg-white">
-      <div className="mx-auto flex max-w-[1280px] flex-col gap-5 px-5 py-8 sm:px-8 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-5 py-5 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
         <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#ebebeb] bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6a6a6a]">
-            <span className="size-1.5 rounded-full bg-[#ff385c]" />
-            {eyebrow}
-          </div>
-          <h1 className="mt-4 text-[28px] font-semibold leading-[1.25] tracking-[-0.01em] text-[#222222]">
+          <h1 className="text-[24px] font-semibold leading-[1.2] tracking-[-0.01em] text-[#222222]">
             {title}
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6a6a6a]">
+          <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[#6a6a6a]">
             {description}
           </p>
         </div>
-        {action ? (
-          <div className="flex shrink-0 items-center">{action}</div>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-3">
+          {action}
+          <AdminAccountMenu operationLabel={eyebrow} />
+        </div>
       </div>
     </header>
   );
