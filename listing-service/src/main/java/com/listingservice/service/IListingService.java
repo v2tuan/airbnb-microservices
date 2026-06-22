@@ -2,6 +2,7 @@ package com.listingservice.service;
 
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingFilterRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
@@ -27,6 +28,7 @@ public interface IListingService {
     List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut);
     List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, LocalDate checkIn, LocalDate checkOut);
     List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius, LocalDate checkIn, LocalDate checkOut);
+    List<ListingResponse> searchListingsWithFilters(ListingFilterRequest request);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     void suspendListing(UUID listingId, ListingSuspensionRequest request);

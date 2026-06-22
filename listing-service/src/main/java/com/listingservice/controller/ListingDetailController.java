@@ -3,6 +3,7 @@ package com.listingservice.controller;
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingFilterRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
@@ -248,6 +249,19 @@ public class ListingDetailController {
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Location search results retrieved successfully")
+                        .data(response)
+                        .build());
+    }
+
+    @PostMapping("/search/filter")
+    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchWithFilters(
+            @Valid @RequestBody(required = false) ListingFilterRequest request) {
+        log.info("REST request to advanced search listings: {}", request);
+        List<ListingResponse> response = listingService.searchListingsWithFilters(request);
+        return ResponseEntity.ok(
+                ApiResponse.<List<ListingResponse>>builder()
+                        .code(1000)
+                        .message("Filtered search results retrieved successfully")
                         .data(response)
                         .build());
     }

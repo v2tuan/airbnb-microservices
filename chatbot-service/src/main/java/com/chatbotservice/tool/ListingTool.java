@@ -4,8 +4,12 @@ import com.chatbotservice.client.ListingFeignClient;
 import com.chatbotservice.configuration.ChatbotProperties;
 import com.chatbotservice.conversation.ConversationListingContext;
 import com.chatbotservice.conversation.ConversationListingContextStore;
+import com.chatbotservice.dto.listing.AmenityResponse;
 import com.chatbotservice.dto.listing.ApiResponse;
+import com.chatbotservice.dto.listing.HouseRulesResponse;
+import com.chatbotservice.dto.listing.ListingAccessInfoResponse;
 import com.chatbotservice.dto.listing.ListingCardResponse;
+import com.chatbotservice.dto.listing.ListingFilterRequest;
 import com.chatbotservice.dto.listing.ListingPhotoResponse;
 import com.chatbotservice.dto.listing.ListingPricingResponse;
 import com.chatbotservice.dto.listing.ListingResponse;
@@ -17,9 +21,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Comparator;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -49,16 +54,44 @@ public class ListingTool {
     @Tool(
             name = "search_listings",
             description = """
-                    Search active Airbnb listings by city, guest count, optional check-in/check-out dates,
-                    and optional nightly base price range. Use this tool whenever the user asks for real listings,
-                    room recommendations, prices, capacity, or stays in a city.
+                    Search active Airbnb listings with combined filters: keyword, city, state, country, guest count,
+                    price range, property type, room type, bedrooms, beds, bathrooms, instant booking, amenities,
+                    coordinates, radius, date availability, and sorting.
+                    Use this tool whenever the user asks for real listings, room recommendations, prices, capacity,
+                    amenities, or stays in a city.
                     """
     )
     public String searchListings(
+            @ToolParam(required = false, description = "Free text keyword from the user, for example lake view, balcony, quiet, center.")
+            String keyword,
             @ToolParam(required = false, description = "City name, for example Hanoi, Da Nang, Dalat, Ho Chi Minh City.")
             String city,
+            @ToolParam(required = false, description = "State, province, or region when the user provides it.")
+            String state,
+            @ToolParam(required = false, description = "Country name, for example Vietnam.")
+            String country,
             @ToolParam(required = false, description = "Minimum number of guests the listing must support.")
             Integer guests,
+            @ToolParam(required = false, description = "Property type: APARTMENT, HOUSE, VILLA, CONDO, TOWNHOUSE, COTTAGE, or BUNGALOW.")
+            String propertyType,
+            @ToolParam(required = false, description = "Room type: ENTIRE_PLACE, PRIVATE_ROOM, or SHARED_ROOM.")
+            String roomType,
+            @ToolParam(required = false, description = "Minimum number of bedrooms.")
+            Integer minBedrooms,
+            @ToolParam(required = false, description = "Minimum number of beds.")
+            Integer minBeds,
+            @ToolParam(required = false, description = "Minimum number of bathrooms.")
+            BigDecimal minBathrooms,
+            @ToolParam(required = false, description = "Whether the listing must support instant booking.")
+            Boolean instantBook,
+            @ToolParam(required = false, description = "Amenity names requested by the user, for example wifi, pool, kitchen, parking.")
+            List<String> amenityNames,
+            @ToolParam(required = false, description = "Latitude when the user gives an exact coordinate or known place coordinate.")
+            BigDecimal latitude,
+            @ToolParam(required = false, description = "Longitude when the user gives an exact coordinate or known place coordinate.")
+            BigDecimal longitude,
+            @ToolParam(required = false, description = "Radius in kilometers around the provided latitude and longitude.")
+            Double radiusKm,
             @ToolParam(required = false, description = "Minimum nightly base price.")
             BigDecimal minPrice,
             @ToolParam(required = false, description = "Maximum nightly base price.")
@@ -67,20 +100,49 @@ public class ListingTool {
             LocalDate checkIn,
             @ToolParam(required = false, description = "Check-out date in ISO format yyyy-MM-dd.")
             LocalDate checkOut,
+            @ToolParam(required = false, description = "Sort: RELEVANCE, PRICE_ASC, PRICE_DESC, CREATED_DESC, CREATED_ASC, or GUESTS_DESC.")
+            String sortBy,
             ToolContext toolContext
     ) {
-        // Ghi log tất cả các tham số trên một dòng (Dễ parse log bằng các công cụ như ELK, Splunk)
-        log.info("Searching listings with params - City: {}, Guests: {}, MinPrice: {}, MaxPrice: {}, CheckIn: {}, CheckOut: {}",
-                city, guests, minPrice, maxPrice, checkIn, checkOut);
-
-        ConversationListingContext previousContext = previousContext(toolContext).orElse(null);
-        SearchFilters filters = mergeWithConversationContext(
+        log.info(
+                "Searching listings with params - keyword={}, city={}, state={}, country={}, guests={}, propertyType={}, roomType={}, amenities={}, minPrice={}, maxPrice={}, checkIn={}, checkOut={}, sortBy={}",
+                keyword,
                 city,
+                state,
+                country,
                 guests,
+                propertyType,
+                roomType,
+                amenityNames,
                 minPrice,
                 maxPrice,
                 checkIn,
                 checkOut,
+                sortBy
+        );
+
+        ConversationListingContext previousContext = previousContext(toolContext).orElse(null);
+        SearchFilters filters = mergeWithConversationContext(
+                keyword,
+                city,
+                state,
+                country,
+                guests,
+                propertyType,
+                roomType,
+                minBedrooms,
+                minBeds,
+                minBathrooms,
+                instantBook,
+                amenityNames,
+                latitude,
+                longitude,
+                radiusKm,
+                minPrice,
+                maxPrice,
+                checkIn,
+                checkOut,
+                sortBy,
                 currentMessage(toolContext),
                 previousContext
         );
@@ -95,15 +157,38 @@ public class ListingTool {
         }
 
         try {
-            ApiResponse<List<ListingResponse>> response = listingFeignClient
-                    .searchListings(filters.city(), filters.guests(), filters.checkIn(), filters.checkOut());
+            List<String> propertyTypes = singleValueList(normalizePropertyType(filters.propertyType()));
+            List<String> roomTypes = singleValueList(normalizeRoomType(filters.roomType()));
+            List<String> normalizedAmenityNames = normalizeAmenityNames(filters.amenityNames());
+            String normalizedSortBy = normalizeSortBy(filters.sortBy());
 
-            List<ListingResponse> listings = safeData(response)
-                    .stream()
-                    .filter(listing -> matchesPrice(listing, filters.minPrice(), filters.maxPrice()))
-                    .sorted(Comparator.comparing(this::basePriceOrMax))
-                    .limit(properties.listing().maxResults())
-                    .toList();
+            ApiResponse<List<ListingResponse>> response = listingFeignClient.searchListingsWithFilters(
+                    new ListingFilterRequest(
+                            normalizeNullable(filters.keyword()),
+                            normalizeCityName(filters.city()),
+                            normalizeNullable(filters.state()),
+                            normalizeNullable(filters.country()),
+                            filters.guests(),
+                            filters.minBedrooms(),
+                            filters.minBeds(),
+                            filters.minBathrooms(),
+                            filters.minPrice(),
+                            filters.maxPrice(),
+                            propertyTypes,
+                            roomTypes,
+                            filters.instantBook(),
+                            normalizedAmenityNames,
+                            filters.latitude(),
+                            filters.longitude(),
+                            filters.radiusKm(),
+                            filters.checkIn(),
+                            filters.checkOut(),
+                            normalizedSortBy,
+                            properties.listing().maxResults()
+                    )
+            );
+
+            List<ListingResponse> listings = safeData(response);
 
             if (listings.isEmpty()) {
                 return "NO_LISTINGS_FOUND: No active listings matched the requested filters.";
@@ -114,7 +199,15 @@ public class ListingTool {
                     .toList();
 
             addListingCardsToContext(toolContext, listingCards);
-            saveConversationContext(toolContext, filters, listingCards);
+            saveConversationContext(
+                    toolContext,
+                    filters,
+                    propertyTypes,
+                    roomTypes,
+                    normalizedAmenityNames,
+                    normalizedSortBy,
+                    listingCards
+            );
 
             return formatResults(listings);
         } catch (Exception exception) {
@@ -140,8 +233,8 @@ public class ListingTool {
             return;
         }
 
-        // ToolContext is Spring AI's per-request runtime map. It is not sent to the model,
-        // so this is a safe place to collect structured card data for the SSE response.
+        // ToolContext is request scoped runtime data. It is not sent back to the model,
+        // so we can safely use it to collect structured cards for the SSE response.
         List<ListingCardResponse> typedCards = (List<ListingCardResponse>) cards;
         typedCards.addAll(listingCards);
     }
@@ -149,6 +242,10 @@ public class ListingTool {
     private void saveConversationContext(
             ToolContext toolContext,
             SearchFilters filters,
+            List<String> propertyTypes,
+            List<String> roomTypes,
+            List<String> amenityNames,
+            String sortBy,
             List<ListingCardResponse> listingCards
     ) {
         String conversationKey = stringContextValue(toolContext, CONVERSATION_KEY_CONTEXT_KEY);
@@ -159,12 +256,26 @@ public class ListingTool {
         listingContextStore.save(
                 conversationKey,
                 new ConversationListingContext(
-                        filters.city(),
+                        normalizeNullable(filters.keyword()),
+                        normalizeCityName(filters.city()),
+                        normalizeNullable(filters.state()),
+                        normalizeNullable(filters.country()),
                         filters.guests(),
+                        firstValue(propertyTypes),
+                        firstValue(roomTypes),
+                        filters.minBedrooms(),
+                        filters.minBeds(),
+                        filters.minBathrooms(),
+                        filters.instantBook(),
+                        amenityNames,
+                        filters.latitude(),
+                        filters.longitude(),
+                        filters.radiusKm(),
                         filters.minPrice(),
                         filters.maxPrice(),
                         filters.checkIn(),
                         filters.checkOut(),
+                        sortBy,
                         lowestPrice(listingCards),
                         highestPrice(listingCards),
                         listingCards,
@@ -174,54 +285,121 @@ public class ListingTool {
     }
 
     private SearchFilters mergeWithConversationContext(
+            String keyword,
             String city,
+            String state,
+            String country,
             Integer guests,
+            String propertyType,
+            String roomType,
+            Integer minBedrooms,
+            Integer minBeds,
+            BigDecimal minBathrooms,
+            Boolean instantBook,
+            List<String> amenityNames,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Double radiusKm,
             BigDecimal minPrice,
             BigDecimal maxPrice,
             LocalDate checkIn,
             LocalDate checkOut,
+            String sortBy,
             String currentMessage,
             ConversationListingContext previousContext
     ) {
-        return new SearchFilters(city, guests, minPrice, maxPrice, checkIn, checkOut);
+        return new SearchFilters(
+                keyword,
+                city,
+                state,
+                country,
+                guests,
+                propertyType,
+                roomType,
+                minBedrooms,
+                minBeds,
+                minBathrooms,
+                instantBook,
+                normalizeAmenityNames(amenityNames),
+                latitude,
+                longitude,
+                radiusKm,
+                minPrice,
+                maxPrice,
+                checkIn,
+                checkOut,
+                sortBy
+        );
 
 //        if (previousContext == null) {
-//            return new SearchFilters(city, guests, minPrice, maxPrice, checkIn, checkOut);
+//            return new SearchFilters(
+//                    keyword,
+//                    city,
+//                    state,
+//                    country,
+//                    guests,
+//                    propertyType,
+//                    roomType,
+//                    minBedrooms,
+//                    minBeds,
+//                    minBathrooms,
+//                    instantBook,
+//                    normalizeAmenityNames(amenityNames),
+//                    latitude,
+//                    longitude,
+//                    radiusKm,
+//                    minPrice,
+//                    maxPrice,
+//                    checkIn,
+//                    checkOut,
+//                    sortBy
+//            );
 //        }
 //
 //        boolean asksForCheaperListings = containsAny(
 //                currentMessage,
-//                "rẻ hơn",
 //                "re hon",
-//                "giá thấp hơn",
 //                "gia thap hon",
-//                "thấp hơn",
 //                "thap hon",
 //                "cheaper",
 //                "less expensive"
 //        );
 //        boolean asksForMoreExpensiveListings = containsAny(
 //                currentMessage,
-//                "đắt hơn",
 //                "dat hon",
-//                "mắc hơn",
 //                "mac hon",
-//                "cao cấp hơn",
 //                "cao cap hon",
 //                "more expensive"
 //        );
 //
+//        String effectiveKeyword = StringUtils.hasText(keyword) ? keyword : previousContext.keyword();
 //        String effectiveCity = StringUtils.hasText(city) ? city : previousContext.city();
+//        String effectiveState = StringUtils.hasText(state) ? state : previousContext.state();
+//        String effectiveCountry = StringUtils.hasText(country) ? country : previousContext.country();
 //        Integer effectiveGuests = guests != null ? guests : previousContext.guests();
+//        String effectivePropertyType = StringUtils.hasText(propertyType) ? propertyType : previousContext.propertyType();
+//        String effectiveRoomType = StringUtils.hasText(roomType) ? roomType : previousContext.roomType();
+//        Integer effectiveMinBedrooms = minBedrooms != null ? minBedrooms : previousContext.minBedrooms();
+//        Integer effectiveMinBeds = minBeds != null ? minBeds : previousContext.minBeds();
+//        BigDecimal effectiveMinBathrooms = minBathrooms != null ? minBathrooms : previousContext.minBathrooms();
+//        Boolean effectiveInstantBook = instantBook != null ? instantBook : previousContext.instantBook();
+//        List<String> effectiveAmenityNames = hasValues(amenityNames)
+//                ? normalizeAmenityNames(amenityNames)
+//                : previousContext.amenityNames();
+//        BigDecimal effectiveLatitude = latitude != null ? latitude : previousContext.latitude();
+//        BigDecimal effectiveLongitude = longitude != null ? longitude : previousContext.longitude();
+//        Double effectiveRadiusKm = radiusKm != null ? radiusKm : previousContext.radiusKm();
 //        LocalDate effectiveCheckIn = checkIn != null ? checkIn : previousContext.checkIn();
 //        LocalDate effectiveCheckOut = checkOut != null ? checkOut : previousContext.checkOut();
 //        BigDecimal effectiveMinPrice = minPrice != null ? minPrice : previousContext.minPrice();
 //        BigDecimal effectiveMaxPrice = maxPrice != null ? maxPrice : previousContext.maxPrice();
+//        String effectiveSortBy = StringUtils.hasText(sortBy) ? sortBy : previousContext.sortBy();
 //
-//        // LLMs usually infer "rẻ hơn" from chat memory, but this deterministic fallback
-//        // keeps tool behavior correct when the model calls search_listings without a price.
+//        // This deterministic fallback protects follow-up searches when the model calls
+//        // the tool with incomplete arguments, for example "con can nao re hon khong?".
 //        if (asksForCheaperListings && maxPrice == null && previousContext.lowestPrice() != null) {
 //            effectiveMaxPrice = priceBelow(previousContext.lowestPrice());
+//            effectiveSortBy = "PRICE_ASC";
 //            if (minPrice == null) {
 //                effectiveMinPrice = null;
 //            }
@@ -229,18 +407,33 @@ public class ListingTool {
 //
 //        if (asksForMoreExpensiveListings && minPrice == null && previousContext.highestPrice() != null) {
 //            effectiveMinPrice = priceAbove(previousContext.highestPrice());
+//            effectiveSortBy = "PRICE_DESC";
 //            if (maxPrice == null) {
 //                effectiveMaxPrice = null;
 //            }
 //        }
 //
 //        return new SearchFilters(
+//                effectiveKeyword,
 //                effectiveCity,
+//                effectiveState,
+//                effectiveCountry,
 //                effectiveGuests,
+//                effectivePropertyType,
+//                effectiveRoomType,
+//                effectiveMinBedrooms,
+//                effectiveMinBeds,
+//                effectiveMinBathrooms,
+//                effectiveInstantBook,
+//                effectiveAmenityNames,
+//                effectiveLatitude,
+//                effectiveLongitude,
+//                effectiveRadiusKm,
 //                effectiveMinPrice,
 //                effectiveMaxPrice,
 //                effectiveCheckIn,
-//                effectiveCheckOut
+//                effectiveCheckOut,
+//                effectiveSortBy
 //        );
     }
 
@@ -266,7 +459,7 @@ public class ListingTool {
             return false;
         }
 
-        String normalized = message.toLowerCase(Locale.ROOT);
+        String normalized = normalizeSearchText(message);
         for (String candidate : candidates) {
             if (normalized.contains(candidate)) {
                 return true;
@@ -274,6 +467,136 @@ public class ListingTool {
         }
 
         return false;
+    }
+
+    private List<String> singleValueList(String value) {
+        return StringUtils.hasText(value) ? List.of(value) : null;
+    }
+
+    private String firstValue(List<String> values) {
+        return values != null && !values.isEmpty() ? values.getFirst() : null;
+    }
+
+    private boolean hasValues(List<String> values) {
+        return values != null && values.stream().anyMatch(StringUtils::hasText);
+    }
+
+    private List<String> normalizeAmenityNames(List<String> values) {
+        if (values == null) {
+            return null;
+        }
+
+        List<String> normalized = values.stream()
+                .filter(Objects::nonNull)
+                .flatMap(value -> Arrays.stream(value.split(",")))
+                .map(String::trim)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String normalizeNullable(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String normalizeCityName(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String normalized = normalizeSearchText(value)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim();
+
+        return switch (normalized) {
+            case "ha noi", "hanoi" -> "Hanoi";
+            case "da nang", "danang" -> "Da Nang";
+            case "da lat", "dalat" -> "Dalat";
+            case "ho chi minh", "ho chi minh city", "hcm", "tp hcm", "tp ho chi minh", "sai gon", "saigon" -> "Ho Chi Minh City";
+            default -> value.trim();
+        };
+    }
+
+    private String normalizePropertyType(String value) {
+        String normalized = normalizeEnumCandidate(value);
+        if (normalized == null) {
+            return null;
+        }
+
+        return switch (normalized) {
+            case "APARTMENT", "APT", "CAN_HO" -> "APARTMENT";
+            case "HOUSE", "HOME", "NHA" -> "HOUSE";
+            case "VILLA", "BIET_THU" -> "VILLA";
+            case "CONDO", "CONDOMINIUM" -> "CONDO";
+            case "TOWNHOUSE", "TOWN_HOME", "NHA_PHO" -> "TOWNHOUSE";
+            case "COTTAGE" -> "COTTAGE";
+            case "BUNGALOW" -> "BUNGALOW";
+            default -> null;
+        };
+    }
+
+    private String normalizeRoomType(String value) {
+        String normalized = normalizeEnumCandidate(value);
+        if (normalized == null) {
+            return null;
+        }
+
+        if (normalized.contains("PRIVATE") || normalized.contains("PHONG_RIENG") || normalized.equals("RIENG")) {
+            return "PRIVATE_ROOM";
+        }
+        if (normalized.contains("SHARED") || normalized.contains("PHONG_CHUNG") || normalized.equals("CHUNG")) {
+            return "SHARED_ROOM";
+        }
+        if (normalized.contains("ENTIRE") || normalized.contains("WHOLE") || normalized.contains("NGUYEN_CAN")) {
+            return "ENTIRE_PLACE";
+        }
+
+        return switch (normalized) {
+            case "PRIVATE_ROOM" -> "PRIVATE_ROOM";
+            case "SHARED_ROOM" -> "SHARED_ROOM";
+            case "ENTIRE_PLACE" -> "ENTIRE_PLACE";
+            default -> null;
+        };
+    }
+
+    private String normalizeSortBy(String value) {
+        String normalized = normalizeEnumCandidate(value);
+        if (normalized == null) {
+            return "RELEVANCE";
+        }
+
+        return switch (normalized) {
+            case "PRICE_ASC", "LOWEST_PRICE", "CHEAPEST", "RE_NHAT", "GIA_THAP_NHAT" -> "PRICE_ASC";
+            case "PRICE_DESC", "HIGHEST_PRICE", "MOST_EXPENSIVE", "DAT_NHAT", "GIA_CAO_NHAT" -> "PRICE_DESC";
+            case "CREATED_DESC", "NEWEST", "MOI_NHAT" -> "CREATED_DESC";
+            case "CREATED_ASC", "OLDEST", "CU_NHAT" -> "CREATED_ASC";
+            case "GUESTS_DESC", "MANY_GUESTS" -> "GUESTS_DESC";
+            case "RELEVANCE" -> "RELEVANCE";
+            default -> "RELEVANCE";
+        };
+    }
+
+    private String normalizeEnumCandidate(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        return normalizeSearchText(value)
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replace('-', '_')
+                .replaceAll("\\s+", "_");
+    }
+
+    private String normalizeSearchText(String value) {
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replace('\u0111', 'd')
+                .replace('\u0110', 'D');
+
+        return normalized.toLowerCase(Locale.ROOT);
     }
 
     private BigDecimal priceBelow(BigDecimal price) {
@@ -318,30 +641,6 @@ public class ListingTool {
         );
     }
 
-    private boolean matchesPrice(ListingResponse listing, BigDecimal minPrice, BigDecimal maxPrice) {
-        BigDecimal basePrice = basePrice(listing);
-
-        if (basePrice == null) {
-            return minPrice == null && maxPrice == null;
-        }
-
-        if (minPrice != null && basePrice.compareTo(minPrice) < 0) {
-            return false;
-        }
-
-        return maxPrice == null || basePrice.compareTo(maxPrice) <= 0;
-    }
-
-    private BigDecimal basePriceOrMax(ListingResponse listing) {
-        BigDecimal basePrice = basePrice(listing);
-        return basePrice != null ? basePrice : BigDecimal.valueOf(Long.MAX_VALUE);
-    }
-
-    private BigDecimal basePrice(ListingResponse listing) {
-        ListingPricingResponse pricing = listing != null ? listing.pricing() : null;
-        return pricing != null ? pricing.basePrice() : null;
-    }
-
     private String formatResults(List<ListingResponse> listings) {
         StringBuilder builder = new StringBuilder();
         builder.append("LISTINGS_FOUND: ").append(listings.size()).append(" result(s).\n");
@@ -349,27 +648,174 @@ public class ListingTool {
 
         for (int index = 0; index < listings.size(); index++) {
             ListingResponse listing = listings.get(index);
-            ListingPricingResponse pricing = listing.pricing();
 
             builder.append(index + 1).append(". ")
                     .append(nullToDash(listing.title()))
                     .append("\n");
-            builder.append("   - listingId: ").append(listing.listingId()).append("\n");
-            builder.append("   - city: ").append(nullToDash(listing.city())).append("\n");
-            builder.append("   - country: ").append(nullToDash(listing.country())).append("\n");
-            builder.append("   - maxGuests: ").append(nullToDash(listing.maxGuests())).append("\n");
-            builder.append("   - bedrooms: ").append(nullToDash(listing.numBedrooms())).append("\n");
-            builder.append("   - beds: ").append(nullToDash(listing.numBeds())).append("\n");
-            builder.append("   - bathrooms: ").append(nullToDash(listing.numBathrooms())).append("\n");
-            builder.append("   - roomType: ").append(nullToDash(listing.roomType())).append("\n");
-            builder.append("   - propertyType: ").append(nullToDash(listing.propertyType())).append("\n");
-            builder.append("   - basePrice: ").append(pricing != null ? nullToDash(pricing.basePrice()) : "-").append("\n");
-            builder.append("   - currency: ").append(pricing != null ? nullToDash(pricing.currency()) : "-").append("\n");
-            builder.append("   - instantBook: ").append(nullToDash(listing.instantBook())).append("\n");
-            builder.append("   - coverPhoto: ").append(coverPhoto(listing)).append("\n");
+            appendLine(builder, "listingId", listing.listingId());
+            appendLine(builder, "title", listing.title());
+            appendLine(builder, "description", listing.description());
+            appendLine(builder, "propertyType", listing.propertyType());
+            appendLine(builder, "roomType", listing.roomType());
+            appendLine(builder, "numBedrooms", listing.numBedrooms());
+            appendLine(builder, "numBeds", listing.numBeds());
+            appendLine(builder, "numBathrooms", listing.numBathrooms());
+            appendLine(builder, "maxGuests", listing.maxGuests());
+            appendLine(builder, "address", listing.address());
+            appendLine(builder, "city", listing.city());
+            appendLine(builder, "state", listing.state());
+            appendLine(builder, "country", listing.country());
+            appendLine(builder, "postalCode", listing.postalCode());
+            appendLine(builder, "latitude", listing.latitude());
+            appendLine(builder, "longitude", listing.longitude());
+            appendLine(builder, "status", listing.status());
+            appendLine(builder, "instantBook", listing.instantBook());
+            appendLine(builder, "checkInStartTime", listing.checkInStartTime());
+            appendLine(builder, "checkInEndTime", listing.checkInEndTime());
+            appendLine(builder, "checkOutTime", listing.checkOutTime());
+            appendLine(builder, "cancellationPolicyCode", listing.cancellationPolicyCode());
+            appendLine(builder, "suspendedUntil", listing.suspendedUntil());
+            appendLine(builder, "suspensionReason", listing.suspensionReason());
+            appendLine(builder, "createdAt", listing.createdAt());
+            appendLine(builder, "updatedAt", listing.updatedAt());
+            appendLine(builder, "coverPhoto", coverPhoto(listing));
+            appendPricing(builder, listing.pricing());
+            appendAmenities(builder, listing.amenities());
+            appendHouseRules(builder, listing.houseRules());
+            appendPhotos(builder, listing.photos());
+            appendAccessInfoSummary(builder, listing.accessInfo());
         }
 
         return builder.toString();
+    }
+
+    private void appendLine(StringBuilder builder, String label, Object value) {
+        builder.append("   - ")
+                .append(label)
+                .append(": ")
+                .append(nullToDash(value))
+                .append("\n");
+    }
+
+    private void appendPricing(StringBuilder builder, ListingPricingResponse pricing) {
+        builder.append("   - pricing:\n");
+        if (pricing == null) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        appendNestedLine(builder, "pricingId", pricing.pricingId());
+        appendNestedLine(builder, "listingId", pricing.listingId());
+        appendNestedLine(builder, "basePrice", pricing.basePrice());
+        appendNestedLine(builder, "currency", pricing.currency());
+        appendNestedLine(builder, "cleaningFee", pricing.cleaningFee());
+        appendNestedLine(builder, "serviceFeePercentage", pricing.serviceFeePercentage());
+        appendNestedLine(builder, "weekendPrice", pricing.weekendPrice());
+        appendNestedLine(builder, "weeklyDiscount", pricing.weeklyDiscount());
+        appendNestedLine(builder, "monthlyDiscount", pricing.monthlyDiscount());
+        appendNestedLine(builder, "createdAt", pricing.createdAt());
+        appendNestedLine(builder, "updatedAt", pricing.updatedAt());
+    }
+
+    private void appendAmenities(StringBuilder builder, List<AmenityResponse> amenities) {
+        builder.append("   - amenities:\n");
+        if (amenities == null || amenities.isEmpty()) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        for (AmenityResponse amenity : amenities) {
+            if (amenity == null) {
+                continue;
+            }
+
+            builder.append("     + amenityId=")
+                    .append(nullToDash(amenity.amenityId()))
+                    .append(" | name=")
+                    .append(nullToDash(amenity.name()))
+                    .append(" | category=")
+                    .append(nullToDash(amenity.category()))
+                    .append(" | iconUrl=")
+                    .append(nullToDash(amenity.iconUrl()))
+                    .append(" | createdAt=")
+                    .append(nullToDash(amenity.createdAt()))
+                    .append("\n");
+        }
+    }
+
+    private void appendHouseRules(StringBuilder builder, HouseRulesResponse houseRules) {
+        builder.append("   - houseRules:\n");
+        if (houseRules == null) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        appendNestedLine(builder, "ruleId", houseRules.ruleId());
+        appendNestedLine(builder, "listingId", houseRules.listingId());
+        appendNestedLine(builder, "checkInFrom", houseRules.checkInFrom());
+        appendNestedLine(builder, "checkInTo", houseRules.checkInTo());
+        appendNestedLine(builder, "checkOutTime", houseRules.checkOutTime());
+        appendNestedLine(builder, "smokingAllowed", houseRules.smokingAllowed());
+        appendNestedLine(builder, "petsAllowed", houseRules.petsAllowed());
+        appendNestedLine(builder, "partiesAllowed", houseRules.partiesAllowed());
+        appendNestedLine(builder, "childrenAllowed", houseRules.childrenAllowed());
+        appendNestedLine(builder, "additionalRules", houseRules.additionalRules());
+        appendNestedLine(builder, "createdAt", houseRules.createdAt());
+        appendNestedLine(builder, "updatedAt", houseRules.updatedAt());
+    }
+
+    private void appendPhotos(StringBuilder builder, List<ListingPhotoResponse> photos) {
+        builder.append("   - photos:\n");
+        if (photos == null || photos.isEmpty()) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        for (ListingPhotoResponse photo : photos) {
+            if (photo == null) {
+                continue;
+            }
+
+            builder.append("     + photoId=")
+                    .append(nullToDash(photo.photoId()))
+                    .append(" | listingId=")
+                    .append(nullToDash(photo.listingId()))
+                    .append(" | photoUrl=")
+                    .append(nullToDash(photo.photoUrl()))
+                    .append(" | caption=")
+                    .append(nullToDash(photo.caption()))
+                    .append(" | displayOrder=")
+                    .append(nullToDash(photo.displayOrder()))
+                    .append(" | isCover=")
+                    .append(nullToDash(photo.isCover()))
+                    .append(" | uploadedAt=")
+                    .append(nullToDash(photo.uploadedAt()))
+                    .append("\n");
+        }
+    }
+
+    private void appendAccessInfoSummary(StringBuilder builder, ListingAccessInfoResponse accessInfo) {
+        builder.append("   - accessInfo:\n");
+        if (accessInfo == null) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        appendNestedLine(builder, "accessInfoId", accessInfo.accessInfoId());
+        appendNestedLine(builder, "listingId", accessInfo.listingId());
+        builder.append("     + wifiPassword: hidden_post_booking_secret\n");
+        builder.append("     + entryCode: hidden_post_booking_secret\n");
+        builder.append("     + smartLockInstructions: hidden_post_booking_secret\n");
+        builder.append("     + keyPickupInstructions: hidden_post_booking_secret\n");
+        builder.append("     + checkInGuide: hidden_post_booking_secret\n");
+    }
+
+    private void appendNestedLine(StringBuilder builder, String label, Object value) {
+        builder.append("     + ")
+                .append(label)
+                .append("=")
+                .append(nullToDash(value))
+                .append("\n");
     }
 
     private String coverPhoto(ListingResponse listing) {
@@ -392,12 +838,26 @@ public class ListingTool {
     }
 
     private record SearchFilters(
+            String keyword,
             String city,
+            String state,
+            String country,
             Integer guests,
+            String propertyType,
+            String roomType,
+            Integer minBedrooms,
+            Integer minBeds,
+            BigDecimal minBathrooms,
+            Boolean instantBook,
+            List<String> amenityNames,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Double radiusKm,
             BigDecimal minPrice,
             BigDecimal maxPrice,
             LocalDate checkIn,
-            LocalDate checkOut
+            LocalDate checkOut,
+            String sortBy
     ) {
     }
 }

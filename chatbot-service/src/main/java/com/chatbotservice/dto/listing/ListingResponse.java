@@ -3,6 +3,8 @@ package com.chatbotservice.dto.listing;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,9 +25,22 @@ public record ListingResponse(
         String state,
         String country,
         String postalCode,
+        BigDecimal latitude,
+        BigDecimal longitude,
         String status,
         Boolean instantBook,
+        LocalTime checkInStartTime,
+        LocalTime checkInEndTime,
+        LocalTime checkOutTime,
+        String cancellationPolicyCode,
+        LocalDateTime suspendedUntil,
+        String suspensionReason,
+        List<ListingPhotoResponse> photos,
+        List<AmenityResponse> amenities,
         ListingPricingResponse pricing,
-        List<ListingPhotoResponse> photos
+        HouseRulesResponse houseRules,
+        ListingAccessInfoResponse accessInfo,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
 ) {
 }

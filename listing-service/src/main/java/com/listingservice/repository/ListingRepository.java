@@ -7,6 +7,7 @@ import com.listingservice.entity.Listing;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,7 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface ListingRepository extends JpaRepository<Listing, UUID> {
+public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpecificationExecutor<Listing> {
 
     @Override
     @EntityGraph(attributePaths = {"photos", "pricing", "houseRules", "listingAmenities", "listingAmenities.amenity", "accessInfo", "accessInfo.checkInGuide"})

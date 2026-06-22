@@ -147,15 +147,16 @@ public class ChatbotService {
     }
 
     private String systemPrompt(String conversationKey) {
-        String listingContext = listingContextStore.promptBlock(conversationKey);
-        if (!StringUtils.hasText(listingContext)) {
-            return SYSTEM_PROMPT;
-        }
-
-        // ChatMemory stores natural-language conversation history. This extra block is
-        // a compact, structured domain memory for the latest listing search, so follow-up
-        // questions like "rẻ hơn" or "căn thứ 2" have reliable filters and listing ids.
-        return SYSTEM_PROMPT + "\n\n" + listingContext;
+        return SYSTEM_PROMPT;
+//        String listingContext = listingContextStore.promptBlock(conversationKey);
+//        if (!StringUtils.hasText(listingContext)) {
+//            return SYSTEM_PROMPT;
+//        }
+//
+//        // ChatMemory stores natural-language conversation history. This extra block is
+//        // a compact, structured domain memory for the latest listing search, so follow-up
+//        // questions like "rẻ hơn" or "căn thứ 2" have reliable filters and listing ids.
+//        return SYSTEM_PROMPT + "\n\n" + listingContext;
     }
 
     private ConversationScope conversationScope(String userId, String requestedConversationId) {
