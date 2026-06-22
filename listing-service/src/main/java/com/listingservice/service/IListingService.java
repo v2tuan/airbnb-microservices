@@ -24,9 +24,17 @@ public interface IListingService {
     List<ListingResponse> getListingsByIds(List<UUID> listingIds);
     List<ListingResponse> getAllListings();
     List<ListingResponse> getListingsByHost(String hostId);
-    List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut);
-    List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, LocalDate checkIn, LocalDate checkOut);
-    List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius, LocalDate checkIn, LocalDate checkOut);
+        List<ListingResponse> searchListings(
+            String city,
+            String country,
+            Integer maxGuests,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Double radius,
+            LocalDate checkIn,
+            LocalDate checkOut);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     void suspendListing(UUID listingId, ListingSuspensionRequest request);

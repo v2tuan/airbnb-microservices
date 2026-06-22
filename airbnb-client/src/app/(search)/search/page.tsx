@@ -216,27 +216,19 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   let errorMessage = "";
 
   try {
-    if (hasNearbySearch) {
-      const response = await listingAPI.searchByLocation({
-        latitude: latitude as number,
-        longitude: longitude as number,
-        radius,
-      });
-      listings = unwrapApiData(response.data);
-    } else if (Number.isFinite(minPrice) && Number.isFinite(maxPrice)) {
-      const response = await listingAPI.searchByPriceRange({
-        minPrice: minPrice as number,
-        maxPrice: maxPrice as number,
-      });
-      listings = unwrapApiData(response.data);
-    } else {
-      const response = await listingAPI.searchListings({
-        city: destination || undefined,
-        country,
-        maxGuests,
-      });
-      listings = unwrapApiData(response.data);
-    }
+    const response = await listingAPI.searchListings({
+      city: destination || undefined,
+      country,
+      maxGuests,
+      minPrice,
+      maxPrice,
+      latitude,
+      longitude,
+      radius,
+      checkIn,
+      checkOut,
+    });
+    listings = unwrapApiData(response.data);
 
     if (hasDateRange) {
       const availability = await Promise.all(
@@ -311,8 +303,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     : query.locationKeyword ?? destination;
 
   return (
-    <main className="min-h-screen bg-white pt-[164px]">
-      <div className="mx-auto grid w-full max-w-[1760px] gap-10 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,46vw)] xl:px-10">
+    <main className="min-h-screen bg-white pt-41">
+      <div className="mx-auto grid w-full max-w-440 gap-10 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,46vw)] xl:px-10">
         {/* Left: Listings */}
         <section>
           {/* Result meta */}
@@ -431,7 +423,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
         {/* Right: Map */}
         <aside className="hidden lg:block">
-          <div className="sticky top-[180px] h-[calc(100vh-204px)] overflow-hidden rounded-2xl border border-neutral-200 shadow-sm">
+          <div className="sticky top-45 h-[calc(100vh-204px)] overflow-hidden rounded-2xl border border-neutral-200 shadow-sm">
             <SearchMap
               destination={mapDestination}
               listings={paginatedListings}

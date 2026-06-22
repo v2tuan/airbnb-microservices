@@ -8,16 +8,17 @@ import com.listingservice.repository.ListingRepository;
 import com.listingservice.service.AvailabilityClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,17 +42,26 @@ class ListingServiceSearchV2Test {
     void searchListingsUsesOnlyActiveListingsAndDoesNotUseLegacyStatusQueries() {
         Listing activeMatch = listing("Hanoi", "Vietnam", 2);
         Listing activeOtherCity = listing("Dalat", "Vietnam", 2);
-        when(listingRepository.findByStatus(ListingStatus.ACTIVE)).thenReturn(List.of(activeMatch, activeOtherCity));
-        when(listingMapper.toResponse(activeMatch)).thenReturn(response(activeMatch));
+        when(listingRepository.searchActiveListings(ListingStatus.ACTIVE, "hanoi", "vietnam", 2))
+            .thenReturn(List.of(activeMatch, activeOtherCity));
+        when(listingMapper.toResponse(any())).thenAnswer(invocation -> response(invocation.getArgument(0)));
 
-        List<ListingResponse> results = listingService.searchListings("hanoi", "vietnam", 2, null, null);
+        List<ListingResponse> results = listingService.searchListings(
+            "hanoi",
+            "vietnam",
+            2,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
 
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().getListingId()).isEqualTo(activeMatch.getListingId());
-        verify(listingRepository).findByStatus(ListingStatus.ACTIVE);
-        verify(listingRepository, never()).findByCity("hanoi");
-        verify(listingRepository, never()).findByCityAndCountry("hanoi", "vietnam");
-        verify(availabilityClient, never()).isAvailable(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(listingRepository).searchActiveListings(ListingStatus.ACTIVE, "hanoi", "vietnam", 2);
+        verify(availabilityClient, never()).getAvailability(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -60,17 +70,30 @@ class ListingServiceSearchV2Test {
         LocalDate checkOut = LocalDate.of(2026, 7, 12);
         Listing available = listing("Hanoi", "Vietnam", 2);
         Listing unavailable = listing("Hanoi", "Vietnam", 2);
-        when(listingRepository.findByStatus(ListingStatus.ACTIVE)).thenReturn(List.of(available, unavailable));
-        when(availabilityClient.isAvailable(available.getListingId(), checkIn, checkOut)).thenReturn(true);
-        when(availabilityClient.isAvailable(unavailable.getListingId(), checkIn, checkOut)).thenReturn(false);
-        when(listingMapper.toResponse(available)).thenReturn(response(available));
+        when(listingRepository.searchActiveListings(ListingStatus.ACTIVE, "Hanoi", null, 1))
+            .thenReturn(List.of(available, unavailable));
+        when(availabilityClient.getAvailability(
+            List.of(available.getListingId(), unavailable.getListingId()),
+            checkIn,
+            checkOut)).thenReturn(Map.of(
+            available.getListingId().toString(), true,
+            unavailable.getListingId().toString(), false));
+        when(listingMapper.toResponse(any())).thenAnswer(invocation -> response(invocation.getArgument(0)));
 
-        List<ListingResponse> results = listingService.searchListings("Hanoi", null, 1, checkIn, checkOut);
+        List<ListingResponse> results = listingService.searchListings(
+            "Hanoi",
+            null,
+            1,
+            null,
+            null,
+            null,
+            null,
+            null,
+            checkIn,
+            checkOut);
 
         assertThat(results).extracting(ListingResponse::getListingId).containsExactly(available.getListingId());
-        ArgumentCaptor<UUID> listingIdCaptor = ArgumentCaptor.forClass(UUID.class);
-        verify(availabilityClient, org.mockito.Mockito.times(2)).isAvailable(listingIdCaptor.capture(), org.mockito.Mockito.eq(checkIn), org.mockito.Mockito.eq(checkOut));
-        assertThat(listingIdCaptor.getAllValues()).containsExactly(available.getListingId(), unavailable.getListingId());
+        verify(availabilityClient).getAvailability(List.of(available.getListingId(), unavailable.getListingId()), checkIn, checkOut);
     }
 
     private Listing listing(String city, String country, int maxGuests) {

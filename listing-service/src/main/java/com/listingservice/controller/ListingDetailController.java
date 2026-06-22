@@ -204,50 +204,30 @@ public class ListingDetailController {
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String country,
             @RequestParam(required = false) Integer maxGuests,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) BigDecimal latitude,
+            @RequestParam(required = false) BigDecimal longitude,
+            @RequestParam(required = false) Double radius,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, CheckIn: {}, CheckOut: {}",
-                city, country, maxGuests, checkIn, checkOut);
-        List<ListingResponse> response = listingService.searchListings(city, country, maxGuests, checkIn, checkOut);
+        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}, CheckIn: {}, CheckOut: {}",
+                city, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchListings(
+                city,
+                country,
+                maxGuests,
+                minPrice,
+                maxPrice,
+                latitude,
+                longitude,
+                radius,
+                checkIn,
+                checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
                         .message("Search results retrieved successfully")
-                        .data(response)
-                        .build());
-    }
-
-    @GetMapping("/search/price")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByPriceRange(
-            @RequestParam BigDecimal minPrice,
-            @RequestParam BigDecimal maxPrice,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings by price range: {} - {}, CheckIn: {}, CheckOut: {}",
-                minPrice, maxPrice, checkIn, checkOut);
-        List<ListingResponse> response = listingService.searchByPriceRange(minPrice, maxPrice, checkIn, checkOut);
-        return ResponseEntity.ok(
-                ApiResponse.<List<ListingResponse>>builder()
-                        .code(1000)
-                        .message("Price range search results retrieved successfully")
-                        .data(response)
-                        .build());
-    }
-
-    @GetMapping("/search/location")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByLocation(
-            @RequestParam BigDecimal latitude,
-            @RequestParam BigDecimal longitude,
-            @RequestParam Double radius,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings by location - Lat: {}, Lng: {}, Radius: {}km, CheckIn: {}, CheckOut: {}",
-                latitude, longitude, radius, checkIn, checkOut);
-        List<ListingResponse> response = listingService.searchByLocation(latitude, longitude, radius, checkIn, checkOut);
-        return ResponseEntity.ok(
-                ApiResponse.<List<ListingResponse>>builder()
-                        .code(1000)
-                        .message("Location search results retrieved successfully")
                         .data(response)
                         .build());
     }

@@ -308,35 +308,15 @@ export const listingAPI = {
     city?: string;
     country?: string;
     maxGuests?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    latitude?: number;
+    longitude?: number;
+    radius?: number;
     checkIn?: string;
     checkOut?: string;
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/search`, {
-      params,
-      ...publicRequest,
-    });
-  },
-
-  searchByPriceRange: (params: {
-    minPrice: number;
-    maxPrice: number;
-    checkIn?: string;
-    checkOut?: string;
-  }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
-    return apiClient.get(`${prefix}/listings/search/price`, {
-      params,
-      ...publicRequest,
-    });
-  },
-
-  searchByLocation: (params: {
-    latitude: number;
-    longitude: number;
-    radius: number;
-    checkIn?: string;
-    checkOut?: string;
-  }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
-    return apiClient.get(`${prefix}/listings/search/location`, {
       params,
       ...publicRequest,
     });

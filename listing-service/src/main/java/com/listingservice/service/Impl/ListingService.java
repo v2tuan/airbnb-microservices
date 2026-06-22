@@ -139,44 +139,39 @@ public class ListingService implements IListingService {
     }
 
     @Override
-    public List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut) {
-        log.info("Searching listings - City: {}, Country: {}, Max Guests: {}", city, country, maxGuests);
+        public List<ListingResponse> searchListings(
+            String city,
+            String country,
+            Integer maxGuests,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Double radius,
+            LocalDate checkIn,
+            LocalDate checkOut) {
+        log.info("Searching listings - City: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}",
+            city, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius);
 
-        List<Listing> listings = listingRepository.searchActiveListings(
+        List<Listing> listings;
+
+        if (latitude != null && longitude != null) {
+            listings = listingRepository.findByLocationWithinRadius(latitude, longitude, radius != null ? radius : 25.0, ListingStatus.ACTIVE);
+        } else if (minPrice != null && maxPrice != null) {
+            listings = listingRepository.findByPriceRangeAndStatus(minPrice, maxPrice, ListingStatus.ACTIVE);
+        } else {
+            listings = listingRepository.searchActiveListings(
                 ListingStatus.ACTIVE,
                 normalizeFilter(city),
                 normalizeFilter(country),
                 maxGuests);
-
-        return filterAvailableForSearch(listings, checkIn, checkOut).stream()
-                .map(listingMapper::toResponse)
-                .toList();
-    }
-
-    @Override
-    public List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, LocalDate checkIn, LocalDate checkOut) {
-        log.info("Searching listings by price range: {} - {}", minPrice, maxPrice);
+        }
 
         return filterAvailableForSearch(
-                listingRepository.findByPriceRangeAndStatus(minPrice, maxPrice, ListingStatus.ACTIVE),
-                checkIn,
-                checkOut
-        )
-                .stream()
-                .map(listingMapper::toResponse)
-                .toList();
-    }
-
-    @Override
-    public List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius, LocalDate checkIn, LocalDate checkOut) {
-        log.info("Searching listings by location - Lat: {}, Lng: {}, Radius: {}km", latitude, longitude, radius);
-
-        return filterAvailableForSearch(
-                listingRepository.findByLocationWithinRadius(latitude, longitude, radius, ListingStatus.ACTIVE),
-                checkIn,
-                checkOut
-        )
-                .stream()
+            filterBySearchCriteria(listings, city, country, maxGuests, minPrice, maxPrice),
+            checkIn,
+            checkOut)
+            .stream()
                 .map(listingMapper::toResponse)
                 .toList();
     }
@@ -327,6 +322,37 @@ public class ListingService implements IListingService {
     private boolean matchesIgnoreCase(String actual, String expected) {
         return expected == null || expected.isBlank()
                 || actual != null && actual.equalsIgnoreCase(expected.trim());
+    }
+
+    private List<Listing> filterBySearchCriteria(
+            List<Listing> listings,
+            String city,
+            String country,
+            Integer maxGuests,
+            BigDecimal minPrice,
+            BigDecimal maxPrice) {
+        String normalizedCity = normalizeFilter(city);
+        String normalizedCountry = normalizeFilter(country);
+
+        return listings.stream()
+                .filter(listing -> matchesIgnoreCase(listing.getCity(), normalizedCity))
+                .filter(listing -> matchesIgnoreCase(listing.getCountry(), normalizedCountry))
+                .filter(listing -> maxGuests == null || listing.getMaxGuests() >= maxGuests)
+                .filter(listing -> {
+                    if (minPrice == null && maxPrice == null) {
+                        return true;
+                    }
+
+                    if (listing.getPricing() == null || listing.getPricing().getBasePrice() == null) {
+                        return false;
+                    }
+
+                    BigDecimal basePrice = listing.getPricing().getBasePrice();
+                    boolean matchesMinPrice = minPrice == null || basePrice.compareTo(minPrice) >= 0;
+                    boolean matchesMaxPrice = maxPrice == null || basePrice.compareTo(maxPrice) <= 0;
+                    return matchesMinPrice && matchesMaxPrice;
+                })
+                .toList();
     }
 
     private List<Listing> filterAvailableForSearch(List<Listing> listings, LocalDate checkIn, LocalDate checkOut) {
