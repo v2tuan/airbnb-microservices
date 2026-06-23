@@ -233,6 +233,30 @@ public class ListingDetailController {
                         .build());
     }
 
+    @PostMapping("/search/filter")
+    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListingsWithFilters(
+            @Valid @RequestBody ListingFilterRequest request) {
+        log.info("REST request to search listings with filters - keyword: {}, city: {}, state: {}, country: {}, guests: {}, minPrice: {}, maxPrice: {}, checkIn: {}, checkOut: {}",
+                request.getKeyword(),
+                request.getCity(),
+                request.getState(),
+                request.getCountry(),
+                request.getGuests(),
+                request.getMinPrice(),
+                request.getMaxPrice(),
+                request.getCheckIn(),
+                request.getCheckOut());
+
+        List<ListingResponse> response = listingService.searchListingsWithFilters(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<List<ListingResponse>>builder()
+                        .code(1000)
+                        .message("Search results retrieved successfully")
+                        .data(response)
+                        .build());
+    }
+
     @GetMapping("/sections")
     public ApiResponse<List<HomeSectionResponse>> getHomeSections(@RequestParam(required = false) Integer limit) {
         return ApiResponse.<List<HomeSectionResponse>>builder()

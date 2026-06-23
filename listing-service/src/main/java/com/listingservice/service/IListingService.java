@@ -36,6 +36,7 @@ public interface IListingService {
             Double radius,
             LocalDate checkIn,
             LocalDate checkOut);
+    List<ListingResponse> searchListingsWithFilters(ListingFilterRequest request);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     void suspendListing(UUID listingId, ListingSuspensionRequest request);
