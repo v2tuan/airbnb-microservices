@@ -2,6 +2,7 @@ package com.listingservice.service.Impl;
 
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingFilterRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
@@ -17,6 +18,9 @@ import com.listingservice.repository.ListingRepository;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.IListingService;
 import com.listingservice.service.RatingClient;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -24,13 +28,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 @Service
@@ -177,6 +189,58 @@ public class ListingService implements IListingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<ListingResponse> searchListingsWithFilters(ListingFilterRequest request) {
+        ListingFilterRequest safeRequest = request != null ? request : new ListingFilterRequest();
+
+        log.info(
+                "Advanced listing search - keyword={}, city={}, country={}, guests={}, price={}..{}, propertyTypes={}, roomTypes={}, checkIn={}, checkOut={}, limit={}",
+                safeRequest.getKeyword(),
+                safeRequest.getCity(),
+                safeRequest.getCountry(),
+                safeRequest.getGuests(),
+                safeRequest.getMinPrice(),
+                safeRequest.getMaxPrice(),
+                safeRequest.getPropertyTypes(),
+                safeRequest.getRoomTypes(),
+                safeRequest.getCheckIn(),
+                safeRequest.getCheckOut(),
+                safeRequest.getLimit()
+        );
+
+        if (hasInvalidPriceRange(safeRequest)) {
+            return List.of();
+        }
+
+        List<Listing> candidates = listingRepository.findAll(advancedSearchSpecification(safeRequest));
+
+        // Availability belongs to booking-service in this architecture. Listing-service
+        // owns listing attributes, then asks booking-service which candidates are free
+        // for the requested date range.
+        List<Listing> availableListings = filterAvailableForSearch(
+                candidates,
+                safeRequest.getCheckIn(),
+                safeRequest.getCheckOut()
+        );
+
+        return filterByAmenities(
+                filterByRadius(
+                        availableListings,
+                        safeRequest.getLatitude(),
+                        safeRequest.getLongitude(),
+                        safeRequest.getRadiusKm()
+                ),
+                safeRequest.getAmenityIds(),
+                safeRequest.getAmenityNames()
+        )
+                .stream()
+                .sorted(advancedSearchComparator(safeRequest.getSortBy()))
+                .limit(normalizeSearchLimit(safeRequest.getLimit()))
+                .map(listingMapper::toResponse)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public void activateListing(UUID listingId) {
         log.info("Activating listing ID: {}", listingId);
@@ -309,6 +373,241 @@ public class ListingService implements IListingService {
 
         item.setAvgRating(safeRatingSummary.getOverallRating().doubleValue());
         item.setReviewCount(safeRatingSummary.getReviewCount());
+    }
+
+    private Specification<Listing> advancedSearchSpecification(ListingFilterRequest request) {
+        return (root, query, criteriaBuilder) -> {
+            if (query != null) {
+                query.distinct(true);
+            }
+
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(criteriaBuilder.equal(root.get("status"), ListingStatus.ACTIVE));
+
+            String keyword = normalizeFilter(request.getKeyword());
+            if (keyword != null) {
+                String pattern = "%" + keyword.toLowerCase(Locale.ROOT) + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("description")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("address")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("city")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("country")), pattern)
+                ));
+            }
+
+            addEqualIgnoreCasePredicate(predicates, criteriaBuilder, root.get("city"), request.getCity());
+            addEqualIgnoreCasePredicate(predicates, criteriaBuilder, root.get("state"), request.getState());
+            addEqualIgnoreCasePredicate(predicates, criteriaBuilder, root.get("country"), request.getCountry());
+
+            if (request.getGuests() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("maxGuests"), request.getGuests()));
+            }
+
+            if (request.getMinBedrooms() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("numBedrooms"), request.getMinBedrooms()));
+            }
+
+            if (request.getMinBeds() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("numBeds"), request.getMinBeds()));
+            }
+
+            if (request.getMinBathrooms() != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("numBathrooms"), request.getMinBathrooms()));
+            }
+
+            if (hasValues(request.getPropertyTypes())) {
+                predicates.add(root.get("propertyType").in(request.getPropertyTypes()));
+            }
+
+            if (hasValues(request.getRoomTypes())) {
+                predicates.add(root.get("roomType").in(request.getRoomTypes()));
+            }
+
+            if (request.getInstantBook() != null) {
+                predicates.add(criteriaBuilder.equal(root.get("instantBook"), request.getInstantBook()));
+            }
+
+            if (request.getMinPrice() != null || request.getMaxPrice() != null) {
+                Join<Object, Object> pricing = root.join("pricing", JoinType.INNER);
+
+                if (request.getMinPrice() != null) {
+                    predicates.add(criteriaBuilder.greaterThanOrEqualTo(pricing.get("basePrice"), request.getMinPrice()));
+                }
+
+                if (request.getMaxPrice() != null) {
+                    predicates.add(criteriaBuilder.lessThanOrEqualTo(pricing.get("basePrice"), request.getMaxPrice()));
+                }
+            }
+
+            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
+        };
+    }
+
+    private void addEqualIgnoreCasePredicate(
+            List<Predicate> predicates,
+            jakarta.persistence.criteria.CriteriaBuilder criteriaBuilder,
+            jakarta.persistence.criteria.Path<String> path,
+            String value
+    ) {
+        String normalizedValue = normalizeFilter(value);
+        if (normalizedValue != null) {
+            predicates.add(criteriaBuilder.equal(criteriaBuilder.lower(path), normalizedValue.toLowerCase(Locale.ROOT)));
+        }
+    }
+
+    private List<Listing> filterByAmenities(
+            List<Listing> listings,
+            List<UUID> amenityIds,
+            List<String> amenityNames
+    ) {
+        Set<UUID> requiredAmenityIds = amenityIds == null
+                ? Set.of()
+                : amenityIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<String> requiredAmenityNames = amenityNames == null
+                ? Set.of()
+                : amenityNames.stream()
+                .map(this::normalizeFilter)
+                .filter(Objects::nonNull)
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+
+        if (requiredAmenityIds.isEmpty() && requiredAmenityNames.isEmpty()) {
+            return listings;
+        }
+
+        // Amenity matching uses "contains all" semantics because users usually mean
+        // "has wifi and pool", not "has any of wifi or pool".
+        return listings.stream()
+                .filter(listing -> listingHasAllAmenities(listing, requiredAmenityIds, requiredAmenityNames))
+                .toList();
+    }
+
+    private boolean listingHasAllAmenities(
+            Listing listing,
+            Set<UUID> requiredAmenityIds,
+            Set<String> requiredAmenityNames
+    ) {
+        if (listing.getListingAmenities() == null) {
+            return requiredAmenityIds.isEmpty() && requiredAmenityNames.isEmpty();
+        }
+
+        Set<UUID> listingAmenityIds = listing.getListingAmenities()
+                .stream()
+                .map(listingAmenity -> listingAmenity.getAmenity() != null
+                        ? listingAmenity.getAmenity().getAmenityId()
+                        : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<String> listingAmenityNames = listing.getListingAmenities()
+                .stream()
+                .map(listingAmenity -> listingAmenity.getAmenity() != null
+                        ? listingAmenity.getAmenity().getName()
+                        : null)
+                .map(this::normalizeFilter)
+                .filter(Objects::nonNull)
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+
+        return listingAmenityIds.containsAll(requiredAmenityIds)
+                && listingAmenityNames.containsAll(requiredAmenityNames);
+    }
+
+    private List<Listing> filterByRadius(
+            List<Listing> listings,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Double radiusKm
+    ) {
+        if (latitude == null || longitude == null || radiusKm == null) {
+            return listings;
+        }
+
+        return listings.stream()
+                .filter(listing -> listing.getLatitude() != null && listing.getLongitude() != null)
+                .filter(listing -> distanceKm(
+                        latitude.doubleValue(),
+                        longitude.doubleValue(),
+                        listing.getLatitude().doubleValue(),
+                        listing.getLongitude().doubleValue()
+                ) <= radiusKm)
+                .toList();
+    }
+
+    private double distanceKm(double latitude, double longitude, double listingLatitude, double listingLongitude) {
+        double earthRadiusKm = 6371.0;
+        double latitudeDelta = Math.toRadians(listingLatitude - latitude);
+        double longitudeDelta = Math.toRadians(listingLongitude - longitude);
+        double startLatitude = Math.toRadians(latitude);
+        double endLatitude = Math.toRadians(listingLatitude);
+
+        double haversine = Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2)
+                + Math.cos(startLatitude) * Math.cos(endLatitude)
+                * Math.sin(longitudeDelta / 2) * Math.sin(longitudeDelta / 2);
+
+        return earthRadiusKm * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    }
+
+    private Comparator<Listing> advancedSearchComparator(String sortBy) {
+        String normalizedSort = normalizeFilter(sortBy);
+        String sort = normalizedSort != null ? normalizedSort.toUpperCase(Locale.ROOT) : "RELEVANCE";
+
+        return switch (sort) {
+            case "PRICE_ASC", "LOWEST_PRICE" -> Comparator.comparing(this::basePriceOrMax);
+            case "PRICE_DESC", "HIGHEST_PRICE" -> Comparator.comparing(this::basePriceOrMin).reversed();
+            case "CREATED_ASC", "OLDEST" -> Comparator.comparing(this::createdAtOrMin);
+            case "CREATED_DESC", "NEWEST" -> Comparator.comparing(this::createdAtOrMin).reversed();
+            case "GUESTS_DESC" -> Comparator.comparing(this::maxGuestsOrZero).reversed()
+                    .thenComparing(this::createdAtOrMin, Comparator.reverseOrder());
+            default -> Comparator.comparing(this::instantBookRank)
+                    .thenComparing(this::createdAtOrMin, Comparator.reverseOrder());
+        };
+    }
+
+    private boolean hasInvalidPriceRange(ListingFilterRequest request) {
+        return request.getMinPrice() != null
+                && request.getMaxPrice() != null
+                && request.getMinPrice().compareTo(request.getMaxPrice()) > 0;
+    }
+
+    private boolean hasValues(List<?> values) {
+        return values != null && values.stream().anyMatch(Objects::nonNull);
+    }
+
+    private int normalizeSearchLimit(Integer limit) {
+        if (limit == null || limit < 1) {
+            return 50;
+        }
+
+        return Math.min(limit, 100);
+    }
+
+    private BigDecimal basePriceOrMax(Listing listing) {
+        BigDecimal basePrice = basePrice(listing);
+        return basePrice != null ? basePrice : BigDecimal.valueOf(Long.MAX_VALUE);
+    }
+
+    private BigDecimal basePriceOrMin(Listing listing) {
+        BigDecimal basePrice = basePrice(listing);
+        return basePrice != null ? basePrice : BigDecimal.ZERO;
+    }
+
+    private BigDecimal basePrice(Listing listing) {
+        return listing != null && listing.getPricing() != null
+                ? listing.getPricing().getBasePrice()
+                : null;
+    }
+
+    private LocalDateTime createdAtOrMin(Listing listing) {
+        return listing.getCreatedAt() != null ? listing.getCreatedAt() : LocalDateTime.MIN;
+    }
+
+    private int maxGuestsOrZero(Listing listing) {
+        return listing.getMaxGuests() != null ? listing.getMaxGuests() : 0;
+    }
+
+    private int instantBookRank(Listing listing) {
+        return Boolean.TRUE.equals(listing.getInstantBook()) ? 0 : 1;
     }
 
     private int normalizeLimit(Integer limitPerSection) {

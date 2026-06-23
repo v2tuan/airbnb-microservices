@@ -33,8 +33,10 @@ public class SecurityConfig {
 
         http
                 .securityMatcher(request ->
-                        request.getMethod().equals(HttpMethod.GET.name()) &&
-                                request.getRequestURI().startsWith("/listings/")
+                        (request.getMethod().equals(HttpMethod.GET.name())
+                                && request.getRequestURI().startsWith("/listings/"))
+                                || (request.getMethod().equals(HttpMethod.POST.name())
+                                && request.getRequestURI().equals("/listings/search/filter"))
                 )
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth

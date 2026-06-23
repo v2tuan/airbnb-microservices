@@ -3,6 +3,7 @@ package com.listingservice.controller;
 import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
+import com.listingservice.dto.request.ListingFilterRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
