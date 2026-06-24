@@ -24,6 +24,15 @@ export interface HostInfoDTO {
   responseTime?: string;
 }
 
+export interface PublicHostResponseDTO {
+  userId?: string;
+  keycloakUserId?: string;
+  fullName?: string;
+  avatarUrl?: string;
+  superHost?: boolean;
+  joinedAt?: string;
+}
+
 export interface HostStatsDTO {
   reviewsCount?: number;
   overallRating?: number;
@@ -88,6 +97,12 @@ export interface PublicProfileResponse {
 }
 
 export const userAPI = {
+  getPublicHostByKeycloakUserId: (
+    keycloakUserId: string,
+  ): Promise<AxiosResponse<PublicHostResponseDTO>> => {
+    return apiClient.get<PublicHostResponseDTO>(`${prefix}/public/${keycloakUserId}`, publicRequest);
+  },
+
   getPublicProfileById: (
     id: string,
     params?: { reviewPage?: number; listingPage?: number },

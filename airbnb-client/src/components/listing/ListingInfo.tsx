@@ -1,4 +1,4 @@
-import { Calendar, DoorOpen, ShieldCheck } from "lucide-react";
+import { Calendar, DoorOpen, ShieldCheck, MapPin, Sparkles } from "lucide-react";
 import { getCancellationPolicyDetail } from "@/lib/cancellation-policy";
 
 interface ListingData {
@@ -25,50 +25,51 @@ export function ListingInfo({
 
   return (
     <div className="space-y-8">
-      {/* title and keystats */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-2">
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+          About this stay
+        </p>
+        <h2 className="text-[22px] font-semibold tracking-tight text-[#222222] sm:text-[26px]">
           Entire {displayPropertyType} hosted by {hostName}
         </h2>
-        <div className="flex flex-wrap gap-1 text-zinc-600 font-light">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
           <span>{data.maxGuests} guests</span>
           <span>{data.numBedrooms} bedrooms</span>
           <span>{data.numBeds} beds</span>
           <span>{data.numBathrooms} baths</span>
         </div>
       </div>
-      <hr className="border-zinc-200" />
+      <hr className="border-[#ebebeb]" />
 
-      {/* highlight sections */}
-      <div className="space-y-6">
-        <div className="flex gap-4">
-          <DoorOpen className="w-8 h-8 mt-1" />
+      <div className="grid gap-5 sm:grid-cols-3">
+        <div className="rounded-[16px] bg-[#f7f7f7] p-4">
+          <DoorOpen className="h-6 w-6 text-[#222222]" />
           <div>
-            <h4 className="font-semibold text-zinc-900">Self check-in</h4>
-            <p className="text-zinc-500 font-light text-sm">Check yourself in with the keypad.</p>
+            <h4 className="mt-3 text-sm font-semibold text-[#222222]">Self check-in</h4>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">Check yourself in with the keypad.</p>
           </div>
         </div>
-        
-        <div className="flex gap-4">
-          <ShieldCheck className="w-8 h-8 mt-1 text-rose-500" />
+
+        <div className="rounded-[16px] bg-[#f7f7f7] p-4">
+          <ShieldCheck className="h-6 w-6 text-[#ff385c]" />
           <div>
-            <h4 className="font-semibold text-zinc-900 italic">AirCover</h4>
-            <p className="text-zinc-500 font-light text-sm leading-relaxed">
+            <h4 className="mt-3 text-sm font-semibold text-[#222222]">AirCover</h4>
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
               Every booking includes free protection from Host cancellations, listing inaccuracies, and other issues like trouble checking in.
             </p>
           </div>
         </div>
 
-        <div className="flex gap-4">
-          <Calendar className="w-8 h-8 mt-1" />
+        <div className="rounded-[16px] bg-[#f7f7f7] p-4">
+          <Calendar className="h-6 w-6 text-[#222222]" />
           <div>
-            <h4 className="font-semibold text-zinc-900">
+            <h4 className="mt-3 text-sm font-semibold text-[#222222]">
               {cancellationPolicy.label} cancellation
             </h4>
-            <p className="text-zinc-500 font-light text-sm">
+            <p className="mt-1 text-sm leading-6 text-zinc-500">
               {cancellationPolicy.summary}
             </p>
-            <ul className="mt-2 space-y-1 text-sm font-light leading-5 text-zinc-500">
+            <ul className="mt-2 space-y-1 text-sm leading-5 text-zinc-500">
               {cancellationPolicy.rules.map((rule) => (
                 <li key={rule} className="flex gap-2">
                   <span className="mt-2 size-1 shrink-0 rounded-full bg-zinc-400" />
@@ -80,17 +81,26 @@ export function ListingInfo({
         </div>
       </div>
 
-      <hr className="border-zinc-200" />
+      <hr className="border-[#ebebeb]" />
 
-      {/* Description */}
-      <div className="text-zinc-700 leading-relaxed font-light py-2">
-        <p className="whitespace-pre-line">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[#ff385c]" />
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-zinc-500">
+            Description
+          </h3>
+        </div>
+        <p className="whitespace-pre-line text-[15px] leading-7 text-zinc-700">
           {data.description || "Welcome to our beautiful property. Experience a wonderful stay with all modern amenities included."}
         </p>
       </div>
 
-      {/* Show More Button (Optional Airbnb UI) */}
-      <button className="underline font-semibold flex items-center gap-1 hover:text-black transition">
+      <div className="flex items-center gap-2 text-sm text-zinc-500">
+        <MapPin className="h-4 w-4 text-[#ff385c]" />
+        <span>Guests love this location for the balance of access and privacy.</span>
+      </div>
+
+      <button className="inline-flex items-center gap-1 text-sm font-semibold text-[#222222] underline underline-offset-4 transition hover:text-[#ff385c]">
         Show more
       </button>
     </div>
