@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ListingResponse } from "@/api/endpoints/listing";
 import { formatPrice } from "@/contants";
+import { activityAPI } from "@/api/endpoints/activity";
 
 const fallbackImage =
   "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=1200&auto=format&fit=crop";
@@ -44,9 +45,17 @@ export default function SearchListingCard({ listing }: SearchListingCardProps) {
   const coverImageUrl = resolveCoverImage(listing);
   const basePrice = listing.pricing?.basePrice ?? 0;
   const currency = listing.pricing?.currency ?? "USD";
+  const recordClick = () => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+    if (!token) return;
+
+    void activityAPI.recordActivity(token, listing.listingId, { eventType: "CLICK" });
+  };
 
   return (
-    <Link href={`/rooms/${listing.listingId}`} className="group block">
+    <Link href={`/rooms/${listing.listingId}`} className="group block" onClick={recordClick}>
       <article>
         <div className="relative aspect-[20/13] overflow-hidden rounded-2xl bg-neutral-100">
           <Image

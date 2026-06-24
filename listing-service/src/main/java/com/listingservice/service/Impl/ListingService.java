@@ -1,6 +1,7 @@
 package com.listingservice.service.Impl;
 
 import com.listingservice.constant.ListingStatus;
+import com.listingservice.constant.ActivityEventType;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingFilterRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
@@ -11,12 +12,15 @@ import com.listingservice.dto.response.HomeSectionResponse;
 import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.entity.Listing;
+import com.listingservice.entity.ListingPhoto;
 import com.listingservice.exception.AppException;
 import com.listingservice.exception.ErrorCode;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
+import com.listingservice.service.ActivityClient;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.IListingService;
+import com.listingservice.service.RecommendationClient;
 import com.listingservice.service.RatingClient;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -41,7 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
 import java.util.UUID;
 
@@ -56,6 +62,8 @@ public class ListingService implements IListingService {
 
     ListingRepository listingRepository;
     IListingMapper listingMapper;
+    ActivityClient activityClient;
+    RecommendationClient recommendationClient;
     RatingClient ratingClient;
     AvailabilityClient availabilityClient;
 
@@ -111,8 +119,8 @@ public class ListingService implements IListingService {
 
         Listing listing = listingRepository.findById(listingId)
                 .orElseThrow(() -> new AppException(ErrorCode.LISTING_NOT_FOUND));
-
-        return listingMapper.toResponse(listing);
+        ListingResponse response = listingMapper.toResponse(listing);
+        return response;
     }
 
     @Override
@@ -306,13 +314,22 @@ public class ListingService implements IListingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<HomeSectionResponse> getHomeSections(Integer limitPerSection) {
+    public List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String userId) {
         int safeLimit = normalizeLimit(limitPerSection);
+        List<HomeSectionResponse> sections = new java.util.ArrayList<>();
 
-        return List.of(
+        buildRecommendationSection(userId, safeLimit).ifPresent(sections::add);
+        sections.addAll(List.of(
                 buildSection("popular-hanoi", "Popular homes in Hanoi", "Hanoi", safeLimit),
                 buildSection("dalat-weekend", "Available in Dalat this weekend", "Dalat", safeLimit)
-        );
+        ));
+
+        return sections;
+    }
+
+    @Override
+    public void recordListingActivity(UUID listingId, String userId, ActivityEventType eventType) {
+        activityClient.recordActivity(userId, listingId, eventType);
     }
 
     @Override
@@ -358,12 +375,99 @@ public class ListingService implements IListingService {
                 ListingStatus.ACTIVE,
                 PageRequest.of(0, limit));
 
+        applyRatings(listings);
+
         return HomeSectionResponse.builder()
                 .sectionKey(sectionKey)
                 .title(title)
                 .city(city)
                 .listings(listings)
                 .build();
+    }
+
+    private Optional<HomeSectionResponse> buildRecommendationSection(String userId, int limit) {
+        List<UUID> recommendedIds = recommendationClient.getRecommendedListingIds(userId, limit);
+        if (recommendedIds.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<UUID, Listing> listingsById = listingRepository.findByListingIdIn(recommendedIds).stream()
+                .filter(listing -> listing.getStatus() == ListingStatus.ACTIVE)
+                .collect(Collectors.toMap(
+                        Listing::getListingId,
+                        listing -> listing,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        List<HomeListingCardResponse> cards = recommendedIds.stream()
+                .map(listingsById::get)
+                .filter(Objects::nonNull)
+                .map(this::toHomeCard)
+                .toList();
+
+        if (cards.isEmpty()) {
+            return Optional.empty();
+        }
+
+        applyRatings(cards);
+
+        return Optional.of(HomeSectionResponse.builder()
+                .sectionKey("recommendations-for-you")
+                .title("Recommended for you")
+                .city(null)
+                .listings(cards)
+                .build());
+    }
+
+    private HomeListingCardResponse toHomeCard(Listing listing) {
+        return HomeListingCardResponse.builder()
+                .listingId(listing.getListingId())
+                .title(listing.getTitle())
+                .city(listing.getCity())
+                .country(listing.getCountry())
+                .coverImageUrl(resolveCoverImageUrl(listing))
+                .basePrice(listing.getPricing() != null ? listing.getPricing().getBasePrice() : null)
+                .rating(null)
+                .currency(listing.getPricing() != null ? listing.getPricing().getCurrency() : null)
+                .maxGuests(listing.getMaxGuests())
+                .instantBook(listing.getInstantBook())
+                .build();
+    }
+
+    private void applyRatings(List<HomeListingCardResponse> listings) {
+        if (listings == null || listings.isEmpty()) {
+            return;
+        }
+
+        List<UUID> listingIds = listings.stream()
+                .map(HomeListingCardResponse::getListingId)
+                .filter(Objects::nonNull)
+                .toList();
+        Map<String, RatingClient.ListingRatingSummary> ratingSummaries = ratingClient.getListingRatingSummaries(listingIds);
+
+        listings.forEach(item -> {
+            RatingClient.ListingRatingSummary ratingSummary = ratingSummaries.get(
+                    item.getListingId() != null ? item.getListingId().toString() : null);
+            BigDecimal rating = ratingSummary != null ? ratingSummary.getOverallRating() : BigDecimal.ZERO;
+            item.setRating(rating);
+        });
+    }
+
+    private String resolveCoverImageUrl(Listing listing) {
+        if (listing == null || listing.getPhotos() == null || listing.getPhotos().isEmpty()) {
+            return null;
+        }
+
+        return listing.getPhotos().stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator
+                        .comparing((ListingPhoto photo) -> !Boolean.TRUE.equals(photo.getIsCover()))
+                        .thenComparing(photo -> photo.getDisplayOrder() == null ? Integer.MAX_VALUE : photo.getDisplayOrder()))
+                .map(ListingPhoto::getPhotoUrl)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     private void applyRatingSummary(ListingItemResponse item, RatingClient.ListingRatingSummary ratingSummary) {

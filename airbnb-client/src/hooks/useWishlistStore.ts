@@ -5,6 +5,7 @@ import type {
   WishlistItemResponse,
 } from "@/api/endpoints/wishlist";
 import wishlistAPI from "@/api/endpoints/wishlist";
+import { activityAPI } from "@/api/endpoints/activity";
 
 interface ListingWishlistEntry {
   itemId: string;
@@ -256,6 +257,7 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
       }
 
       await get().addItem(token, targetCollection.categoryId, { listingId });
+      void activityAPI.recordActivity(token, listingId, { eventType: "WISHLIST" });
       return true;
     } catch (error) {
       set({ error: toErrorMessage(error) });

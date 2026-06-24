@@ -3,6 +3,7 @@
 import { userAPI, type PublicProfilePageData } from "@/api/endpoints/user";
 import { ratingAPI } from "@/api/endpoints/rating";
 import { listingAPI, unwrapApiData } from "@/api/endpoints/listing";
+import { activityAPI } from "@/api/endpoints/activity";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
@@ -216,6 +217,19 @@ export default function RoomDetail () {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!listing?.listingId) return;
+
+    const timer = window.setTimeout(() => {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
+      void activityAPI.recordActivity(token, listing.listingId, { eventType: "VIEW" });
+    }, 10000);
+
+    return () => window.clearTimeout(timer);
+  }, [listing?.listingId]);
 
   if (loading) {
     return <div>Loading...</div>;

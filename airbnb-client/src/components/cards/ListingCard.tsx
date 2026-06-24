@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Star, Heart } from "lucide-react";
 import { formatPrice } from "@/contants";
+import { activityAPI } from "@/api/endpoints/activity";
 
 export interface HomeListingCardProps {
   listingId: string;
@@ -31,9 +32,22 @@ const ListingCard: React.FC<ListingCardProps> = ({
   wishlistLoading = false,
   onToggleWishlist,
 }) => {
+  const recordClick = () => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+    if (!token) return;
+
+    void activityAPI.recordActivity(token, listing.listingId, { eventType: "CLICK" });
+  };
+
   return (
     <div className="group relative flex w-full flex-col gap-2">
-      <Link href={`/rooms/${listing.listingId}`} className="flex w-full flex-col gap-2">
+      <Link
+        href={`/rooms/${listing.listingId}`}
+        className="flex w-full flex-col gap-2"
+        onClick={recordClick}
+      >
         {/* Image Container */}
         <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-200">
           <Image

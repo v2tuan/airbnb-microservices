@@ -1,9 +1,11 @@
 package com.listingservice.controller;
 
 import com.listingservice.constant.ListingStatus;
+import com.listingservice.constant.ActivityEventType;
 import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingFilterRequest;
+import com.listingservice.dto.request.ListingActivityRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
@@ -103,14 +105,34 @@ public class ListingDetailController {
     }
 
     @GetMapping("/{listingId}")
-    public ResponseEntity<ApiResponse<ListingResponse>> getListingById(@PathVariable UUID listingId) {
+    public ResponseEntity<ApiResponse<ListingResponse>> getListingById(
+            @PathVariable UUID listingId,
+            @AuthenticationPrincipal Jwt jwt) {
         log.info("REST request to get listing ID: {}", listingId);
         ListingResponse response = listingService.getListingById(listingId);
+        listingService.recordListingActivity(
+                listingId,
+                jwt != null ? jwt.getSubject() : null,
+                ActivityEventType.VIEW);
         return ResponseEntity.ok(
                 ApiResponse.<ListingResponse>builder()
                         .code(1000)
                         .message("Listing retrieved successfully")
                         .data(response)
+                        .build());
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/{listingId}/activity")
+    public ResponseEntity<ApiResponse<Void>> trackListingActivity(
+            @PathVariable UUID listingId,
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ListingActivityRequest request) {
+        listingService.recordListingActivity(listingId, jwt != null ? jwt.getSubject() : null, request.eventType());
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .code(1000)
+                        .message("Listing activity recorded")
                         .build());
     }
 
@@ -258,9 +280,11 @@ public class ListingDetailController {
     }
 
     @GetMapping("/sections")
-    public ApiResponse<List<HomeSectionResponse>> getHomeSections(@RequestParam(required = false) Integer limit) {
+    public ApiResponse<List<HomeSectionResponse>> getHomeSections(
+            @RequestParam(required = false) Integer limit,
+            @AuthenticationPrincipal Jwt jwt) {
         return ApiResponse.<List<HomeSectionResponse>>builder()
-                .data(listingService.getHomeSections(limit))
+                .data(listingService.getHomeSections(limit, jwt != null ? jwt.getSubject() : null))
                 .build();
     }
 
