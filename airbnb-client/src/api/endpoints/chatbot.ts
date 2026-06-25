@@ -242,8 +242,9 @@ const parseSseFrame = (frame: string): SseFrame | null => {
     }
 
     if (rawLine.startsWith("data:")) {
-      const rawData = rawLine.slice("data:".length);
-      dataLines.push(rawData.startsWith(" ") ? rawData.slice(1) : rawData);
+      // LLM streaming chunks can intentionally start with a space.
+      // Keep the payload exactly as Spring SSE sends it so words do not get joined.
+      dataLines.push(rawLine.slice("data:".length));
     }
   }
 

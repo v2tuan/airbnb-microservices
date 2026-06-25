@@ -56,6 +56,8 @@ const createInitialMessages = (): ChatMessage[] => [
 ];
 
 const CHATBOT_CONVERSATION_ID_STORAGE_KEY = "airbnb_chatbot_conversation_id";
+const STREAM_TOKEN_FLUSH_INTERVAL_MS = 32;
+const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 96;
 
 const readStoredConversationId = () => {
   if (typeof window === "undefined") return null;
@@ -428,39 +430,136 @@ export default function ChatbotWidget() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activeAssistantIdRef = useRef<string | null>(null);
+  const pendingTokenBufferRef = useRef("");
+  const tokenFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const shouldAutoScrollRef = useRef(true);
 
   const canSubmit = useMemo(() => {
     return input.trim().length > 0 && !isStreaming;
   }, [input, isStreaming]);
 
+  const latestMessageLayoutKey = useMemo(() => {
+    const latestMessage = messages[messages.length - 1];
+
+    if (!latestMessage) return "";
+
+    return [
+      latestMessage.id,
+      latestMessage.content.length,
+      latestMessage.listings?.length ?? 0,
+      latestMessage.isStreaming ? "streaming" : "done",
+    ].join(":");
+  }, [messages]);
+
+  const isNearChatBottom = useCallback(() => {
+    const container = scrollRef.current;
+
+    if (!container) return true;
+
+    return (
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      AUTO_SCROLL_BOTTOM_THRESHOLD_PX
+    );
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    shouldAutoScrollRef.current = isNearChatBottom();
+  }, [isNearChatBottom]);
+
   useEffect(() => {
-    const lastMessage = messages.at(-1);
-
     if (!open) return;
-    if (!lastMessage) return;
+    if (!latestMessageLayoutKey) return;
+    if (!shouldAutoScrollRef.current && isStreaming) return;
 
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
+    if (scrollFrameRef.current !== null) {
+      cancelAnimationFrame(scrollFrameRef.current);
+    }
+
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      const container = scrollRef.current;
+
+      scrollFrameRef.current = null;
+
+      if (!container) return;
+
+      // During streaming, avoid stacking smooth-scroll animations on every
+      // token flush. This keeps the reading position stable like ChatGPT.
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: isStreaming ? "auto" : "smooth",
+      });
     });
-  }, [messages, open]);
+  }, [latestMessageLayoutKey, open, isStreaming]);
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+
+      if (tokenFlushTimerRef.current !== null) {
+        clearTimeout(tokenFlushTimerRef.current);
+      }
+
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+      }
     };
   }, []);
 
-  const updateAssistantMessage = (
-    assistantId: string,
-    updater: (message: ChatMessage) => ChatMessage,
-  ) => {
-    setMessages((currentMessages) =>
-      currentMessages.map((message) =>
-        message.id === assistantId ? updater(message) : message,
-      ),
-    );
-  };
+  const updateAssistantMessage = useCallback(
+    (
+      assistantId: string,
+      updater: (message: ChatMessage) => ChatMessage,
+    ) => {
+      setMessages((currentMessages) =>
+        currentMessages.map((message) =>
+          message.id === assistantId ? updater(message) : message,
+        ),
+      );
+    },
+    [],
+  );
+
+  const clearTokenFlushTimer = useCallback(() => {
+    if (tokenFlushTimerRef.current === null) return;
+
+    clearTimeout(tokenFlushTimerRef.current);
+    tokenFlushTimerRef.current = null;
+  }, []);
+
+  const flushPendingAssistantTokens = useCallback(
+    (assistantId: string) => {
+      const pendingToken = pendingTokenBufferRef.current;
+
+      if (!pendingToken) return;
+
+      pendingTokenBufferRef.current = "";
+      updateAssistantMessage(assistantId, (message) => ({
+        ...message,
+        content: `${message.content}${pendingToken}`,
+      }));
+    },
+    [updateAssistantMessage],
+  );
+
+  const scheduleTokenFlush = useCallback(
+    (assistantId: string) => {
+      if (tokenFlushTimerRef.current !== null) return;
+
+      // SSE can deliver many tiny chunks. Flushing them in short batches avoids
+      // reparsing Markdown and repainting the chat bubble for every token.
+      tokenFlushTimerRef.current = setTimeout(() => {
+        tokenFlushTimerRef.current = null;
+        flushPendingAssistantTokens(assistantId);
+      }, STREAM_TOKEN_FLUSH_INTERVAL_MS);
+    },
+    [flushPendingAssistantTokens],
+  );
+
+  const resetTokenBuffer = useCallback(() => {
+    clearTokenFlushTimer();
+    pendingTokenBufferRef.current = "";
+  }, [clearTokenFlushTimer]);
 
   const sendMessage = async (rawMessage: string) => {
     const trimmedMessage = rawMessage.trim();
@@ -468,6 +567,8 @@ export default function ChatbotWidget() {
     if (!trimmedMessage || isStreaming) return;
 
     abortRef.current?.abort();
+    resetTokenBuffer();
+    shouldAutoScrollRef.current = true;
 
     const controller = new AbortController();
     const userMessage: ChatMessage = {
@@ -506,10 +607,8 @@ export default function ChatbotWidget() {
         onToken: (token) => {
           if (activeAssistantIdRef.current !== assistantMessage.id) return;
 
-          updateAssistantMessage(assistantMessage.id, (message) => ({
-            ...message,
-            content: `${message.content}${token}`,
-          }));
+          pendingTokenBufferRef.current += token;
+          scheduleTokenFlush(assistantMessage.id);
         },
         onListings: (listings) => {
           if (activeAssistantIdRef.current !== assistantMessage.id) return;
@@ -522,6 +621,8 @@ export default function ChatbotWidget() {
         onError: (message) => {
           if (activeAssistantIdRef.current !== assistantMessage.id) return;
 
+          clearTokenFlushTimer();
+          flushPendingAssistantTokens(assistantMessage.id);
           updateAssistantMessage(assistantMessage.id, (currentMessage) => ({
             ...currentMessage,
             content: currentMessage.content || message,
@@ -538,6 +639,8 @@ export default function ChatbotWidget() {
             ? error.message
             : "Xin lỗi, mình chưa thể kết nối Chat AI lúc này. Bạn thử lại sau nhé.";
 
+        clearTokenFlushTimer();
+        flushPendingAssistantTokens(assistantMessage.id);
         updateAssistantMessage(assistantMessage.id, (message) => ({
           ...message,
           content: message.content || fallbackMessage,
@@ -545,6 +648,8 @@ export default function ChatbotWidget() {
       }
     } finally {
       if (activeAssistantIdRef.current === assistantMessage.id) {
+        clearTokenFlushTimer();
+        flushPendingAssistantTokens(assistantMessage.id);
         updateAssistantMessage(assistantMessage.id, (message) => ({
           ...message,
           isStreaming: false,
@@ -563,12 +668,14 @@ export default function ChatbotWidget() {
 
   const handleNewChat = () => {
     abortRef.current?.abort();
+    resetTokenBuffer();
     activeAssistantIdRef.current = null;
     abortRef.current = null;
     setIsStreaming(false);
     setInput("");
     setConversationId(null);
     storeConversationId(null);
+    shouldAutoScrollRef.current = true;
     setMessages(createInitialMessages());
   };
 
@@ -665,7 +772,11 @@ export default function ChatbotWidget() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-4 py-5" ref={scrollRef}>
+          <div
+            className="flex-1 overflow-y-auto px-4 py-5"
+            onScroll={handleMessagesScroll}
+            ref={scrollRef}
+          >
             <div className="mx-auto flex w-full max-w-[520px] flex-col gap-4">
               {messages.map((message) => (
                 <MessageBubble
