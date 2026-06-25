@@ -7,17 +7,7 @@ import { useRouter } from "next/navigation";
 import { ratingAPI } from "@/api/endpoints/rating";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-const categoryConfig = [
-  { key: "cleanliness", label: "Cleanliness" },
-  { key: "accuracy", label: "Accuracy" },
-  { key: "checkIn", label: "Check-in" },
-  { key: "communication", label: "Communication" },
-  { key: "location", label: "Location" },
-  { key: "value", label: "Value" },
-] as const;
-
-type CategoryKey = (typeof categoryConfig)[number]["key"];
+import { ratingCategoryConfig, type RatingCategoryKey } from "./ratingCategories";
 
 function readCurrentUserProfile() {
   if (typeof window === "undefined") {
@@ -97,7 +87,7 @@ export function ListingRatingForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [scores, setScores] = useState<Record<CategoryKey, number>>({
+  const [scores, setScores] = useState<Record<RatingCategoryKey, number>>({
     cleanliness: 5,
     accuracy: 5,
     checkIn: 5,
@@ -191,26 +181,33 @@ export function ListingRatingForm({
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          {categoryConfig.map((category) => (
-            <div key={category.key} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
-              <label className="block text-sm font-medium text-zinc-800">{category.label}</label>
-              <div className="mt-2 flex items-center gap-1">
-                {Array.from({ length: 5 }, (_, idx) => idx + 1).map((value) => (
-                  <StarInput
-                    key={value}
-                    value={value}
-                    current={scores[category.key]}
-                    onSelect={(nextValue) => {
-                      setScores((current) => ({
-                        ...current,
-                        [category.key]: nextValue,
-                      }));
-                    }}
-                  />
-                ))}
+          {ratingCategoryConfig.map((category) => {
+            const Icon = category.icon;
+
+            return (
+              <div key={category.key} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
+                  <Icon className="h-4 w-4 text-[#ff385c]" />
+                  <span>{category.label}</span>
+                </label>
+                <div className="mt-2 flex items-center gap-1">
+                  {Array.from({ length: 5 }, (_, idx) => idx + 1).map((value) => (
+                    <StarInput
+                      key={value}
+                      value={value}
+                      current={scores[category.key]}
+                      onSelect={(nextValue) => {
+                        setScores((current) => ({
+                          ...current,
+                          [category.key]: nextValue,
+                        }));
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div>

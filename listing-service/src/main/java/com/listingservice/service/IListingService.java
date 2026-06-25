@@ -1,6 +1,7 @@
 package com.listingservice.service;
 
 import com.listingservice.constant.ListingStatus;
+import com.listingservice.constant.ActivityEventType;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingFilterRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
@@ -25,15 +26,29 @@ public interface IListingService {
     List<ListingResponse> getListingsByIds(List<UUID> listingIds);
     List<ListingResponse> getAllListings();
     List<ListingResponse> getListingsByHost(String hostId);
-    List<ListingResponse> searchListings(String city, String country, Integer maxGuests, LocalDate checkIn, LocalDate checkOut);
-    List<ListingResponse> searchByPriceRange(BigDecimal minPrice, BigDecimal maxPrice, LocalDate checkIn, LocalDate checkOut);
-    List<ListingResponse> searchByLocation(BigDecimal latitude, BigDecimal longitude, Double radius, LocalDate checkIn, LocalDate checkOut);
+        List<ListingResponse> searchListings(
+            String city,
+            String country,
+            Integer maxGuests,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            Double radius,
+            LocalDate checkIn,
+            LocalDate checkOut);
     List<ListingResponse> searchListingsWithFilters(ListingFilterRequest request);
     void activateListing(UUID listingId);
     void deactivateListing(UUID listingId);
     void suspendListing(UUID listingId, ListingSuspensionRequest request);
     void unsuspendListing(UUID listingId, ListingUnsuspensionRequest request);
-    List<HomeSectionResponse> getHomeSections(Integer limitPerSection);
+    default List<HomeSectionResponse> getHomeSections(Integer limitPerSection) {
+        return getHomeSections(limitPerSection, null);
+    }
+
+    List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String userId);
+
+    void recordListingActivity(UUID listingId, String userId, ActivityEventType eventType);
 
     /**
      * Get paginated listings by host with optional status filter

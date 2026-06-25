@@ -59,7 +59,7 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
 
   if (!coverPhoto) {
     return (
-      <div className="grid h-[26.25rem] place-items-center rounded-3xl border border-dashed border-zinc-200 bg-zinc-50 text-zinc-500">
+      <div className="grid aspect-[16/10] place-items-center rounded-[20px] border border-dashed border-[#dddddd] bg-[#f7f7f7] text-zinc-500">
         <div className="text-center">
           <Images className="mx-auto h-6 w-6 text-zinc-400" />
           <p className="mt-2 text-sm font-medium">No photos available yet</p>
@@ -73,11 +73,11 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
       <DialogTrigger asChild>
         <button
           type="button"
-          className="group relative w-full overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.08)]"
+          className="group relative w-full overflow-hidden rounded-[20px] border border-[#dddddd] bg-white"
           aria-label="Show all photos"
         >
           {isSinglePhoto ? (
-            <div className="relative h-[28rem] w-full overflow-hidden sm:h-[32rem] lg:h-[36rem]">
+            <div className="relative aspect-[16/10] w-full overflow-hidden sm:aspect-[21/10]">
               <SafeImage
                 src={coverPhoto.photoUrl!}
                 alt={title}
@@ -87,23 +87,23 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
                 className="object-cover transition duration-300 group-hover:scale-[1.02]"
               />
 
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.05),rgba(15,23,42,0.18))]" />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.04),rgba(0,0,0,0.16))]" />
 
               <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.78))] p-5 text-white sm:p-6">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-white/70">Gallery</p>
-                  <h3 className="mt-1 text-lg font-semibold sm:text-2xl">View the full photo</h3>
+                  <p className="text-xs uppercase tracking-[0.2em] text-white/70">Photos</p>
+                  <h3 className="mt-1 text-lg font-semibold sm:text-2xl">Open all photos</h3>
                 </div>
 
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium backdrop-blur">
                   <Camera className="h-4 w-4" />
-                  Show all photos
+                  {normalizedPhotos.length} photos
                 </span>
               </div>
             </div>
           ) : (
-            <div className="grid h-[28.125rem] grid-cols-4 grid-rows-2 gap-2 p-2">
-              <div className="relative col-span-2 row-span-2 overflow-hidden rounded-2xl">
+            <div className="grid aspect-[16/10] grid-cols-4 grid-rows-2 gap-2 p-2 sm:aspect-[21/10]">
+              <div className="relative col-span-2 row-span-2 overflow-hidden rounded-[16px]">
                 <SafeImage
                   src={coverPhoto.photoUrl!}
                   alt={title}
@@ -114,7 +114,7 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
               </div>
 
               {previewPhotos.map((photo, index) => (
-                <div key={`${photo.photoUrl}-${index}`} className="relative overflow-hidden rounded-2xl">
+                <div key={`${photo.photoUrl}-${index}`} className="relative overflow-hidden rounded-[16px]">
                   <SafeImage
                     src={photo.photoUrl!}
                     alt={`${title} photo ${index + 2}`}
@@ -125,15 +125,15 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
                 </div>
               ))}
 
-              <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.75))] p-5 text-white">
+              <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 bg-[linear-gradient(180deg,transparent,rgba(15,23,42,0.68))] p-5 text-white">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-white/80">Gallery</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-white/80">Photos</p>
                   <h3 className="mt-1 text-lg font-semibold">Browse {normalizedPhotos.length} photos</h3>
                 </div>
 
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-sm font-medium backdrop-blur">
                   <Camera className="h-4 w-4" />
-                  Show all photos
+                  Open gallery
                 </span>
               </div>
             </div>
@@ -141,7 +141,7 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
         </button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-6xl overflow-hidden rounded-[2rem] border-0 bg-zinc-950 p-0 text-white shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
+      <DialogContent className="max-w-6xl overflow-hidden rounded-[20px] border-0 bg-zinc-950 p-0 text-white shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
         <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
           <div>
             <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
@@ -154,7 +154,7 @@ export function ListingGallery({ photos = [], title = "House photos" }: { photos
             {normalizedPhotos.map((photo, index) => (
               <div
                 key={`${photo.photoUrl}-${index}`}
-                className="group relative aspect-4/3 overflow-hidden rounded-2xl bg-zinc-900/60"
+                className="group relative aspect-4/3 overflow-hidden rounded-[16px] bg-zinc-900/60"
               >
                 <SafeImage
                   src={photo.photoUrl!}

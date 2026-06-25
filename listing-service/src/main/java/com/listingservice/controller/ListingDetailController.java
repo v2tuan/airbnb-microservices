@@ -1,9 +1,11 @@
 package com.listingservice.controller;
 
 import com.listingservice.constant.ListingStatus;
+import com.listingservice.constant.ActivityEventType;
 import com.listingservice.dto.request.ListingBatchRequest;
 import com.listingservice.dto.request.ListingCreationRequest;
 import com.listingservice.dto.request.ListingFilterRequest;
+import com.listingservice.dto.request.ListingActivityRequest;
 import com.listingservice.dto.request.ListingSuspensionRequest;
 import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
@@ -103,14 +105,34 @@ public class ListingDetailController {
     }
 
     @GetMapping("/{listingId}")
-    public ResponseEntity<ApiResponse<ListingResponse>> getListingById(@PathVariable UUID listingId) {
+    public ResponseEntity<ApiResponse<ListingResponse>> getListingById(
+            @PathVariable UUID listingId,
+            @AuthenticationPrincipal Jwt jwt) {
         log.info("REST request to get listing ID: {}", listingId);
         ListingResponse response = listingService.getListingById(listingId);
+        listingService.recordListingActivity(
+                listingId,
+                jwt != null ? jwt.getSubject() : null,
+                ActivityEventType.VIEW);
         return ResponseEntity.ok(
                 ApiResponse.<ListingResponse>builder()
                         .code(1000)
                         .message("Listing retrieved successfully")
                         .data(response)
+                        .build());
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/{listingId}/activity")
+    public ResponseEntity<ApiResponse<Void>> trackListingActivity(
+            @PathVariable UUID listingId,
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody ListingActivityRequest request) {
+        listingService.recordListingActivity(listingId, jwt != null ? jwt.getSubject() : null, request.eventType());
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .code(1000)
+                        .message("Listing activity recorded")
                         .build());
     }
 
@@ -205,11 +227,26 @@ public class ListingDetailController {
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String country,
             @RequestParam(required = false) Integer maxGuests,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) BigDecimal latitude,
+            @RequestParam(required = false) BigDecimal longitude,
+            @RequestParam(required = false) Double radius,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, CheckIn: {}, CheckOut: {}",
-                city, country, maxGuests, checkIn, checkOut);
-        List<ListingResponse> response = listingService.searchListings(city, country, maxGuests, checkIn, checkOut);
+        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}, CheckIn: {}, CheckOut: {}",
+                city, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius, checkIn, checkOut);
+        List<ListingResponse> response = listingService.searchListings(
+                city,
+                country,
+                maxGuests,
+                minPrice,
+                maxPrice,
+                latitude,
+                longitude,
+                radius,
+                checkIn,
+                checkOut);
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
@@ -218,58 +255,36 @@ public class ListingDetailController {
                         .build());
     }
 
-    @GetMapping("/search/price")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByPriceRange(
-            @RequestParam BigDecimal minPrice,
-            @RequestParam BigDecimal maxPrice,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings by price range: {} - {}, CheckIn: {}, CheckOut: {}",
-                minPrice, maxPrice, checkIn, checkOut);
-        List<ListingResponse> response = listingService.searchByPriceRange(minPrice, maxPrice, checkIn, checkOut);
-        return ResponseEntity.ok(
-                ApiResponse.<List<ListingResponse>>builder()
-                        .code(1000)
-                        .message("Price range search results retrieved successfully")
-                        .data(response)
-                        .build());
-    }
-
-    @GetMapping("/search/location")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchByLocation(
-            @RequestParam BigDecimal latitude,
-            @RequestParam BigDecimal longitude,
-            @RequestParam Double radius,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings by location - Lat: {}, Lng: {}, Radius: {}km, CheckIn: {}, CheckOut: {}",
-                latitude, longitude, radius, checkIn, checkOut);
-        List<ListingResponse> response = listingService.searchByLocation(latitude, longitude, radius, checkIn, checkOut);
-        return ResponseEntity.ok(
-                ApiResponse.<List<ListingResponse>>builder()
-                        .code(1000)
-                        .message("Location search results retrieved successfully")
-                        .data(response)
-                        .build());
-    }
-
     @PostMapping("/search/filter")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchWithFilters(
-            @Valid @RequestBody(required = false) ListingFilterRequest request) {
-        log.info("REST request to advanced search listings: {}", request);
+    public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListingsWithFilters(
+            @Valid @RequestBody ListingFilterRequest request) {
+        log.info("REST request to search listings with filters - keyword: {}, city: {}, state: {}, country: {}, guests: {}, minPrice: {}, maxPrice: {}, checkIn: {}, checkOut: {}",
+                request.getKeyword(),
+                request.getCity(),
+                request.getState(),
+                request.getCountry(),
+                request.getGuests(),
+                request.getMinPrice(),
+                request.getMaxPrice(),
+                request.getCheckIn(),
+                request.getCheckOut());
+
         List<ListingResponse> response = listingService.searchListingsWithFilters(request);
+
         return ResponseEntity.ok(
                 ApiResponse.<List<ListingResponse>>builder()
                         .code(1000)
-                        .message("Filtered search results retrieved successfully")
+                        .message("Search results retrieved successfully")
                         .data(response)
                         .build());
     }
 
     @GetMapping("/sections")
-    public ApiResponse<List<HomeSectionResponse>> getHomeSections(@RequestParam(required = false) Integer limit) {
+    public ApiResponse<List<HomeSectionResponse>> getHomeSections(
+            @RequestParam(required = false) Integer limit,
+            @AuthenticationPrincipal Jwt jwt) {
         return ApiResponse.<List<HomeSectionResponse>>builder()
-                .data(listingService.getHomeSections(limit))
+                .data(listingService.getHomeSections(limit, jwt != null ? jwt.getSubject() : null))
                 .build();
     }
 

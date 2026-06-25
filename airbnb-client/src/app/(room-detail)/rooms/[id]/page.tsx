@@ -1,22 +1,31 @@
-'use client'
+﻿"use client";
 
-import { userAPI, type PublicProfilePageData } from "@/api/endpoints/user";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { notFound, useParams } from "next/navigation";
+import {
+  CalendarDays,
+  CheckCircle2,
+  BedDouble,
+  MapPin,
+  MessageSquare,
+  Share,
+  Sparkles,
+  Star,
+  Users,
+} from "lucide-react";
+
+import { activityAPI } from "@/api/endpoints/activity";
+import { listingAPI, unwrapApiData, type ListingResponse } from "@/api/endpoints/listing";
 import { ratingAPI } from "@/api/endpoints/rating";
-import { listingAPI, unwrapApiData } from "@/api/endpoints/listing";
+import { userAPI, type PublicHostResponseDTO } from "@/api/endpoints/user";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
 import { ListingRatingForm } from "@/components/listing/ListingRatingForm";
 import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
-import { CalendarDays, CheckCircle2, MessageSquare, Share, Sparkles, Star, Users } from "lucide-react";
-import Link from "next/link";
-import {notFound, useParams} from "next/navigation";
-import {useEffect, useState} from "react";
-
-interface PageProps {
-  params: {id: string}
-}
+import { Calendar } from "@/components/ui/calendar";
 
 type RatingRecord = {
   id?: string;
@@ -37,13 +46,11 @@ type RatingRecord = {
 
 type HostPreview = {
   id?: string;
+  keycloakUserId?: string;
   fullName?: string;
   avatarUrl?: string;
   isSuperhost?: boolean;
   hostSince?: string;
-  location?: string;
-  responseRate?: string;
-  responseTime?: string;
 };
 
 const formatHostSince = (hostSince?: string) => {
@@ -52,7 +59,10 @@ const formatHostSince = (hostSince?: string) => {
   const date = new Date(hostSince);
   if (Number.isNaN(date.getTime())) return "Joined recently";
 
-  return `Joined ${date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`;
+  return `Joined ${date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  })}`;
 };
 
 const firstDefinedString = (...values: Array<unknown>) => {
@@ -64,7 +74,34 @@ const firstDefinedString = (...values: Array<unknown>) => {
   return undefined;
 };
 
-const toRatingsArray = (payload: unknown): any[] => {
+const getAverageFromRatings = (ratings: RatingRecord[]) => {
+  const values = ratings
+    .map((rating) => rating.overallRating)
+    .filter((value): value is number => typeof value === "number" && !Number.isNaN(value));
+
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+};
+
+const buildMapEmbedUrl = (listing: ListingResponse) => {
+  const hasCoordinates =
+    Number.isFinite(listing.latitude) &&
+    Number.isFinite(listing.longitude) &&
+    listing.latitude !== 0 &&
+    listing.longitude !== 0;
+
+  if (hasCoordinates) {
+    return `https://www.google.com/maps?q=${listing.latitude},${listing.longitude}&z=14&output=embed`;
+  }
+
+  const query = encodeURIComponent(`${listing.address}, ${listing.city}, ${listing.country}`);
+  return `https://www.google.com/maps?q=${query}&z=14&output=embed`;
+};
+
+const toRatingsArray = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) {
     return payload;
   }
@@ -82,54 +119,108 @@ const toRatingsArray = (payload: unknown): any[] => {
   return [];
 };
 
-const normalizeRating = (raw: any): RatingRecord => {
-  const reviewer = raw?.reviewer ?? raw?.user ?? raw?.profile ?? null;
+const normalizeRating = (raw: unknown): RatingRecord => {
+  const record = raw as Record<string, unknown>;
+  const reviewer = (record?.reviewer ?? record?.user ?? record?.profile ?? null) as Record<string, unknown> | null;
 
   return {
-    id: raw?.id,
-    userId: raw?.userId ?? raw?.user_id ?? reviewer?.userId ?? reviewer?.id,
-    hostId: raw?.hostId ?? raw?.host_id,
-    overallRating: raw?.overallRating ?? raw?.overall_rating,
-    cleanliness: raw?.cleanliness,
-    accuracy: raw?.accuracy,
-    checkIn: raw?.checkIn ?? raw?.check_in,
-    communication: raw?.communication,
-    location: raw?.location,
-    value: raw?.value,
-    review: raw?.review,
-    createdAt: raw?.createdAt ?? raw?.created_at,
+    id: typeof record?.id === "string" ? record.id : undefined,
+    userId:
+      typeof record?.userId === "string"
+        ? record.userId
+        : typeof record?.user_id === "string"
+          ? record.user_id
+          : typeof reviewer?.userId === "string"
+            ? reviewer.userId
+            : typeof reviewer?.id === "string"
+              ? reviewer.id
+              : undefined,
+    hostId: typeof record?.hostId === "string" ? record.hostId : typeof record?.host_id === "string" ? record.host_id : undefined,
+    overallRating: typeof record?.overallRating === "number" ? record.overallRating : typeof record?.overall_rating === "number" ? record.overall_rating : undefined,
+    cleanliness: typeof record?.cleanliness === "number" ? record.cleanliness : undefined,
+    accuracy: typeof record?.accuracy === "number" ? record.accuracy : undefined,
+    checkIn: typeof record?.checkIn === "number" ? record.checkIn : typeof record?.check_in === "number" ? record.check_in : undefined,
+    communication: typeof record?.communication === "number" ? record.communication : undefined,
+    location: typeof record?.location === "number" ? record.location : undefined,
+    value: typeof record?.value === "number" ? record.value : undefined,
+    review: typeof record?.review === "string" ? record.review : undefined,
+    createdAt: typeof record?.createdAt === "string" ? record.createdAt : typeof record?.created_at === "string" ? record.created_at : undefined,
     reviewerFullName: firstDefinedString(
-      raw?.reviewerFullName,
-      raw?.reviewer_full_name,
-      raw?.fullName,
+      record?.reviewerFullName,
+      record?.reviewer_full_name,
+      record?.fullName,
       reviewer?.fullName,
       reviewer?.full_name,
-      reviewer?.name
+      reviewer?.name,
     ),
     reviewerAvatarUrl: firstDefinedString(
-      raw?.reviewerAvatarUrl,
-      raw?.reviewer_avatar_url,
-      raw?.avatarUrl,
-      raw?.avatar,
+      record?.reviewerAvatarUrl,
+      record?.reviewer_avatar_url,
+      record?.avatarUrl,
+      record?.avatar,
       reviewer?.avatarUrl,
       reviewer?.avatar,
       reviewer?.profilePicture,
       reviewer?.profile_picture,
-      reviewer?.image
+      reviewer?.image,
     ),
   };
 };
 
-export default function RoomDetail () {
-  const params = useParams<{ id: string }>();
+function DetailMeta({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-[16px] border border-[#ebebeb] bg-white px-4 py-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f7f7f7] text-[#222222]">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
+          {label}
+        </p>
+        <p className="text-sm font-medium text-[#222222]">{value}</p>
+      </div>
+    </div>
+  );
+}
 
+function SectionHeading({
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+        {eyebrow}
+      </p>
+      <h3 className="text-[22px] font-semibold tracking-tight text-[#222222]">
+        {title}
+      </h3>
+      {subtitle ? <p className="text-sm leading-6 text-zinc-500">{subtitle}</p> : null}
+    </div>
+  );
+}
+
+export default function RoomDetail() {
+  const params = useParams<{ id: string }>();
   const { id } = params;
 
-  const [listing, setListing] = useState<any>(null);
+  const [listing, setListing] = useState<ListingResponse | null>(null);
   const [host, setHost] = useState<HostPreview | null>(null);
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [averageRating, setAverageRating] = useState(0);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -161,24 +252,18 @@ export default function RoomDetail () {
       if (!hostId) return;
 
       try {
-        const hostResponse = await userAPI.getPublicProfilePageData(hostId, {
-          reviewPage: 0,
-          listingPage: 0,
-        });
+        const hostResponse = await userAPI.getPublicHostByKeycloakUserId(hostId);
         if (cancelled) return;
 
-        const hostProfile = (hostResponse.data as PublicProfilePageData | undefined)
-          ?.host;
+        const hostProfile = hostResponse.data as PublicHostResponseDTO | undefined;
 
         setHost({
-          id: hostProfile?.id ?? hostId,
+          id: hostProfile?.keycloakUserId ?? hostProfile?.userId?.toString() ?? hostId,
+          keycloakUserId: hostProfile?.keycloakUserId ?? hostId,
           fullName: hostProfile?.fullName,
           avatarUrl: hostProfile?.avatarUrl,
-          isSuperhost: hostProfile?.isSuperhost,
-          hostSince: hostProfile?.hostSince,
-          location: hostProfile?.location,
-          responseRate: hostProfile?.responseRate,
-          responseTime: hostProfile?.responseTime,
+          isSuperhost: hostProfile?.superHost,
+          hostSince: hostProfile?.joinedAt,
         });
       } catch (hostError) {
         console.error("Failed to fetch host profile:", hostError);
@@ -201,9 +286,9 @@ export default function RoomDetail () {
         setLoading(false);
 
         void fetchRatings();
-        void fetchHost(listingData?.hostId);
-      } catch (error) {
-        console.error("Failed to fetch listing:", error);
+        void fetchHost(listingData.hostId);
+      } catch (fetchError) {
+        console.error("Failed to fetch listing:", fetchError);
         if (!cancelled) setError(true);
       } finally {
         if (!cancelled) setLoading(false);
@@ -217,119 +302,328 @@ export default function RoomDetail () {
     };
   }, [id]);
 
+  useEffect(() => {
+    if (!listing?.listingId) return;
+
+    const timer = window.setTimeout(() => {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
+      void activityAPI.recordActivity(token, listing.listingId, { eventType: "VIEW" });
+    }, 10000);
+
+    return () => window.clearTimeout(timer);
+  }, [listing?.listingId]);
+
   if (loading) {
-    return <div>Loading...</div>;
+    return <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">Loading...</div>;
   }
 
   if (error || !listing) {
-    return <div>Error loading room details. Please try again later.</div>;
+    return (
+      <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">
+        Error loading room details. Please try again later.
+      </div>
+    );
   }
 
-  const hostProfileId = host?.id ?? listing?.hostId;
+  const hostProfileId = host?.keycloakUserId ?? host?.id ?? listing.hostId;
+  const reviewCount = ratings.length;
+  const effectiveAverageRating = averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
+  const totalGuests = listing.maxGuests;
+  const bedSummary = `${listing.numBeds} beds`;
+  const amenities = (listing.amenities ?? []).filter(Boolean);
+  const sleepCount = Math.max(1, Math.min(listing.numBedrooms || 1, 3));
+  const bedsPerRoom = Math.max(1, Math.round((listing.numBeds || sleepCount) / sleepCount));
 
   return (
-      <main className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_30%),linear-gradient(180deg,#fff_0%,#fff_60%,#f8fafc_100%)] px-4 py-6 sm:px-6 lg:px-10">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">Stay detail</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950 md:text-4xl">{listing.title}</h1>
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-zinc-500">
-                <span className="font-medium text-zinc-700">{listing.address}, {listing.city}, {listing.country}</span>
-                <span className="hidden h-1 w-1 rounded-full bg-zinc-300 sm:inline-block" />
-                <span>{listing.maxGuests} guests</span>
-                <span className="hidden h-1 w-1 rounded-full bg-zinc-300 sm:inline-block" />
-                <span>{listing.numBeds} beds</span>
-              </p>
+    <main className="min-h-screen bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 border-b border-[#ebebeb] pb-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+                  Stay detail
+                </p>
+                <h1 className="text-[28px] font-semibold tracking-tight text-[#222222] sm:text-[32px]">
+                  {listing.title}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+                  <span className="font-medium text-[#222222]">
+                    {listing.address}, {listing.city}, {listing.country}
+                  </span>
+                  <span className="hidden h-1 w-1 rounded-full bg-zinc-300 sm:inline-block" />
+                  <span>{totalGuests} guests</span>
+                  <span className="hidden h-1 w-1 rounded-full bg-zinc-300 sm:inline-block" />
+                  <span>{bedSummary}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#dddddd] bg-white px-4 py-2 text-sm font-medium text-[#222222] transition hover:border-[#222222]"
+                >
+                  <Share className="h-4 w-4" />
+                  Share
+                </button>
+                <RoomWishlistButton listingId={listing.listingId} />
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-zinc-900 hover:text-zinc-950"
-              >
-                <Share className="h-4 w-4" />
-                Share
-              </button>
-
-              <RoomWishlistButton listingId={listing.listingId} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <DetailMeta
+                icon={Users}
+                label="Guests"
+                value={`${listing.maxGuests} max`}
+              />
+              <DetailMeta
+                icon={CalendarDays}
+                label="Beds"
+                value={`${listing.numBeds} available`}
+              />
+              <DetailMeta
+                icon={Star}
+                label="Rating"
+                value={reviewCount > 0 ? `${effectiveAverageRating.toFixed(1)} from ${reviewCount}` : "No reviews yet"}
+              />
+              <DetailMeta
+                icon={Sparkles}
+                label="Host"
+                value={host?.isSuperhost ? "Superhost" : "Member host"}
+              />
             </div>
           </div>
 
-          <ListingGallery photos={listing.photos ?? []} title={listing.title} />
+          <div className="mt-6">
+            <ListingGallery photos={listing.photos ?? []} title={listing.title} />
+          </div>
 
-          <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="space-y-8">
-              <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] md:p-8">
+          <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="min-w-0 space-y-8">
+              <section className="border-b border-[#ebebeb] pb-8">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-900 text-white shadow-lg">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f7f7f7] text-[#222222]">
                     <Sparkles className="h-5 w-5" />
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Hosted by</p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                      Hosted by
+                    </p>
                     {hostProfileId ? (
                       <Link
                         href={`/users/profile/${hostProfileId}`}
-                        className="mt-1 inline-block text-xl font-semibold text-zinc-950 underline-offset-4 hover:underline"
+                        className="mt-1 inline-block text-lg font-semibold text-[#222222] underline-offset-4 hover:underline"
                       >
                         {host?.fullName ?? "LocalHost"}
                       </Link>
                     ) : (
-                      <p className="mt-1 text-xl font-semibold text-zinc-950">{host?.fullName ?? "LocalHost"}</p>
+                      <p className="mt-1 text-lg font-semibold text-[#222222]">
+                        {host?.fullName ?? "LocalHost"}
+                      </p>
                     )}
-                    <p className="mt-1 text-sm text-zinc-500">{host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}</p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      {host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}
+                    </p>
                   </div>
                 </div>
 
-                <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-zinc-50 p-4">
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[16px] bg-[#f7f7f7] p-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Status</p>
-                    <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-zinc-900">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#222222]">
+                      <CheckCircle2 className="h-4 w-4 text-[#ff385c]" />
                       {host?.isSuperhost ? "Superhost" : "Member host"}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Response</p>
-                    <p className="mt-2 text-sm font-semibold text-zinc-900">{host?.responseRate ?? "Fast response"}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{host?.responseTime ?? "Typically replies soon"}</p>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Location</p>
-                    <p className="mt-2 text-sm font-semibold text-zinc-900">{host?.location ?? listing.city}</p>
+                  <div className="rounded-[16px] bg-[#f7f7f7] p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Joined</p>
+                    <p className="mt-2 text-sm font-medium text-[#222222]">
+                      {host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">Public host profile</p>
                   </div>
                 </div>
               </section>
 
-              <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] md:p-8">
+              <section className="border-b border-[#ebebeb] pb-8">
                 <ListingInfo data={listing} hostName={host?.fullName ?? "LocalHost"} />
               </section>
 
-              <section className="rounded-[2rem] border border-zinc-200 bg-white p-6 shadow-[0_16px_50px_rgba(15,23,42,0.06)] md:p-8">
-                <ListingRatingPanel
-                    averageRating={averageRating}
-                    ratings={ratings}
+              <section className="border-b border-[#ebebeb] pb-8">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <SectionHeading
+                    eyebrow="Where you'll sleep"
+                    title="Sleeping arrangements"
+                    subtitle="The layout is kept simple so guests can scan the sleeping setup at a glance."
+                  />
+                  <p className="text-sm text-zinc-500">
+                    {listing.numBedrooms} bedroom{listing.numBedrooms === 1 ? "" : "s"} · {listing.numBeds} beds
+                  </p>
+                </div>
+
+                <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: sleepCount }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="rounded-[18px] border border-[#ebebeb] bg-[#f7f7f7] p-5"
+                    >
+                      <BedDouble className="h-6 w-6 text-[#222222]" />
+                      <p className="mt-4 text-sm font-semibold text-[#222222]">
+                        Bedroom {index + 1}
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {bedsPerRoom} bed{bedsPerRoom === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="border-b border-[#ebebeb] pb-8">
+                <SectionHeading
+                  eyebrow="What this place offers"
+                  title="Amenities"
+                  subtitle="The items below come from the listing service and should stay compact and readable."
                 />
 
-                <ListingRatingForm
+                <div className="mt-5 flex flex-wrap gap-3">
+                  {amenities.length > 0 ? (
+                    amenities.slice(0, 14).map((amenity) => (
+                      <span
+                        key={amenity.amenityId}
+                        className="inline-flex items-center gap-2 rounded-full border border-[#dddddd] bg-white px-4 py-2 text-sm font-medium text-[#222222]"
+                      >
+                        <span className="size-2 rounded-full bg-[#ff385c]" />
+                        {amenity.name}
+                      </span>
+                    ))
+                  ) : (
+                    <div className="rounded-[18px] border border-dashed border-[#dddddd] bg-[#f7f7f7] px-4 py-3 text-sm text-zinc-500">
+                      No amenities published yet.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="border-b border-[#ebebeb] pb-8">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <SectionHeading
+                    eyebrow="Calendar"
+                    title="Availability"
+                    subtitle="Use the booking panel to pick dates. The calendar below is there to keep the page visually aligned with Airbnb's listing flow."
+                  />
+                  <p className="text-sm text-zinc-500">
+                    Check-in and checkout are selected in the booking card
+                  </p>
+                </div>
+
+                <div className="mt-5 overflow-hidden rounded-[20px] border border-[#ebebeb] bg-white p-3">
+                  <Calendar
+                    mode="range"
+                    defaultMonth={new Date()}
+                    numberOfMonths={2}
+                  />
+                </div>
+              </section>
+
+              <section className="border-b border-[#ebebeb] pb-8">
+                <SectionHeading
+                  eyebrow="Where you'll be"
+                  title="Location"
+                  subtitle="This section mirrors the official Airbnb page: map first, then the neighborhood context."
+                />
+
+                <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_320px]">
+                  <div className="overflow-hidden rounded-[20px] border border-[#ebebeb] bg-[#f7f7f7]">
+                    <iframe
+                      title="Listing location map"
+                      src={buildMapEmbedUrl(listing)}
+                      className="h-[320px] w-full"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  <div className="rounded-[20px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#ff385c] shadow-sm">
+                        <MapPin className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+                          Address
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-[#222222]">
+                          {listing.address}
+                        </p>
+                        <p className="mt-1 text-sm text-zinc-500">
+                          {listing.city}, {listing.country}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 space-y-3 text-sm text-zinc-600">
+                      <div className="flex items-center justify-between">
+                        <span>Latitude</span>
+                        <span className="font-medium text-[#222222]">
+                          {listing.latitude}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Longitude</span>
+                        <span className="font-medium text-[#222222]">
+                          {listing.longitude}
+                        </span>
+                      </div>
+                    </div>
+
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${listing.latitude},${listing.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-[#ff385c] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#e61e4d]"
+                    >
+                      Open in maps
+                    </a>
+                  </div>
+                </div>
+              </section>
+
+              <section className="pb-2">
+                <ListingRatingPanel
+                  averageRating={averageRating}
+                  ratings={ratings}
+                />
+
+                <div className="mt-10">
+                  <ListingRatingForm
                     listingId={listing.listingId}
                     hostId={listing.hostId}
-                />
+                  />
+                </div>
               </section>
             </div>
 
-            <div className="lg:sticky lg:top-24 lg:self-start">
+            <div className="lg:pt-2">
               <BookingCard
-                  roomId={listing.listingId}
-                  maxGuests={listing.maxGuests}
-                  petsAllowed={true}
-                  pricing={listing.pricing}
-                  rating={averageRating}
-                  reviewCount={ratings.length}
+                roomId={listing.listingId}
+                maxGuests={listing.maxGuests}
+                petsAllowed={true}
+                pricing={listing.pricing ?? {
+                  basePrice: 0,
+                  currency: "USD",
+                  cleaningFee: 0,
+                  serviceFeePercentage: 0,
+                }}
+                rating={averageRating}
+                reviewCount={ratings.length}
               />
             </div>
           </div>
         </div>
-      </main>
+      </div>
+    </main>
   );
 }
+

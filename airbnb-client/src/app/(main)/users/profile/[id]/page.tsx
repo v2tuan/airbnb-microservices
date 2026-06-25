@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Globe,
   Home,
-  MapPin,
   MessageSquare,
   ShieldCheck,
   Star,
@@ -14,8 +13,9 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import { type PublicProfilePageData, userAPI } from "@/api/endpoints/user";
-import SendMessageButton from '@/components/messages/SendMessageButton'
+import SendMessageButton from "@/components/messages/SendMessageButton";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -59,7 +59,10 @@ function formatJoinDate(joinedAt?: string) {
     return "Joined recently";
   }
 
-  return `Joined in ${date.toLocaleDateString("en-US", { month: "long", year: "numeric" })}`;
+  return `Joined ${date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  })}`;
 }
 
 function formatNumber(value?: number) {
@@ -124,10 +127,10 @@ function ratingLabel(value?: number) {
 
 function getAboutText(profile: PublicProfilePageData, displayName: string) {
   if (profile.host?.isSuperhost) {
-    return `${displayName} is an experienced host with a strong track record on Airbnb. Guests can expect a polished stay, quick communication, and a profile that reflects verified activity across listings and reviews.`;
+    return `${displayName} is an experienced host with a strong track record on Airbnb. Guests can expect consistent stays, clear communication, and a profile backed by verified activity.`;
   }
 
-  return `${displayName} is an active Airbnb member. This public profile shows the identity card, membership date, and any trips, reviews, or listings that are available from the backend.`;
+  return `${displayName} is an active Airbnb member. This public profile shows their host details, reviews, and listings that are available from the backend.`;
 }
 
 function getBadgeLabel(profile: PublicProfilePageData) {
@@ -136,14 +139,55 @@ function getBadgeLabel(profile: PublicProfilePageData) {
 
 function renderStars(rating?: number) {
   const value = typeof rating === "number" ? rating : 0;
+
   return [1, 2, 3, 4, 5].map((star) => (
     <Star
       key={star}
-      className={
-        star <= Math.round(value) ? "h-3.5 w-3.5 fill-current" : "h-3.5 w-3.5"
-      }
+      className={star <= Math.round(value) ? "h-3.5 w-3.5 fill-current" : "h-3.5 w-3.5"}
     />
   ));
+}
+
+function ProfileStat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Users;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[16px] border border-[#ebebeb] bg-white p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+        <Icon className="h-4 w-4 text-[#ff385c]" />
+        <span>{label}</span>
+      </div>
+      <p className="mt-3 text-2xl font-semibold tracking-tight text-[#222222]">{value}</p>
+    </div>
+  );
+}
+
+function SectionHeading({
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+        {eyebrow}
+      </p>
+      <h2 className="text-[22px] font-semibold tracking-tight text-[#222222] sm:text-[26px]">
+        {title}
+      </h2>
+      {subtitle ? <p className="max-w-3xl text-sm leading-6 text-zinc-500">{subtitle}</p> : null}
+    </div>
+  );
 }
 
 export default async function PublicProfilePage({ params }: PageProps) {
@@ -170,228 +214,123 @@ export default async function PublicProfilePage({ params }: PageProps) {
     const listingsCount = profile.stats?.activeListingsCount;
 
     return (
-      <main className="relative min-h-screen overflow-hidden bg-[#f7f5f2]">
-        <div className="absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.18),transparent_36%),radial-gradient(circle_at_top_right,rgba(34,197,94,0.12),transparent_28%)]" />
-        <div className="absolute -left-30 top-24 h-72 w-72 rounded-full bg-[#ff385c]/10 blur-3xl" />
-        <div className="absolute -right-25 top-40 h-64 w-64 rounded-full bg-black/5 blur-3xl" />
+      <main className="min-h-screen bg-white">
+        <div className="mx-auto w-full max-w-7xl px-4 py-8 md:px-8 lg:px-10">
+          <section className="border-b border-[#ebebeb] pb-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex items-start gap-5">
+                <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[24px] border border-[#ebebeb] bg-[#f7f7f7]">
+                  {profile.host.avatarUrl ? (
+                    <Image
+                      src={profile.host.avatarUrl}
+                      alt={displayName}
+                      width={96}
+                      height={96}
+                      unoptimized
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-3xl font-semibold text-[#222222]">
+                      {initials(displayName)}
+                    </span>
+                  )}
+                </div>
 
-        <div className="relative mx-auto w-full max-w-7xl px-4 py-8 md:px-8 lg:px-10">
-          <section className="mb-6 flex items-center justify-between gap-4 rounded-3xl border border-black/5 bg-white/85 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur md:px-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#ff385c]">
-                Public profile
-              </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
-                {displayName}
-              </h1>
-              <p className="mt-1 flex items-center gap-2 text-sm text-zinc-500">
-                <CalendarDays className="h-4 w-4" />
-                {joinedText}
-              </p>
-            </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+                    Public profile
+                  </p>
+                  <h1 className="mt-2 text-[30px] font-semibold tracking-tight text-[#222222] sm:text-[36px]">
+                    {displayName}
+                  </h1>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-500">
+                    <span className="inline-flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-[#ff385c]" />
+                      {joinedText}
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-[#ff385c]" />
+                      {getBadgeLabel(profile)}
+                    </span>
+                    {profile.host.identityVerified !== false ? (
+                      <span className="inline-flex items-center gap-2">
+                        <BadgeCheck className="h-4 w-4 text-emerald-600" />
+                        Identity verified
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
 
-            <div className="hidden items-center gap-3 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-600 md:flex">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              {getBadgeLabel(profile)}
+              <div className="flex items-center gap-3">
+                <SendMessageButton otherUserId={profile.host.keycloakUserId ?? id} />
+              </div>
             </div>
           </section>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-6">
-              <section className="overflow-hidden rounded-[2rem] border border-black/5 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-                <div className="grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
-                  <div className="relative min-h-80 bg-linear-to-br from-zinc-100 via-white to-rose-50 p-6 md:p-8">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,56,92,0.12),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(0,0,0,0.05),transparent_28%)]" />
-                    <div className="relative flex h-full flex-col justify-between">
-                      <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-medium text-zinc-700 shadow-sm backdrop-blur">
-                        <ShieldCheck className="h-3.5 w-3.5 text-[#ff385c]" />
-                        Identity verified
-                      </div>
+          <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-8">
+              <section className="border-b border-[#ebebeb] pb-8">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <ProfileStat
+                    icon={Star}
+                    label="Rating"
+                    value={ratingLabel(rating)}
+                  />
+                  <ProfileStat
+                    icon={MessageSquare}
+                    label="Reviews"
+                    value={formatCompactNumber(reviewsCount)}
+                  />
+                  <ProfileStat
+                    icon={Home}
+                    label="Listings"
+                    value={formatCompactNumber(listingsCount)}
+                  />
+                </div>
+              </section>
 
-                      <div className="mt-12 flex items-end gap-5">
-                        {profile.host.avatarUrl ? (
-                          <Image
-                            src={profile.host.avatarUrl}
-                            alt={displayName}
-                            width={128}
-                            height={128}
-                            unoptimized
-                            className="h-32 w-32 rounded-[2rem] border border-white object-cover shadow-[0_20px_45px_rgba(15,23,42,0.18)]"
-                          />
-                        ) : (
-                          <div className="flex h-32 w-32 items-center justify-center rounded-[2rem] border border-white bg-zinc-900 text-4xl font-semibold text-white shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
-                            {initials(displayName)}
-                          </div>
-                        )}
+              <section className="border-b border-[#ebebeb] pb-8">
+                <SectionHeading
+                  eyebrow="About"
+                  title="Profile overview"
+                  subtitle="A concise public profile that shows host identity, activity, reviews, and listings without extra decoration."
+                />
 
-                        <div>
-                          <p className="text-sm font-medium uppercase tracking-[0.22em] text-zinc-500">
-                            Airbnb profile
-                          </p>
-                          <div className="mt-3 flex items-center gap-2">
-                            <span className="inline-flex items-center rounded-full bg-zinc-900 px-3 py-1 text-sm font-medium text-white">
-                              {profile.host.isSuperhost
-                                ? "Superhost"
-                                : "Member"}
-                            </span>
-                            {profile.host.location ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-sm text-zinc-700 shadow-sm">
-                                <MapPin className="h-3.5 w-3.5 text-[#ff385c]" />
-                                {profile.host.location}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[16px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+                    <div className="flex items-center gap-2 text-sm font-medium text-[#222222]">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      Identity
                     </div>
+                    <p className="mt-3 text-sm leading-6 text-zinc-600">
+                      {profile.host.identityVerified !== false
+                        ? "Identity verification is marked as complete."
+                        : "Identity verification is not marked as complete yet."}
+                    </p>
                   </div>
 
-                  <div className="p-6 md:p-8">
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-500">
-                      <span className="rounded-full bg-zinc-100 px-3 py-1 font-medium text-zinc-700">
-                        {getBadgeLabel(profile)}
-                      </span>
-                      <span className="rounded-full bg-zinc-100 px-3 py-1 font-medium text-zinc-700">
-                        Joined {formatDateLabel(profile.host.hostSince)}
-                      </span>
-                      {profile.host.identityVerified !== false ? (
-                        <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
-                          Verified identity
-                        </span>
-                      ) : null}
+                  <div className="rounded-[16px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+                    <div className="flex items-center gap-2 text-sm font-medium text-[#222222]">
+                      <Globe className="h-4 w-4 text-[#ff385c]" />
+                      Community
                     </div>
-
-                    <h2 className="mt-5 text-3xl font-semibold tracking-tight text-zinc-950 md:text-4xl">
-                      {displayName}
-                    </h2>
-
-                    <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-zinc-600">
-                      <div className="flex items-center gap-2">
-                        <Star className="h-4 w-4 fill-current text-[#ff385c]" />
-                        <span>{ratingLabel(rating)} rating</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-zinc-500" />
-                        <span>{formatNumber(reviewsCount)} reviews</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Home className="h-4 w-4 text-zinc-500" />
-                        <span>{formatNumber(listingsCount)} listings</span>
-                      </div>
-                    </div>
-
-                    <p className="mt-6 max-w-3xl text-base leading-8 text-zinc-700">
+                    <p className="mt-3 text-sm leading-6 text-zinc-600">
                       {aboutText}
                     </p>
-
-                    <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                        <div className="flex items-center gap-2 text-zinc-700">
-                          <Star className="h-4 w-4 text-[#ff385c]" />
-                          <span className="text-sm font-medium">
-                            Overall rating
-                          </span>
-                        </div>
-                        <p className="mt-3 text-3xl font-semibold text-zinc-950">
-                          {ratingLabel(rating)}
-                        </p>
-                        <p className="mt-1 text-sm text-zinc-500">
-                          Average from all reviews
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                        <div className="flex items-center gap-2 text-zinc-700">
-                          <MessageSquare className="h-4 w-4 text-[#ff385c]" />
-                          <span className="text-sm font-medium">Reviews</span>
-                        </div>
-                        <p className="mt-3 text-3xl font-semibold text-zinc-950">
-                          {formatNumber(reviewsCount)}
-                        </p>
-                        <p className="mt-1 text-sm text-zinc-500">
-                          Guest feedback collected
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                        <div className="flex items-center gap-2 text-zinc-700">
-                          <ShieldCheck className="h-4 w-4 text-[#ff385c]" />
-                          <span className="text-sm font-medium">
-                            Membership
-                          </span>
-                        </div>
-                        <p className="mt-3 text-3xl font-semibold text-zinc-950">
-                          {profile.host.hostSince ? "Active" : "New"}
-                        </p>
-                        <p className="mt-1 text-sm text-zinc-500">
-                          {joinedText}
-                        </p>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </section>
 
-              <section className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)] md:p-8">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
-                      About
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
-                      A profile shaped by real travel history
-                    </h3>
-                  </div>
-                  <div className="hidden items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-600 md:flex">
-                    <Globe className="h-4 w-4" />
-                    Airbnb community member
-                  </div>
-                </div>
-
-                <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-                    <div className="flex items-center gap-2 text-zinc-800">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      <span className="text-sm font-medium">Identity</span>
-                    </div>
-                    <p className="mt-3 text-base leading-7 text-zinc-700">
-                      {profile.host.identityVerified !== false
-                        ? "This profile indicates a verified identity, so guests can trust the host card shown above."
-                        : "Identity verification has not been marked as complete in the backend yet."}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-                    <div className="flex items-center gap-2 text-zinc-800">
-                      <MessageSquare className="h-4 w-4 text-[#ff385c]" />
-                      <span className="text-sm font-medium">Response</span>
-                    </div>
-                    <p className="mt-3 text-base leading-7 text-zinc-700">
-                      {profile.host.responseRate || profile.host.responseTime
-                        ? `Response rate ${profile.host.responseRate || "N/A"}, response time ${profile.host.responseTime || "N/A"}.`
-                        : "Response rate and response time can be surfaced here once the backend provides them."}
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)] md:p-8">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
-                      Reviews
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
-                      Guest feedback
-                    </h3>
-                  </div>
-                  <div className="rounded-full bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700">
-                    {formatNumber(reviewsCount)} total
-                  </div>
-                </div>
+              <section className="border-b border-[#ebebeb] pb-8">
+                <SectionHeading
+                  eyebrow="Reviews"
+                  title="Guest feedback"
+                  subtitle="Written reviews and ratings from past stays."
+                />
 
                 {reviews.length > 0 ? (
-                  <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
                     {reviews.map((review, index) => (
                       <article
                         key={
@@ -401,7 +340,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
                           review.comment ??
                           `review-${index}`
                         }
-                        className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                        className="rounded-[16px] border border-[#ebebeb] bg-white p-5"
                       >
                         <div className="flex items-start gap-4">
                           {review.reviewerAvatarUrl ? (
@@ -414,86 +353,72 @@ export default async function PublicProfilePage({ params }: PageProps) {
                               className="h-12 w-12 rounded-full object-cover"
                             />
                           ) : (
-                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#222222] text-sm font-semibold text-white">
                               {initials(review.reviewerName)}
                             </div>
                           )}
 
                           <div className="min-w-0 flex-1">
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                              <span className="text-zinc-400">Stayed at</span>
-                              {review.listingId ? (
-                                <Link
-                                  href={listingHref(review.listingId)}
-                                  className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 font-medium text-[#ff385c] shadow-sm transition hover:bg-rose-50"
-                                >
-                                  {review.listingTitle || "Listing details"}
-                                  <ChevronRight className="h-3.5 w-3.5" />
-                                </Link>
-                              ) : (
-                                <span className="font-medium text-zinc-400">
-                                  Unknown home
-                                </span>
-                              )}
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                              <span className="font-medium text-[#222222]">
+                                {review.reviewerName || "Guest"}
+                              </span>
+                              <span className="text-zinc-400">·</span>
+                              <span className="text-zinc-500">
+                                {formatDateLabel(review.createdAt)}
+                              </span>
                             </div>
 
-                            <div className="mt-3 flex items-center gap-1 rounded-full bg-white px-3 py-1 text-sm font-medium text-zinc-700 shadow-sm">
+                            <div className="mt-2 flex items-center gap-1 rounded-full bg-[#f7f7f7] px-3 py-1 text-sm font-medium text-[#222222]">
                               {renderStars(review.rating)}
                               <span className="ml-1 text-zinc-500">
                                 {ratingLabel(review.rating)}
                               </span>
                             </div>
 
-                            <p className="mt-4 text-sm leading-7 text-zinc-700">
-                              {review.comment ||
-                                "This guest left no written comment, only a rating."}
+                            <p className="mt-3 text-sm leading-6 text-zinc-700">
+                              {review.comment || "This guest left a rating without written comments."}
                             </p>
+
+                            {review.listingId ? (
+                              <Link
+                                href={listingHref(review.listingId)}
+                                className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-[#222222] underline underline-offset-4 transition hover:text-[#ff385c]"
+                              >
+                                View stay
+                                <ChevronRight className="h-4 w-4" />
+                              </Link>
+                            ) : null}
                           </div>
                         </div>
                       </article>
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-6 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 py-10 text-center">
-                    <p className="text-lg font-medium text-zinc-950">
-                      No reviews yet
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-zinc-500">
-                      Once the backend returns reviews for this user, they will
-                      show up here in a familiar Airbnb-style card list.
+                  <div className="mt-5 rounded-[16px] border border-dashed border-[#dddddd] bg-[#f7f7f7] px-6 py-10 text-center">
+                    <p className="text-base font-medium text-[#222222]">No reviews yet</p>
+                    <p className="mt-2 text-sm leading-6 text-zinc-500">
+                      Once ratings are available for this profile, they will appear here.
                     </p>
                   </div>
                 )}
               </section>
 
-              <section className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.07)] md:p-8">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
-                      Listings
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
-                      Places hosted by this user
-                    </h3>
-                  </div>
-                  <div className="rounded-full bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700">
-                    {formatNumber(listingsCount)} listings
-                  </div>
-                </div>
+              <section className="pb-2">
+                <SectionHeading
+                  eyebrow="Listings"
+                  title="Places hosted by this user"
+                  subtitle="Active listings from the backend."
+                />
 
                 {listings.length > 0 ? (
-                  <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {listings.map((listing, index) => (
                       <article
-                        key={
-                          listing.id ??
-                          listing.title ??
-                          listing.city ??
-                          `listing-${index}`
-                        }
-                        className="group overflow-hidden rounded-[1.5rem] border border-zinc-200 bg-zinc-50 transition hover:-translate-y-0.5 hover:shadow-lg"
+                        key={listing.id ?? listing.title ?? listing.city ?? `listing-${index}`}
+                        className="overflow-hidden rounded-[16px] border border-[#ebebeb] bg-white"
                       >
-                        <div className="aspect-4/3 overflow-hidden bg-zinc-200">
+                        <div className="aspect-[4/3] bg-[#f7f7f7]">
                           {listing.thumbnailUrl ? (
                             <Image
                               src={listing.thumbnailUrl}
@@ -501,10 +426,10 @@ export default async function PublicProfilePage({ params }: PageProps) {
                               width={800}
                               height={600}
                               unoptimized
-                              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                              className="h-full w-full object-cover"
                             />
                           ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-zinc-900 via-zinc-800 to-[#ff385c] text-white">
+                            <div className="flex h-full w-full items-center justify-center text-[#ff385c]">
                               <Home className="h-8 w-8" />
                             </div>
                           )}
@@ -513,34 +438,33 @@ export default async function PublicProfilePage({ params }: PageProps) {
                         <div className="p-5">
                           <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
-                              <h4 className="truncate text-base font-semibold text-zinc-950">
+                              <h3 className="truncate text-base font-semibold text-[#222222]">
                                 {listing.title || "Untitled listing"}
-                              </h4>
+                              </h3>
                               <p className="mt-1 text-sm text-zinc-500">
                                 {listing.city || "Location not set"}
                               </p>
                             </div>
 
-                            <div className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700 shadow-sm">
+                            <div className="inline-flex items-center gap-1 rounded-full border border-[#ebebeb] px-3 py-1 text-xs font-medium text-[#222222]">
                               <Star className="h-3.5 w-3.5 fill-current text-[#ff385c]" />
                               {ratingLabel(listing.avgRating)}
                             </div>
                           </div>
 
-                          <p className="mt-4 line-clamp-2 text-sm leading-6 text-zinc-700">
+                          <p className="mt-4 line-clamp-2 text-sm leading-6 text-zinc-600">
                             {listing.shortFeatures ||
-                              "Listing details will appear here once the backend provides features and amenities."}
+                              "Listing details will appear once the backend provides features and amenities."}
                           </p>
 
                           <div className="mt-4 flex items-center justify-between text-sm text-zinc-500">
-                            <span>
-                              {formatNumber(listing.reviewCount)} reviews
-                            </span>
+                            <span>{formatNumber(listing.reviewCount)} reviews</span>
                             <Link
                               href={`/rooms/${listing.id}`}
-                              className="inline-flex items-center gap-1 font-medium text-zinc-800 transition hover:text-[#ff385c]"
+                              className="inline-flex items-center gap-1 font-medium text-[#222222] underline-offset-4 transition hover:text-[#ff385c] hover:underline"
                             >
-                              View listing <ChevronRight className="h-4 w-4" />
+                              View listing
+                              <ChevronRight className="h-4 w-4" />
                             </Link>
                           </div>
                         </div>
@@ -548,43 +472,41 @@ export default async function PublicProfilePage({ params }: PageProps) {
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-6 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 py-10 text-center">
-                    <p className="text-lg font-medium text-zinc-950">
-                      No listings yet
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-zinc-500">
-                      If this is a guest profile, the listing section stays
-                      hidden in real Airbnb as well. We keep the same card shell
-                      here for consistency.
+                  <div className="mt-5 rounded-[16px] border border-dashed border-[#dddddd] bg-[#f7f7f7] px-6 py-10 text-center">
+                    <p className="text-base font-medium text-[#222222]">No listings yet</p>
+                    <p className="mt-2 text-sm leading-6 text-zinc-500">
+                      This profile has no active listings published at the moment.
                     </p>
                   </div>
                 )}
               </section>
             </div>
 
-            <aside className="lg:sticky lg:top-28 lg:self-start">
-              <div className="rounded-[2rem] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] md:p-7">
+            <aside className="lg:sticky lg:top-24 lg:self-start">
+              <div className="rounded-[20px] border border-[#ebebeb] bg-white p-6">
                 <div className="flex items-center gap-4">
-                  {profile.host.avatarUrl ? (
-                    <Image
-                      src={profile.host.avatarUrl}
-                      alt={displayName}
-                      width={72}
-                      height={72}
-                      unoptimized
-                      className="h-18 w-18 rounded-2xl object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-18 w-18 items-center justify-center rounded-2xl bg-zinc-900 text-2xl font-semibold text-white">
-                      {initials(displayName)}
-                    </div>
-                  )}
+                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-[#f7f7f7]">
+                    {profile.host.avatarUrl ? (
+                      <Image
+                        src={profile.host.avatarUrl}
+                        alt={displayName}
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl font-semibold text-[#222222]">
+                        {initials(displayName)}
+                      </span>
+                    )}
+                  </div>
 
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
                       Profile card
                     </p>
-                    <h3 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">
+                    <h3 className="mt-1 truncate text-xl font-semibold tracking-tight text-[#222222]">
                       {displayName}
                     </h3>
                     <p className="mt-1 text-sm text-zinc-500">{joinedText}</p>
@@ -592,55 +514,56 @@ export default async function PublicProfilePage({ params }: PageProps) {
                 </div>
 
                 <div className="mt-6 space-y-3">
-                  <div className="flex items-center gap-3 rounded-2xl bg-zinc-50 px-4 py-3">
+                  <div className="flex items-center gap-3 rounded-[16px] bg-[#f7f7f7] px-4 py-3">
                     <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    <span className="text-sm text-zinc-700">
+                    <span className="text-sm text-[#222222]">
                       {profile.host.identityVerified !== false
                         ? "Identity verified"
                         : "Identity not verified"}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3 rounded-2xl bg-zinc-50 px-4 py-3">
+                  <div className="flex items-center gap-3 rounded-[16px] bg-[#f7f7f7] px-4 py-3">
                     <BadgeCheck className="h-4 w-4 text-[#ff385c]" />
-                    <span className="text-sm text-zinc-700">
+                    <span className="text-sm text-[#222222]">
                       {getBadgeLabel(profile)}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3 rounded-2xl bg-zinc-50 px-4 py-3">
+                  <div className="flex items-center gap-3 rounded-[16px] bg-[#f7f7f7] px-4 py-3">
                     <MessageSquare className="h-4 w-4 text-zinc-600" />
-                    <span className="text-sm text-zinc-700">
+                    <span className="text-sm text-[#222222]">
                       {ratingLabel(rating)} average rating
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-6 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="rounded-[16px] border border-[#ebebeb] bg-[#f7f7f7] p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
                       Reviews
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-zinc-950">
+                    <p className="mt-2 text-2xl font-semibold text-[#222222]">
                       {formatCompactNumber(reviewsCount)}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="rounded-[16px] border border-[#ebebeb] bg-[#f7f7f7] p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
                       Listings
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-zinc-950">
+                    <p className="mt-2 text-2xl font-semibold text-[#222222]">
                       {formatCompactNumber(listingsCount)}
                     </p>
                   </div>
                 </div>
 
-                <SendMessageButton otherUserId={profile.host.keycloakUserId ?? id} />
+                <div className="mt-6">
+                  <SendMessageButton otherUserId={profile.host.keycloakUserId ?? id} />
+                </div>
 
                 <p className="mt-4 text-center text-xs leading-6 text-zinc-500">
-                  This button is visual only for now. The page layout is ready
-                  for a messaging flow once the backend endpoint exists.
+                  This profile stays compact and consistent with the rest of the Airbnb-style UI.
                 </p>
               </div>
             </aside>

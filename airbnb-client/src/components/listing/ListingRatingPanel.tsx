@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { MessageSquare, Star } from "lucide-react";
+
+import { ratingCategoryConfig } from "./ratingCategories";
 
 interface RatingRecord {
   id?: string | null;
@@ -16,45 +18,6 @@ interface RatingRecord {
   review?: string | null;
   createdAt?: string | null;
 }
-
-interface RatingCategory {
-  key: string;
-  label: string;
-  description: string;
-}
-
-const ratingCategories: RatingCategory[] = [
-  {
-    key: "cleanliness",
-    label: "Cleanliness",
-    description: "",
-  },
-  {
-    key: "accuracy",
-    label: "Accuracy",
-    description: "",
-  },
-  {
-    key: "checkIn",
-    label: "Check-in",
-    description: "",
-  },
-  {
-    key: "communication",
-    label: "Communication",
-    description: "",
-  },
-  {
-    key: "location",
-    label: "Location",
-    description: "",
-  },
-  {
-    key: "value",
-    label: "Value",
-    description: "",
-  },
-];
 
 const formatRating = (value: number) => value.toFixed(1);
 
@@ -141,49 +104,73 @@ export function ListingRatingPanel({
   averageRating: number;
   ratings: RatingRecord[];
 }) {
-  const hasRating = averageRating > 0;
+  const computedAverage = averageRating > 0 ? averageRating : getAverage(ratings, "overallRating");
+  const hasRating = computedAverage > 0;
   const totalReviews = ratings.length;
   const previewReviews = ratings
     .filter((rating) => typeof rating.review === "string" && rating.review.trim().length > 0)
     .slice(0, 8);
-  const displayCategories = ratingCategories.map((category) => ({
+  const displayCategories = ratingCategoryConfig.map((category) => ({
     ...category,
     score: getAverage(ratings, category.key as keyof RatingRecord),
   }));
 
   return (
-    <section className="mt-12 space-y-8">
-      <div className="text-center">
-        <div className="inline-flex items-center gap-2 text-zinc-900">
-          <Star className="h-7 w-7 fill-current" />
-          <h2 className="text-5xl font-semibold leading-none">
-            {hasRating ? formatRating(averageRating) : "--"}
-          </h2>
+    <section className="space-y-8">
+      <div className="flex flex-col gap-5 border-b border-[#ebebeb] pb-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
+            Reviews
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <Star className="h-6 w-6 fill-current text-[#222222]" />
+            <h2 className="text-[44px] font-semibold leading-none tracking-tight text-[#222222]">
+              {hasRating ? formatRating(computedAverage) : "--"}
+            </h2>
+          </div>
+          <p className="mt-2 text-sm text-zinc-500">Guest favorite</p>
+          <p className="text-sm text-zinc-400">
+            Based on {totalReviews} review{totalReviews === 1 ? "" : "s"}
+          </p>
         </div>
-        <p className="mt-2 text-zinc-500">Guest favorite</p>
-        <p className="text-sm text-zinc-400">
-          Based on {totalReviews} review{totalReviews === 1 ? "" : "s"}
-        </p>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3 lg:grid-cols-6">
-        {displayCategories.map((category) => {
-          const score = category.score;
-          return (
-            <div key={category.key} className="text-center">
-              <p className="font-medium text-zinc-900">{category.label}</p>
-              <p className="text-zinc-500">{score > 0 ? formatRating(score) : "--"}</p>
-            </div>
-          );
-        })}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm sm:grid-cols-3 lg:grid-cols-6">
+          {displayCategories.map((category) => {
+            const score = category.score;
+            const Icon = category.icon;
+            return (
+              <div key={category.key} className="min-w-0 rounded-[14px] border border-[#ebebeb] bg-white px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f7f7f7] text-[#222222]">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">
+                    {category.label}
+                  </p>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-1.5 w-16 rounded-full bg-[#f2f2f2]">
+                    <div
+                      className="h-1.5 rounded-full bg-[#222222]"
+                      style={{ width: `${Math.min(100, Math.round((score / 5) * 100))}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-medium text-[#222222]">
+                    {score > 0 ? formatRating(score) : "--"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {previewReviews.length > 0 ? (
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {previewReviews.map((rating, index) => {
             const displayDate = toDisplayDate(rating.createdAt);
             return (
-              <article key={rating.id ?? `${rating.userId}-${index}`} className="space-y-3">
+              <article key={rating.id ?? `${rating.userId}-${index}`} className="rounded-[16px] border border-[#ebebeb] bg-white p-4">
                 <div className="flex items-center gap-3">
                   {rating.reviewerAvatarUrl ? (
                     <img
@@ -192,7 +179,7 @@ export function ListingRatingPanel({
                       className="h-10 w-10 rounded-full object-cover"
                     />
                   ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#222222] text-xs font-semibold text-white">
                       {toAvatarText(rating)}
                     </div>
                   )}
@@ -201,12 +188,12 @@ export function ListingRatingPanel({
                     {rating.userId ? (
                       <Link
                         href={`/users/profile/${rating.userId}`}
-                        className="font-medium text-zinc-900 hover:underline transition"
+                        className="font-medium text-[#222222] hover:underline transition"
                       >
                         {toGuestLabel(rating)}
                       </Link>
                     ) : (
-                      <p className="font-medium text-zinc-900">{toGuestLabel(rating)}</p>
+                      <p className="font-medium text-[#222222]">{toGuestLabel(rating)}</p>
                     )}
                     <p className="text-xs text-zinc-400">
                       {displayDate || "Guest review"}
@@ -223,12 +210,12 @@ export function ListingRatingPanel({
                   </span>
                 </div>
 
-                <p className="text-sm leading-6 text-zinc-700 line-clamp-4">
+                <p className="mt-3 text-sm leading-6 text-zinc-700 line-clamp-4">
                   {rating.review}
                 </p>
 
-                <details className="group">
-                  <summary className="cursor-pointer text-sm underline list-none text-zinc-700">
+                <details className="group mt-2">
+                  <summary className="cursor-pointer list-none text-sm font-medium text-[#222222] underline underline-offset-4">
                     Show more
                   </summary>
                   <p className="mt-2 text-sm leading-6 text-zinc-700">
@@ -240,15 +227,22 @@ export function ListingRatingPanel({
           })}
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-zinc-500">
-          No reviews yet. Be the first guest to leave feedback.
+        <div className="rounded-[16px] border border-dashed border-[#dddddd] bg-[#f7f7f7] p-8 text-center text-zinc-500">
+          {totalReviews > 0 ? (
+            <div className="mx-auto max-w-md space-y-2">
+              <div className="flex justify-center">
+                <MessageSquare className="h-5 w-5 text-[#ff385c]" />
+              </div>
+              <p className="text-sm font-medium text-[#222222]">Ratings exist, but there are no written reviews yet.</p>
+              <p className="text-sm text-zinc-500">
+                The score summary above is still based on guest ratings.
+              </p>
+            </div>
+          ) : (
+            <p>No reviews yet. Be the first guest to leave feedback.</p>
+          )}
         </div>
       )}
-
-      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-500">
-        This section only uses fields currently returned by rating service:
-        overallRating, cleanliness, accuracy, checkIn, communication, location, value, review, userId, reviewerFullName, reviewerAvatarUrl, and optional createdAt.
-      </div>
     </section>
   );
 }
