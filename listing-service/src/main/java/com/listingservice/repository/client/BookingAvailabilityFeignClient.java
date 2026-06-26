@@ -2,6 +2,7 @@ package com.listingservice.repository.client;
 
 import com.listingservice.dto.request.BatchAvailabilityRequest;
 import com.listingservice.dto.response.ApiResponse;
+import com.listingservice.dto.response.BookingAvailabilityCalendarResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +25,12 @@ public interface BookingAvailabilityFeignClient {
 
   @PostMapping("/availability/batch")
   ApiResponse<Map<String, Boolean>> getAvailabilityBatch(@RequestBody BatchAvailabilityRequest request);
+
+  @GetMapping("/availability/calendar")
+  ApiResponse<BookingAvailabilityCalendarResponse> getUnavailableDates(
+      @RequestParam UUID listingId,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut);
 
   @GetMapping("/availability/active-bookings")
   ApiResponse<Boolean> hasActiveBookings(@RequestParam UUID listingId);

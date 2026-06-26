@@ -17,6 +17,7 @@ import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -35,9 +36,15 @@ public class ChatbotService {
             Ban la tro ly AI cho he thong Airbnb clone.
 
             Quy tac bat buoc:
+            - Ngay hien tai cua he thong la %s. Khi nguoi dung noi ngay/thang nhung khong noi nam, hay suy ra nam gan nhat khong nam trong qua khu.
             - Tra loi bang tieng Viet, tru khi nguoi dung yeu cau ngon ngu khac.
             - Tra loi bang Markdown hop le: dung heading, **in dam**, danh sach, bang va code block khi phu hop.
             - Khi nguoi dung hoi du lieu phong, gia, vi tri hoac suc chua, hay dung tool `search_listings`.
+            - Khi nguoi dung hoi phong/listing con trong, co the dat duoc, available/free/bookable theo ngay hoac khoang ngay, hay dung tool `check_listing_availability`.
+            - Voi `check_listing_availability`, chi duoc dung listingId da xuat hien trong ket qua tool truoc do hoac nguoi dung cung cap ro rang. Khong duoc tu bia listingId.
+            - Neu nguoi dung hoi "phong nay" nhung lich su co nhieu listing va khong ro can nao, hay hoi lai nguoi dung muon kiem tra can nao.
+            - Neu nguoi dung chi hoi mot ngay, hieu la 1 dem: checkIn la ngay do va checkOut la ngay ke tiep.
+            - Khi tool availability tra ve dailyAvailability, hay noi ro: co dat duoc tron khoang khong, ngay/dem nao con trong, ngay/dem nao khong trong va ly do neu co.
             - Khong bia listing, gia, tinh trang phong, booking, thanh toan hoac thong tin nguoi dung.
             - Neu tool khong co du lieu, noi ro la chua tim thay ket qua phu hop va goi y nguoi dung noi bo loc.
             - Neu tool bao loi listing-service, xin loi ngan gon va de nghi thu lai sau.
@@ -78,7 +85,7 @@ public class ChatbotService {
         ConversationScope conversation = conversationScope(userId, conversationId);
 
         String answer = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
+                .system(systemPrompt())
                 .user(message)
                 .tools(listingTool)
                 .toolContext(toolContext(userId, listingCards))
@@ -94,7 +101,7 @@ public class ChatbotService {
         ConversationScope conversation = conversationScope(userId, conversationId);
 
         Flux<ChatStreamEvent> messageStream = chatClient.prompt()
-                .system(SYSTEM_PROMPT)
+                .system(systemPrompt())
                 .user(message)
                 .tools(listingTool)
                 .toolContext(toolContext(userId, listingCards))
@@ -133,6 +140,10 @@ public class ChatbotService {
                 "userId", userId,
                 LISTING_CARDS_CONTEXT_KEY, listingCards
         );
+    }
+
+    private String systemPrompt() {
+        return SYSTEM_PROMPT.formatted(LocalDate.now());
     }
 
     private ConversationScope conversationScope(String userId, String requestedConversationId) {

@@ -20,6 +20,7 @@ import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.AdminReservationDetailResponse;
 import com.bookingservice.dto.response.AdminReservationSummaryResponse;
+import com.bookingservice.dto.response.BookingAvailabilityCalendarResponse;
 import com.bookingservice.dto.response.ComplaintResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
@@ -67,6 +68,19 @@ public class BookingController {
                 .success(true)
                 .message("Availability checked")
                 .data(bookingService.isListingAvailable(listingId, checkIn, checkOut))
+                .build());
+    }
+
+    @GetMapping("/availability/calendar")
+    public ResponseEntity<ApiResponse<BookingAvailabilityCalendarResponse>> getListingUnavailableDates(
+            @RequestParam UUID listingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut
+    ) {
+        return ResponseEntity.ok(ApiResponse.<BookingAvailabilityCalendarResponse>builder()
+                .success(true)
+                .message("Booking unavailable dates checked")
+                .data(bookingService.getListingUnavailableDates(listingId, checkIn, checkOut))
                 .build());
     }
 

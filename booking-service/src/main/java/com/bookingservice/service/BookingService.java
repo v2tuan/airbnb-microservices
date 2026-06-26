@@ -16,6 +16,7 @@ import com.bookingservice.dto.response.BookingResponse;
 import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.AdminReservationDetailResponse;
 import com.bookingservice.dto.response.AdminReservationSummaryResponse;
+import com.bookingservice.dto.response.BookingAvailabilityCalendarResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostCancellationQuoteResponse;
@@ -59,6 +60,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -110,6 +112,43 @@ public class BookingService {
         }
 
         return bookingRepository.findConflictingBookings(listingId, checkIn, checkOut).isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public BookingAvailabilityCalendarResponse getListingUnavailableDates(UUID listingId, LocalDate checkIn, LocalDate checkOut) {
+        if (listingId == null || checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
+            return BookingAvailabilityCalendarResponse.builder()
+                    .listingId(listingId)
+                    .checkIn(checkIn)
+                    .checkOut(checkOut)
+                    .unavailableDates(List.of())
+                    .build();
+        }
+
+        Set<LocalDate> unavailableDates = new TreeSet<>();
+        List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(listingId, checkIn, checkOut);
+
+        for (Booking booking : conflictingBookings) {
+            LocalDate blockedFrom = booking.getCheckInDate().isAfter(checkIn)
+                    ? booking.getCheckInDate()
+                    : checkIn;
+            LocalDate blockedUntilExclusive = booking.getCheckOutDate().isBefore(checkOut)
+                    ? booking.getCheckOutDate()
+                    : checkOut;
+
+            LocalDate currentDate = blockedFrom;
+            while (currentDate.isBefore(blockedUntilExclusive)) {
+                unavailableDates.add(currentDate);
+                currentDate = currentDate.plusDays(1);
+            }
+        }
+
+        return BookingAvailabilityCalendarResponse.builder()
+                .listingId(listingId)
+                .checkIn(checkIn)
+                .checkOut(checkOut)
+                .unavailableDates(List.copyOf(unavailableDates))
+                .build();
     }
 
     @Transactional(readOnly = true)

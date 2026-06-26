@@ -4,8 +4,10 @@ import com.chatbotservice.client.ListingFeignClient;
 import com.chatbotservice.configuration.ChatbotProperties;
 import com.chatbotservice.dto.listing.AmenityResponse;
 import com.chatbotservice.dto.listing.ApiResponse;
+import com.chatbotservice.dto.listing.DailyAvailabilityResponse;
 import com.chatbotservice.dto.listing.HouseRulesResponse;
 import com.chatbotservice.dto.listing.ListingAccessInfoResponse;
+import com.chatbotservice.dto.listing.ListingAvailabilityResponse;
 import com.chatbotservice.dto.listing.ListingCardResponse;
 import com.chatbotservice.dto.listing.ListingFilterRequest;
 import com.chatbotservice.dto.listing.ListingPhotoResponse;
@@ -25,6 +27,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.UUID;
 
 @Component
 @Slf4j
@@ -195,10 +198,183 @@ public class ListingTool {
         }
     }
 
+    @Tool(
+            name = "check_listing_availability",
+            description = """
+                    Check whether a real listing is bookable for a specific date or date range.
+                    Use this when the user asks if a room/listing is available, free, bookable,
+                    or still open on a date. The listingId must come from previous tool results
+                    or from the user's explicit selection. Do not invent listingId values.
+                    If the user asks about one date only, use checkIn as that date and omit checkOut.
+                    """
+    )
+    public String checkListingAvailability(
+            @ToolParam(description = "Exact listingId UUID from a previous search_listings result or explicit user selection.")
+            String listingId,
+            @ToolParam(description = "Check-in date in ISO format yyyy-MM-dd. For a one-day question, use the date the user asked about.")
+            LocalDate checkIn,
+            @ToolParam(required = false, description = "Check-out date in ISO format yyyy-MM-dd. If the user asks for one date only, leave this empty.")
+            LocalDate checkOut
+    ) {
+        log.info("Checking listing availability - listingId={}, checkIn={}, checkOut={}", listingId, checkIn, checkOut);
+
+        UUID parsedListingId = parseListingId(listingId);
+        if (parsedListingId == null) {
+            return "INVALID_LISTING_ID: listingId is required and must be one of the UUID values returned by search_listings.";
+        }
+
+        if (checkIn == null) {
+            return "MISSING_DATE: checkIn is required. Ask the user which date they want to check.";
+        }
+
+        LocalDate normalizedCheckOut = normalizeCheckOut(checkIn, checkOut);
+        if (!normalizedCheckOut.isAfter(checkIn)) {
+            return "INVALID_DATE_RANGE: checkOut must be after checkIn.";
+        }
+
+        try {
+            ApiResponse<ListingAvailabilityResponse> response = listingFeignClient.checkBookableAvailability(
+                    parsedListingId,
+                    checkIn,
+                    normalizedCheckOut
+            );
+            ListingAvailabilityResponse availability = response != null ? response.data() : null;
+
+            if (availability == null) {
+                return "AVAILABILITY_SERVICE_ERROR: listing-service did not return availability data.";
+            }
+
+            String checkResponse = formatAvailabilityResult(availability);
+            log.info("Check Response: ", checkResponse);
+            return checkResponse;
+        } catch (Exception exception) {
+            log.warn("Availability tool failed", exception);
+            return "AVAILABILITY_SERVICE_ERROR: listing-service is currently unavailable or timed out.";
+        }
+    }
+
     private List<ListingResponse> safeData(ApiResponse<List<ListingResponse>> response) {
         return response != null && response.data() != null
                 ? response.data()
                 : List.of();
+    }
+
+    private UUID parseListingId(String listingId) {
+        if (!StringUtils.hasText(listingId)) {
+            return null;
+        }
+
+        try {
+            return UUID.fromString(listingId.trim());
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private LocalDate normalizeCheckOut(LocalDate checkIn, LocalDate checkOut) {
+        if (checkOut == null || checkOut.isEqual(checkIn)) {
+            return checkIn.plusDays(1);
+        }
+
+        return checkOut;
+    }
+
+    private String formatAvailabilityResult(ListingAvailabilityResponse availability) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("LISTING_AVAILABILITY_CHECKED\n");
+        appendLine(builder, "listingId", availability.listingId());
+        appendLine(builder, "checkIn", availability.checkIn());
+        appendLine(builder, "checkOut", availability.checkOut());
+        appendLine(builder, "nights", availability.nights());
+        appendLine(builder, "available", availability.available());
+        appendAvailabilityReasons(builder, availability.reasons());
+        appendDateList(builder, "availableDates", availability.availableDates());
+        appendDateList(builder, "unavailableDates", availability.unavailableDates());
+        appendDailyAvailability(builder, availability.dailyAvailability());
+        appendLine(builder, "serviceMessage", availability.message());
+        builder.append("Use this verified backend result. Do not override the availability decision.\n");
+        builder.append("When answering, explain both full-range availability and which stay dates are available/unavailable.\n");
+        return builder.toString();
+    }
+
+    private void appendDateList(StringBuilder builder, String label, List<LocalDate> dates) {
+        builder.append("   - ")
+                .append(label)
+                .append(": ");
+
+        if (dates == null || dates.isEmpty()) {
+            builder.append("none\n");
+            return;
+        }
+
+        builder.append(dates.stream().map(LocalDate::toString).collect(java.util.stream.Collectors.joining(", ")))
+                .append("\n");
+    }
+
+    private void appendDailyAvailability(StringBuilder builder, List<DailyAvailabilityResponse> days) {
+        builder.append("   - dailyAvailability:\n");
+        if (days == null || days.isEmpty()) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        for (DailyAvailabilityResponse day : days) {
+            if (day == null) {
+                continue;
+            }
+
+            builder.append("     + date=")
+                    .append(nullToDash(day.date()))
+                    .append(" | available=")
+                    .append(nullToDash(day.available()))
+                    .append(" | reasons=");
+
+            if (day.reasons() == null || day.reasons().isEmpty()) {
+                builder.append("none");
+            } else {
+                builder.append(String.join(", ", day.reasons()));
+            }
+
+            builder.append("\n");
+        }
+    }
+
+    private void appendAvailabilityReasons(StringBuilder builder, List<String> reasons) {
+        builder.append("   - reasons:\n");
+        if (reasons == null || reasons.isEmpty()) {
+            builder.append("     + none\n");
+            return;
+        }
+
+        for (String reason : reasons) {
+            builder.append("     + ")
+                    .append(reason)
+                    .append(" | ")
+                    .append(explainAvailabilityReason(reason))
+                    .append("\n");
+        }
+    }
+
+    private String explainAvailabilityReason(String reason) {
+        if (reason == null) {
+            return "Unknown reason.";
+        }
+
+        return switch (reason) {
+            case "INVALID_DATE_RANGE" -> "Check-out date must be after check-in date.";
+            case "PAST_DATE_RANGE" -> "Check-in date is in the past.";
+            case "PAST_DATE" -> "This stay date is in the past.";
+            case "LISTING_NOT_ACTIVE" -> "Listing is not active.";
+            case "LISTING_SUSPENDED" -> "Listing is suspended.";
+            case "HOST_BLOCKED_DATE" -> "Host blocked at least one stay date.";
+            case "MIN_NIGHTS_NOT_MET" -> "Selected stay is shorter than the minimum night rule.";
+            case "MAX_NIGHTS_EXCEEDED" -> "Selected stay is longer than the maximum night rule.";
+            case "BOOKING_CONFLICT" -> "There is an active overlapping booking.";
+            case "BOOKING_SERVICE_UNAVAILABLE" -> "Booking-service could not verify booking conflicts.";
+            case "PARTIALLY_AVAILABLE" -> "Only some stay dates are available.";
+            case "NO_DATES_AVAILABLE" -> "No stay dates are available in this range.";
+            default -> "Backend reported this availability reason.";
+        };
     }
 
     @SuppressWarnings("unchecked")

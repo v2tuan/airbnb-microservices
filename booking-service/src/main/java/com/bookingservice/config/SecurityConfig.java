@@ -19,6 +19,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/availability",
+                                "/availability/calendar",
                                 "/availability/active-bookings"
                         ).permitAll()
                         .anyRequest().authenticated()

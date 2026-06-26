@@ -34,7 +34,7 @@ chatbot:
   memory:
     max-messages: ${CHATBOT_MEMORY_MAX_MESSAGES:20}
   listing:
-    timeout: ${LISTING_SERVICE_TIMEOUT:3s}
+    timeout: ${LISTING_SERVICE_TIMEOUT:5s}
     max-results: ${CHATBOT_LISTING_MAX_RESULTS:6}
 
 server:

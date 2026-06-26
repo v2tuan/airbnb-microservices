@@ -3,6 +3,7 @@ package com.listingservice.controller;
 import com.listingservice.dto.request.AvailabilityRequest;
 import com.listingservice.dto.response.ApiResponse;
 import com.listingservice.dto.response.AvailabilityResponse;
+import com.listingservice.dto.response.ListingAvailabilityCheckResponse;
 import com.listingservice.service.IAvailabilityCalendarService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -72,6 +73,23 @@ public class AvailabilityCalendarController {
                         .code(1000)
                         .message("Availability checked successfully")
                         .data(isAvailable)
+                        .build());
+    }
+
+    @GetMapping("/bookable")
+    public ResponseEntity<ApiResponse<ListingAvailabilityCheckResponse>> checkBookableAvailability(
+            @PathVariable UUID listingId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("REST request to check bookable availability for listing ID: {} from {} to {}",
+                listingId, checkIn, checkOut);
+        ListingAvailabilityCheckResponse response = availabilityCalendarService.checkBookableAvailability(
+                listingId, checkIn, checkOut);
+        return ResponseEntity.ok(
+                ApiResponse.<ListingAvailabilityCheckResponse>builder()
+                        .code(1000)
+                        .message("Bookable availability checked successfully")
+                        .data(response)
                         .build());
     }
 
