@@ -48,10 +48,29 @@ public class SecurityConfig {
 //    }
 
     // =========================
-    // 1. PUBLIC API (NO JWT)
+    // 1. ADMIN LISTING API (JWT REQUIRED)
     // =========================
     @Bean
     @Order(1)
+    public SecurityWebFilterChain listingAdminChain(ServerHttpSecurity http) {
+
+        return http
+                .securityMatcher(ServerWebExchangeMatchers.pathMatchers(
+                        prefix + "/listings/admin",
+                        prefix + "/listings/admin/**"
+                ))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(Customizer.withDefaults())
+                .authorizeExchange(ex -> ex.anyExchange().authenticated())
+                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
+                .build();
+    }
+
+    // =========================
+    // 2. PUBLIC API (NO JWT)
+    // =========================
+    @Bean
+    @Order(2)
     public SecurityWebFilterChain publicChain(ServerHttpSecurity http) {
 
         return http
@@ -72,10 +91,10 @@ public class SecurityConfig {
     }
 
     // =========================
-    // 2. SECURE API (JWT REQUIRED)
+    // 3. SECURE API (JWT REQUIRED)
     // =========================
     @Bean
-    @Order(2)
+    @Order(3)
     public SecurityWebFilterChain secureChain(ServerHttpSecurity http) {
 
         return http

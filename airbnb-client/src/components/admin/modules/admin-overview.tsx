@@ -1,11 +1,13 @@
 "use client";
 
 import {
-  ArrowRight,
   BadgeDollarSign,
-  Banknote,
-  ClipboardList,
+  Building2,
+  CalendarCheck,
   CreditCard,
+  Download,
+  MoreHorizontal,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -15,8 +17,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Line,
-  LineChart,
+  Cell,
+  Pie,
+  PieChart,
   XAxis,
   YAxis,
 } from "recharts";
@@ -24,18 +27,19 @@ import {
   type AdminPaymentOverview,
   type AdminReservationSummary,
   getAdminPaymentOverview,
-  listAdminComplaints,
-  listAdminHostPenalties,
+  listAdminListings,
   listAdminReservations,
 } from "@/api/endpoints/admin";
-import { AdminHomeLink, useAdminToken } from "@/components/admin/admin-shell";
+import type { ListingResponse } from "@/api/endpoints/listing";
+import { useAdminToken } from "@/components/admin/admin-shell";
 import {
+  AdminEmptyState,
   AdminErrorState,
   AdminPageHeader,
   getAdminErrorMessage,
   TextStatusPill,
 } from "@/components/admin/admin-ui";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -51,6 +55,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -60,26 +65,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { BookingStatus } from "@/types/booking.type";
 
-type AdminDashboardData = {
-  payment: AdminPaymentOverview | null;
-  reservations: AdminReservationSummary[];
-  complaintsCount: number;
-  hostPenaltiesCount: number;
-  auditEvents: Array<{
-    eventId: string;
-    eventType: string;
-    entityType?: string | null;
-    entityId?: string | null;
-    severity: string;
-    message: string;
-    occurredAt: string;
-  }>;
-  errors: string[];
-};
-
-const emptyPaymentOverview: AdminPaymentOverview = {
+const emptyPayment: AdminPaymentOverview = {
   summary: {
     paymentCount: 0,
     capturedAmount: 0,
@@ -95,177 +82,251 @@ const emptyPaymentOverview: AdminPaymentOverview = {
   queue: [],
 };
 
-const activityChartConfig = {
-  bookings: { label: "Bookings", color: "#ff385c" },
-  complaints: { label: "Complaints", color: "#222222" },
+const revenueConfig = {
+  captured: { label: "Captured", color: "#16a34a" },
+  refunded: { label: "Refunded", color: "#ff385c" },
 } satisfies ChartConfig;
 
-const statusChartConfig = {
-  count: { label: "Bookings", color: "#ff385c" },
+const visitsConfig = {
+  value: { label: "Transactions", color: "#ff385c" },
 } satisfies ChartConfig;
 
-const paymentFlowChartConfig = {
-  captured: { label: "Captured", color: "#ff385c" },
-  refunded: { label: "Refunded", color: "#c13515" },
-  payout: { label: "Payout", color: "#222222" },
+const reservationStatusConfig = {
+  count: { label: "Reservations", color: "#2563eb" },
 } satisfies ChartConfig;
 
-const transactionStatusChartConfig = {
-  count: { label: "Transactions", color: "#ff385c" },
-} satisfies ChartConfig;
-
-const payoutAgingChartConfig = {
-  amount: { label: "Amount", color: "#222222" },
-} satisfies ChartConfig;
-
-function toneClasses(tone: string) {
-  return {
-    brand: "bg-rose-50 text-[#ff385c] ring-rose-100",
-    warning: "bg-amber-50 text-amber-800 ring-amber-100",
-    danger: "bg-red-50 text-red-700 ring-red-100",
-    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    neutral: "bg-[#f7f7f7] text-[#222222] ring-[#ebebeb]",
-  }[tone];
-}
-
-function statusTone(status: string) {
-  const normalized = status.toUpperCase();
-  if (normalized === "COMPLETED" || normalized === "SUCCEEDED") {
-    return "success";
-  }
-  if (
-    normalized === "PENDING" ||
-    normalized === "PROCESSING" ||
-    normalized === "PENDING_CHECKIN" ||
-    normalized === "SCHEDULED" ||
-    normalized === "RETRY"
-  ) {
-    return "warning";
-  }
-  if (normalized === "FAILED" || normalized === "CANCELLED") return "danger";
-  return "neutral";
-}
-
-function shortId(value?: string | null) {
-  return value ? value.slice(0, 8) : "Not set";
-}
+const pieColors = ["#ff385c", "#2563eb", "#16a34a", "#f59e0b"];
 
 function formatDay(value: string) {
-  return new Date(value).toLocaleDateString("en-US", {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
 }
 
-function buildWeeklyOperations(
-  reservations: AdminReservationSummary[],
-  complaintsCount: number,
-) {
-  const today = new Date();
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
-    const key = date.toISOString().slice(0, 10);
-    return { key, day: formatDay(key), bookings: 0, complaints: 0 };
-  });
-
-  const byKey = new Map(days.map((item) => [item.key, item]));
-  reservations.forEach((reservation) => {
-    const key = reservation.createdAt?.slice(0, 10);
-    const bucket = byKey.get(key);
-    if (bucket) bucket.bookings += 1;
-  });
-
-  if (complaintsCount > 0) {
-    days[days.length - 1].complaints = complaintsCount;
+function statusTone(status: string) {
+  const normalized = status.toUpperCase();
+  if (
+    ["ACTIVE", "PAID", "COMPLETED", "CONFIRMED", "SUCCESS"].includes(normalized)
+  ) {
+    return "success";
   }
-
-  return days;
+  if (
+    ["PENDING", "PENDING_PAYMENT", "DRAFT", "PROCESSING"].includes(normalized)
+  ) {
+    return "warning";
+  }
+  if (
+    normalized.includes("CANCELLED") ||
+    normalized === "SUSPENDED" ||
+    normalized === "FAILED"
+  ) {
+    return "danger";
+  }
+  return "neutral";
 }
 
-function buildBookingStatus(reservations: AdminReservationSummary[]) {
-  const counts = new Map<BookingStatus, number>();
+function shortId(value?: string | null, length = 8) {
+  if (!value) return "Unknown";
+  return value.replaceAll("-", "").slice(0, length).toUpperCase();
+}
+
+function displayStatus(status: string) {
+  return status.replaceAll("_", " ");
+}
+
+function displayReservationCode(item: AdminReservationSummary) {
+  return item.reservationCode ?? `BK-${shortId(item.bookingId)}`;
+}
+
+function displayGuest(item: AdminReservationSummary) {
+  return item.guestName?.trim() || `Guest #${shortId(item.guestId, 6)}`;
+}
+
+function displayListing(item: AdminReservationSummary) {
+  return item.listingTitle?.trim() || `Listing #${shortId(item.listingId, 6)}`;
+}
+
+function getListingCover(item: ListingResponse) {
+  return (
+    item.photos?.find((photo) => photo.isCover)?.photoUrl ??
+    item.photos?.[0]?.photoUrl
+  );
+}
+
+function getDateRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 27);
+
+  const format = (date: Date) =>
+    date.toLocaleDateString("en-US", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+
+  return `${format(start)} - ${format(end)}`;
+}
+
+function buildTransactionTypes(
+  payment: AdminPaymentOverview,
+  reservations: AdminReservationSummary[],
+) {
+  const bookingCount = reservations.filter((item) =>
+    ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
+      item.status,
+    ),
+  ).length;
+  const pendingCount = reservations.filter(
+    (item) => item.status === "PENDING_PAYMENT",
+  ).length;
+  const cancelledCount = reservations.filter((item) =>
+    item.status.includes("CANCELLED"),
+  ).length;
+  const refundCount = payment.summary.refundCount;
+  const payoutCount = payment.summary.pendingPayoutCount;
+  const total = Math.max(
+    bookingCount + refundCount + payoutCount + pendingCount + cancelledCount,
+    1,
+  );
+
+  return [
+    { name: "Bookings", count: bookingCount },
+    { name: "Refunds", count: refundCount },
+    { name: "Payouts", count: payoutCount },
+    { name: "Pending", count: pendingCount },
+    { name: "Cancelled", count: cancelledCount },
+  ]
+    .filter((item) => item.count > 0)
+    .map((item) => ({
+      name: item.name,
+      count: item.count,
+      value: Math.round((item.count / total) * 100),
+    }));
+}
+
+function buildReservationStatusRows(reservations: AdminReservationSummary[]) {
+  const counts = new Map<string, number>();
   reservations.forEach((reservation) => {
     counts.set(reservation.status, (counts.get(reservation.status) ?? 0) + 1);
   });
-  return Array.from(counts.entries()).map(([status, count]) => ({
-    status: status.replaceAll("_", " "),
-    count,
-  }));
+
+  return Array.from(counts.entries())
+    .map(([status, count]) => ({
+      status: status.replaceAll("_", " "),
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function buildTopBookedListings(
+  reservations: AdminReservationSummary[],
+  listings: ListingResponse[],
+) {
+  const listingMap = new Map(
+    listings.map((listing) => [listing.listingId, listing]),
+  );
+  const counts = new Map<
+    string,
+    {
+      listingId: string;
+      title: string;
+      city?: string | null;
+      country?: string | null;
+      coverImageUrl?: string;
+      status?: string;
+      bookingCount: number;
+      revenue: number;
+      currency: string;
+    }
+  >();
+
+  reservations.forEach((reservation) => {
+    const listing = listingMap.get(reservation.listingId);
+    const current = counts.get(reservation.listingId);
+
+    counts.set(reservation.listingId, {
+      listingId: reservation.listingId,
+      title:
+        listing?.title ?? reservation.listingTitle ?? reservation.listingId,
+      city: listing?.city,
+      country: listing?.country,
+      coverImageUrl: listing ? getListingCover(listing) : undefined,
+      status: listing?.status,
+      bookingCount: (current?.bookingCount ?? 0) + 1,
+      revenue: (current?.revenue ?? 0) + reservation.totalAmount,
+      currency: reservation.currency,
+    });
+  });
+
+  return Array.from(counts.values())
+    .sort((a, b) => b.bookingCount - a.bookingCount || b.revenue - a.revenue)
+    .slice(0, 8);
 }
 
 export function AdminOverviewModule() {
   const { token } = useAdminToken();
-  const [loading, setLoading] = useState(true);
-  const [dashboard, setDashboard] = useState<AdminDashboardData>({
-    payment: null,
-    reservations: [],
-    complaintsCount: 0,
-    hostPenaltiesCount: 0,
-    auditEvents: [],
-    errors: [],
-  });
+  const [payment, setPayment] = useState<AdminPaymentOverview>(emptyPayment);
+  const [reservations, setReservations] = useState<AdminReservationSummary[]>(
+    [],
+  );
+  const [listings, setListings] = useState<ListingResponse[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
 
     Promise.allSettled([
       getAdminPaymentOverview(token),
-      listAdminReservations(token, { page: 0, size: 200 }),
-      listAdminComplaints(token),
-      listAdminHostPenalties(token),
+      listAdminReservations(token, { page: 0, size: 80 }),
+      listAdminListings(token, 60),
     ]).then((results) => {
       if (!active) return;
 
-      const errors: string[] = [];
-      const [payment, reservations, complaints, penalties] = results;
+      const nextErrors: string[] = [];
+      const [paymentResult, reservationsResult, listingsResult] = results;
 
-      if (payment.status === "rejected") {
-        errors.push(
+      if (paymentResult.status === "fulfilled") {
+        setPayment(paymentResult.value.data ?? emptyPayment);
+      } else {
+        setPayment(emptyPayment);
+        nextErrors.push(
           getAdminErrorMessage(
-            payment.reason,
+            paymentResult.reason,
             "Payment overview API is not available.",
           ),
         );
       }
-      if (reservations.status === "rejected") {
-        errors.push(
+
+      if (reservationsResult.status === "fulfilled") {
+        setReservations(reservationsResult.value.data ?? []);
+      } else {
+        setReservations([]);
+        nextErrors.push(
           getAdminErrorMessage(
-            reservations.reason,
-            "Reservation admin list API is not available.",
-          ),
-        );
-      }
-      if (complaints.status === "rejected") {
-        errors.push(
-          getAdminErrorMessage(
-            complaints.reason,
-            "Complaint admin API is not available.",
-          ),
-        );
-      }
-      if (penalties.status === "rejected") {
-        errors.push(
-          getAdminErrorMessage(
-            penalties.reason,
-            "Host penalty admin list API is not available.",
+            reservationsResult.reason,
+            "Reservation admin API is not available.",
           ),
         );
       }
 
-      setDashboard({
-        payment: payment.status === "fulfilled" ? payment.value.data : null,
-        reservations:
-          reservations.status === "fulfilled" ? reservations.value.data : [],
-        complaintsCount:
-          complaints.status === "fulfilled" ? complaints.value.data.length : 0,
-        hostPenaltiesCount:
-          penalties.status === "fulfilled" ? penalties.value.data.length : 0,
-        auditEvents: [],
-        errors,
-      });
-      setLoading(false);
+      if (listingsResult.status === "fulfilled") {
+        setListings(listingsResult.value.data ?? []);
+      } else {
+        setListings([]);
+        nextErrors.push(
+          getAdminErrorMessage(
+            listingsResult.reason,
+            "Listing admin API is not available.",
+          ),
+        );
+      }
+
+      setErrors(nextErrors);
     });
 
     return () => {
@@ -273,461 +334,490 @@ export function AdminOverviewModule() {
     };
   }, [token]);
 
-  const payment = dashboard.payment ?? emptyPaymentOverview;
   const currency = payment.summary.currency || "USD";
-  const weeklyOperations = useMemo(
+  const revenueFlow = useMemo(
     () =>
-      buildWeeklyOperations(dashboard.reservations, dashboard.complaintsCount),
-    [dashboard.reservations, dashboard.complaintsCount],
+      payment.paymentFlow.map((item) => ({
+        ...item,
+        day: formatDay(item.date),
+      })),
+    [payment.paymentFlow],
   );
-  const bookingStatus = useMemo(
-    () => buildBookingStatus(dashboard.reservations),
-    [dashboard.reservations],
+  const reservationStatusRows = useMemo(
+    () => buildReservationStatusRows(reservations),
+    [reservations],
   );
+  const transactionTypes = useMemo(
+    () => buildTransactionTypes(payment, reservations),
+    [payment, reservations],
+  );
+  const topBookedListings = useMemo(
+    () => buildTopBookedListings(reservations, listings),
+    [reservations, listings],
+  );
+  const completedReservations = reservations.filter(
+    (item) => item.status === "COMPLETED",
+  ).length;
+  const openReservations = reservations.filter((item) =>
+    ["PENDING_PAYMENT", "CONFIRMED", "CHECKED_IN"].includes(item.status),
+  ).length;
+  const returningRate = reservations.length
+    ? Math.round((completedReservations / reservations.length) * 100)
+    : 0;
 
-  const metrics = [
+  const stats = [
     {
-      label: "Open reservations",
-      value: dashboard.reservations.length,
-      delta: loading ? "Loading" : "Live",
-      note: "Rows returned by booking-service",
-      icon: ClipboardList,
-      tone: "brand",
-    },
-    {
-      label: "Transactions",
+      label: "Captured revenue",
       value: formatCurrency(payment.summary.capturedAmount, currency),
-      delta: `${payment.summary.paymentCount} paid`,
-      note: "Captured payment volume",
+      note: `${payment.summary.paymentCount} paid transactions`,
+      href: "/admin/transactions",
       icon: CreditCard,
-      tone: "success",
-    },
-    {
-      label: "Payouts pending",
-      value: formatCurrency(payment.summary.pendingPayoutAmount, currency),
-      delta: `${payment.summary.pendingPayoutCount} payouts`,
-      note: "Waiting for payout cycle",
-      icon: Banknote,
-      tone: "warning",
+      tone: "bg-emerald-50 text-emerald-700",
     },
     {
       label: "Refund queue",
-      value: payment.summary.refundCount,
-      delta: formatCurrency(payment.summary.refundedAmount, currency),
-      note: "Refund records from payment-service",
+      value: payment.summary.refundCount.toLocaleString("en-US"),
+      note: formatCurrency(payment.summary.refundedAmount, currency),
+      href: "/admin/refunds",
       icon: BadgeDollarSign,
-      tone: "neutral",
+      tone: "bg-rose-50 text-[#ff385c]",
     },
-  ] as const;
-
-  const recentEvents = dashboard.auditEvents.slice(0, 5);
+    {
+      label: "Open reservations",
+      value: openReservations.toLocaleString("en-US"),
+      note: `${reservations.length} total reservation rows`,
+      href: "/admin/reservations",
+      icon: CalendarCheck,
+      tone: "bg-blue-50 text-blue-700",
+    },
+  ];
 
   return (
     <>
       <AdminPageHeader
-        eyebrow="Admin operations"
-        title="Dashboard"
-        description="Live operational data for reservations, payments, payouts and admin review queues."
-        action={<AdminHomeLink />}
+        eyebrow="Admin overview"
+        title="Operations Dashboard"
+        description={getDateRange()}
+        action={
+          <Button variant="outline" className="h-10 rounded-[8px]">
+            <Download className="mr-2 size-4" />
+            Download
+          </Button>
+        }
       />
 
-      <main className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
-        {dashboard.errors.length ? (
+      <main className="mx-auto max-w-[1440px] space-y-4 p-5 sm:p-8">
+        {errors.length ? (
           <AdminErrorState
-            title="Some live data could not be loaded"
-            description={dashboard.errors.join(" ")}
+            title="Some admin data could not be loaded"
+            description={errors.join(" ")}
           />
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => {
-            const Icon = metric.icon;
+        <section className="grid gap-3 md:grid-cols-3">
+          {stats.map((item) => {
+            const Icon = item.icon;
 
             return (
               <Card
-                key={metric.label}
-                className="rounded-[14px] border-[#dddddd] bg-white shadow-none"
+                key={item.label}
+                className="rounded-[10px] border-[#dddddd] bg-white py-0 shadow-none"
               >
-                <CardHeader className="pb-2">
-                  <CardDescription className="text-sm text-[#6a6a6a]">
-                    {metric.label}
-                  </CardDescription>
-                  <CardTitle className="text-2xl font-semibold text-[#222222]">
-                    {metric.value}
-                  </CardTitle>
-                  <CardAction>
-                    <span
-                      className={cn(
-                        "flex size-9 items-center justify-center rounded-full ring-1",
-                        toneClasses(metric.tone),
-                      )}
-                    >
-                      <Icon className="size-4" />
-                    </span>
-                  </CardAction>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-[#dddddd] bg-white text-[#222222]"
-                    >
-                      {metric.delta}
-                    </Badge>
-                    <span className="text-sm text-[#6a6a6a]">
-                      {metric.note}
-                    </span>
+                <CardContent className="flex items-center justify-between gap-4 p-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#6a6a6a]">
+                      {item.label}
+                    </p>
+                    <p className="mt-1 truncate text-2xl font-semibold text-[#222222]">
+                      {item.value}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-[#6a6a6a]">
+                      {item.note}
+                    </p>
                   </div>
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon"
+                    className={cn("size-10 shrink-0 rounded-full", item.tone)}
+                  >
+                    <Link href={item.href}>
+                      <Icon className="size-4" />
+                      <span className="sr-only">Open {item.label}</span>
+                    </Link>
+                  </Button>
                 </CardContent>
               </Card>
             );
           })}
         </section>
 
-        <div className="flex justify-end">
-          <Button
-            asChild
-            className="h-10 rounded-[8px] bg-[#ff385c] px-4 text-white hover:bg-[#e00b41]"
-          >
-            <Link href="/admin/refunds">
-              Open payment queue
-              <ArrowRight className="ml-2 size-4" />
-            </Link>
-          </Button>
-        </div>
-
-        <section className="space-y-4">
-          <div>
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Weekly operations
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+            <CardHeader>
+              <div>
+                <CardTitle className="text-base text-[#222222]">
+                  Total Revenue
                 </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Booking rows and currently escalated complaints.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={activityChartConfig}
-                  className="h-[300px] w-full"
-                >
-                  <AreaChart data={weeklyOperations}>
+                <CardDescription>Income in the last 28 days</CardDescription>
+              </div>
+              <CardAction className="flex items-center gap-3">
+                <span className="text-sm text-[#6a6a6a]">
+                  Captured{" "}
+                  {payment.summary.paymentCount.toLocaleString("en-US")}
+                </span>
+                <span className="text-sm text-[#6a6a6a]">
+                  Refunds {payment.summary.refundCount.toLocaleString("en-US")}
+                </span>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              {revenueFlow.length ? (
+                <ChartContainer config={revenueConfig} className="h-[350px]">
+                  <AreaChart data={revenueFlow}>
                     <CartesianGrid vertical={false} stroke="#ebebeb" />
-                    <XAxis
-                      dataKey="day"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={10}
-                    />
+                    <XAxis dataKey="day" tickLine={false} axisLine={false} />
                     <YAxis hide />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Area
-                      dataKey="bookings"
+                      dataKey="captured"
+                      type="natural"
+                      fill="#dcfce7"
+                      stroke="#16a34a"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      dataKey="refunded"
                       type="natural"
                       fill="#fff1f3"
                       stroke="#ff385c"
                       strokeWidth={2}
                     />
-                    <Area
-                      dataKey="complaints"
-                      type="natural"
-                      fill="transparent"
-                      stroke="#222222"
-                      strokeWidth={2}
-                    />
                   </AreaChart>
                 </ChartContainer>
-              </CardContent>
-            </Card>
+              ) : (
+                <AdminEmptyState
+                  title="No revenue chart data"
+                  description="Daily payment aggregates will appear here when the payment overview endpoint returns them."
+                />
+              )}
+            </CardContent>
+          </Card>
 
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Booking status
-                </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Current admin rows by lifecycle state.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={statusChartConfig}
-                  className="h-[300px] w-full"
-                >
-                  <BarChart data={bookingStatus} layout="vertical">
-                    <CartesianGrid horizontal={false} stroke="#ebebeb" />
-                    <XAxis type="number" hide />
-                    <YAxis
-                      dataKey="status"
-                      type="category"
-                      tickLine={false}
-                      axisLine={false}
-                      width={110}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="#ff385c" radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Recent admin events
-                </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Events returned by the admin audit endpoint.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Event</TableHead>
-                      <TableHead>Entity</TableHead>
-                      <TableHead>Severity</TableHead>
-                      <TableHead className="text-right">Time</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentEvents.length ? (
-                      recentEvents.map((item) => (
-                        <TableRow key={item.eventId}>
-                          <TableCell className="font-medium text-[#222222]">
-                            {item.message || item.eventType}
-                          </TableCell>
-                          <TableCell className="text-[#6a6a6a]">
-                            {item.entityType ?? "Entity"} /{" "}
-                            {shortId(item.entityId)}
-                          </TableCell>
-                          <TableCell className="text-[#6a6a6a]">
-                            {item.severity}
-                          </TableCell>
-                          <TableCell className="text-right text-[#6a6a6a]">
-                            {formatDay(item.occurredAt)}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={4}
-                          className="h-24 text-center text-[#6a6a6a]"
-                        >
-                          No audit events returned.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base text-[#222222]">
+                Reservation Health
+              </CardTitle>
+              <CardAction>
+                <Button asChild variant="outline" className="h-9 rounded-[8px]">
+                  <Link href="/admin/reservations">View</Link>
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <p className="text-4xl font-semibold text-[#222222]">
+                  {returningRate}%
+                </p>
+                <p className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                  <TrendingUp className="size-3" />
+                  completed stays
+                </p>
+              </div>
+              <div className="rounded-[14px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[#6a6a6a]">
+                    Completion rate
+                  </span>
+                  <span className="text-sm font-semibold text-[#222222]">
+                    {returningRate}%
+                  </span>
+                </div>
+                <Progress value={returningRate} className="mt-3 h-2" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-[14px] border border-[#ebebeb] p-4">
+                  <p className="text-sm text-[#6a6a6a]">Open</p>
+                  <p className="mt-1 text-xl font-semibold text-[#222222]">
+                    {openReservations}
+                  </p>
+                </div>
+                <div className="rounded-[14px] border border-[#ebebeb] p-4">
+                  <p className="text-sm text-[#6a6a6a]">Completed</p>
+                  <p className="mt-1 text-xl font-semibold text-[#222222]">
+                    {completedReservations}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
-        <section className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Payment flow
-                </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Captured payments, refunds and host payouts from
-                  payment-service.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={paymentFlowChartConfig}
-                  className="h-[320px] w-full"
-                >
-                  <LineChart
-                    data={payment.paymentFlow.map((item) => ({
-                      ...item,
-                      day: formatDay(item.date),
-                    }))}
+        <section className="grid gap-4 xl:grid-cols-2">
+          <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base text-[#222222]">
+                Reservation Status
+              </CardTitle>
+              <CardDescription>Booking lifecycle distribution</CardDescription>
+              <CardAction>
+                <Button variant="outline" className="h-9 rounded-[8px]">
+                  Export
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              {reservationStatusRows.length ? (
+                <>
+                  <ChartContainer
+                    config={reservationStatusConfig}
+                    className="h-[260px]"
                   >
-                    <CartesianGrid vertical={false} stroke="#ebebeb" />
-                    <XAxis
-                      dataKey="day"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={10}
-                    />
-                    <YAxis hide />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line
-                      dataKey="captured"
-                      type="monotone"
-                      stroke="#ff385c"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                    <Line
-                      dataKey="refunded"
-                      type="monotone"
-                      stroke="#c13515"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                    <Line
-                      dataKey="payout"
-                      type="monotone"
-                      stroke="#222222"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
+                    <BarChart data={reservationStatusRows} layout="vertical">
+                      <CartesianGrid horizontal={false} stroke="#ebebeb" />
+                      <XAxis type="number" hide />
+                      <YAxis
+                        dataKey="status"
+                        type="category"
+                        tickLine={false}
+                        axisLine={false}
+                        width={126}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar
+                        dataKey="count"
+                        fill="#2563eb"
+                        radius={[0, 8, 8, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                  <div className="mt-4 grid gap-2">
+                    {reservationStatusRows.slice(0, 3).map((item) => (
+                      <div
+                        key={item.status}
+                        className="flex items-center justify-between rounded-[10px] bg-[#f7f7f7] px-3 py-2 text-sm"
+                      >
+                        <span className="text-[#6a6a6a]">{item.status}</span>
+                        <span className="font-semibold text-[#222222]">
+                          {item.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <AdminEmptyState
+                  title="No reservation status data"
+                  description="Reservation lifecycle rows will appear here after booking-service returns admin reservations."
+                />
+              )}
+            </CardContent>
+          </Card>
 
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Payout aging
-                </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Pending payout amount by age bucket.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={payoutAgingChartConfig}
-                  className="h-[320px] w-full"
-                >
-                  <BarChart data={payment.payoutAging}>
-                    <CartesianGrid vertical={false} stroke="#ebebeb" />
-                    <XAxis
-                      dataKey="bucket"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={10}
-                    />
-                    <YAxis hide />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar
-                      dataKey="amount"
-                      fill="#222222"
-                      radius={[8, 8, 0, 0]}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base text-[#222222]">
+                Transaction Types
+              </CardTitle>
+              <CardDescription>
+                Bookings, refunds, payouts and pending work
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {transactionTypes.length ? (
+                <>
+                  <ChartContainer config={visitsConfig} className="h-[220px]">
+                    <PieChart>
+                      <Pie
+                        data={transactionTypes}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={56}
+                        outerRadius={88}
+                        paddingAngle={4}
+                      >
+                        {transactionTypes.map((item, index) => (
+                          <Cell
+                            key={item.name}
+                            fill={pieColors[index % pieColors.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                    </PieChart>
+                  </ChartContainer>
+                  <div className="grid grid-cols-2 gap-3">
+                    {transactionTypes.map((item, index) => (
+                      <div
+                        key={item.name}
+                        className="flex items-center gap-2 text-sm text-[#6a6a6a]"
+                      >
+                        <span
+                          className="size-2.5 rounded-full"
+                          style={{
+                            backgroundColor:
+                              pieColors[index % pieColors.length],
+                          }}
+                        />
+                        {item.name} {item.count}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <AdminEmptyState
+                  title="No transaction type data"
+                  description="Booking, refund and payout activity will populate this chart."
+                />
+              )}
+            </CardContent>
+          </Card>
+        </section>
 
-          <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Transaction status
-                </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Payment records grouped by settlement state.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer
-                  config={transactionStatusChartConfig}
-                  className="h-[280px] w-full"
-                >
-                  <BarChart data={payment.transactionStatus} layout="vertical">
-                    <CartesianGrid horizontal={false} stroke="#ebebeb" />
-                    <XAxis type="number" hide />
-                    <YAxis
-                      dataKey="status"
-                      type="category"
-                      tickLine={false}
-                      axisLine={false}
-                      width={112}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="#ff385c" radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base font-semibold text-[#222222]">
-                  Payment operations queue
-                </CardTitle>
-                <CardDescription className="text-[#6a6a6a]">
-                  Transactions, refunds and payouts that need admin attention.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Record</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Booking</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payment.queue.length ? (
-                      payment.queue.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium text-[#222222]">
-                                {shortId(item.id)}
-                              </p>
-                              <p className="text-xs text-[#6a6a6a]">
-                                {item.owner}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-[#6a6a6a]">
-                            {item.type}
-                          </TableCell>
-                          <TableCell className="text-[#6a6a6a]">
-                            {shortId(item.bookingId)}
-                          </TableCell>
-                          <TableCell>
-                            <TextStatusPill
-                              tone={
-                                statusTone(item.status) as
-                                  | "neutral"
-                                  | "success"
-                                  | "warning"
-                                  | "danger"
-                                  | "brand"
-                              }
-                            >
-                              {item.status}
-                            </TextStatusPill>
-                          </TableCell>
-                          <TableCell className="text-right font-medium text-[#222222]">
-                            {formatCurrency(item.amount, item.currency)}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          className="h-24 text-center text-[#6a6a6a]"
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px]">
+          <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base text-[#222222]">
+                Recent Transactions
+              </CardTitle>
+              <CardAction>
+                <Button variant="outline" className="h-9 rounded-[8px]">
+                  Export
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table className="min-w-[760px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>ID</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-12" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reservations.slice(0, 8).map((item) => (
+                    <TableRow key={item.bookingId}>
+                      <TableCell className="font-semibold text-[#222222]">
+                        {displayReservationCode(item)}
+                      </TableCell>
+                      <TableCell>{displayGuest(item)}</TableCell>
+                      <TableCell>
+                        <div className="min-w-0">
+                          <p className="font-medium text-[#222222]">
+                            Booking
+                          </p>
+                          <p className="max-w-[280px] truncate text-xs text-[#6a6a6a]">
+                            {displayListing(item)}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(item.totalAmount, item.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <TextStatusPill tone={statusTone(item.status)}>
+                          {displayStatus(item.status)}
+                        </TextStatusPill>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 rounded-full"
                         >
-                          No payment operations require attention.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
+                          <MoreHorizontal className="size-4" />
+                          <span className="sr-only">Open menu</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!reservations.length ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center">
+                        No reservations returned.
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </TableBody>
+              </Table>
+              <p className="mt-4 text-sm text-[#6a6a6a]">
+                Showing 1 to {Math.min(reservations.length, 8)} of{" "}
+                {reservations.length} entries
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[14px] border-[#dddddd] bg-white shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base text-[#222222]">
+                Top Booked Listings
+              </CardTitle>
+              <CardDescription>
+                Listings ranked by reservation count
+              </CardDescription>
+              <CardAction>
+                <Button variant="outline" className="h-9 rounded-[8px]">
+                  Export
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {topBookedListings.length ? (
+                topBookedListings.map((item) => (
+                  <div
+                    key={item.listingId}
+                    className="grid grid-cols-[minmax(0,1fr)_76px_64px_32px] items-center gap-3 rounded-[12px] p-2 hover:bg-[#f7f7f7]"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar className="size-11 rounded-[10px]">
+                        <AvatarImage
+                          src={item.coverImageUrl}
+                          alt={item.title}
+                        />
+                        <AvatarFallback className="rounded-[10px] bg-[#f7f7f7] text-[#222222]">
+                          <Building2 className="size-4" />
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[#222222]">
+                          {item.title}
+                        </p>
+                        <p className="truncate text-xs text-[#6a6a6a]">
+                          {[item.city, item.country]
+                            .filter(Boolean)
+                            .join(", ") || "No location"}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium text-[#222222]">
+                      {item.bookingCount} bookings
+                    </p>
+                    <p className="text-sm text-[#6a6a6a]">
+                      {formatCurrency(item.revenue, item.currency)}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-full"
+                    >
+                      <MoreHorizontal className="size-4" />
+                      <span className="sr-only">Open menu</span>
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <AdminEmptyState
+                  title="No booked listings"
+                  description="Listings will rank here after reservations are returned."
+                />
+              )}
+            </CardContent>
+          </Card>
         </section>
       </main>
     </>

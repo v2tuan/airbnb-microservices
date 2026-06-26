@@ -1,5 +1,5 @@
-import { ComplaintsManagementModule } from "@/components/admin/modules/complaints-management";
+import { redirect } from "next/navigation";
 
 export default function AdminComplaintsPage() {
-  return <ComplaintsManagementModule />;
+  redirect("/admin/reservations");
 }

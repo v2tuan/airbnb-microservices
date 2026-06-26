@@ -162,6 +162,22 @@ public class ListingDetailController {
                         .build());
     }
 
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/admin")
+    public ResponseEntity<ApiResponse<List<ListingResponse>>> getAdminListings(
+            @RequestParam(required = false) ListingStatus status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer limit) {
+        log.info("REST request to get admin listings status={}, keyword={}, limit={}", status, keyword, limit);
+        List<ListingResponse> response = listingService.getAdminListings(status, keyword, limit);
+        return ResponseEntity.ok(
+                ApiResponse.<List<ListingResponse>>builder()
+                        .code(1000)
+                        .message("Admin listings retrieved successfully")
+                        .data(response)
+                        .build());
+    }
+
     @GetMapping("/host/{hostId}")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByHost(@PathVariable String hostId) {
         log.info("REST request to get listings by host ID: {}", hostId);

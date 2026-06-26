@@ -29,6 +29,25 @@ public class SecurityConfig {
 
     @Bean
     @Order(1)
+    public SecurityFilterChain adminChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/listings/admin", "/listings/admin/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().authenticated()
+                )
+                .oauth2ResourceServer(oauth -> oauth
+                        .jwt(jwt -> jwt
+                                .jwtAuthenticationConverter(
+                                        jwtAuthenticationConverter()
+                                )
+                        ));
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain publicChain(HttpSecurity http) throws Exception {
 
         http
@@ -47,7 +66,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(2)
+    @Order(3)
     public SecurityFilterChain privateChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/listings/**")

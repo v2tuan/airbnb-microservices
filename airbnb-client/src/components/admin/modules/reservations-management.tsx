@@ -586,18 +586,6 @@ export function ReservationsManagementModule() {
                         <ExternalLink className="ml-2 size-3.5" />
                       </Link>
                     </Button>
-                    <Button
-                      asChild
-                      variant="outline"
-                      className="h-10 rounded-[8px]"
-                    >
-                      <Link
-                        href={`/admin/complaints?bookingId=${selected.bookingId}`}
-                      >
-                        View complaint
-                        <ExternalLink className="ml-2 size-3.5" />
-                      </Link>
-                    </Button>
                   </div>
                 </div>
 

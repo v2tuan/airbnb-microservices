@@ -25,6 +25,7 @@ public interface IListingService {
     ListingResponse getListingById(UUID listingId);
     List<ListingResponse> getListingsByIds(List<UUID> listingIds);
     List<ListingResponse> getAllListings();
+    List<ListingResponse> getAdminListings(ListingStatus status, String keyword, Integer limit);
     List<ListingResponse> getListingsByHost(String hostId);
         List<ListingResponse> searchListings(
             String city,

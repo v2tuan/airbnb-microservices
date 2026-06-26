@@ -1,5 +1,5 @@
-import { AuditEventsViewModule } from "@/components/admin/modules/audit-events-view";
+import { redirect } from "next/navigation";
 
 export default function AdminAuditPage() {
-  return <AuditEventsViewModule />;
+  redirect("/admin/transactions");
 }

@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -28,6 +29,10 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
     @Override
     @EntityGraph(attributePaths = {"photos", "pricing", "houseRules"})
     List<Listing> findAll();
+
+    @Override
+    @EntityGraph(attributePaths = {"photos", "pricing", "houseRules"})
+    Page<Listing> findAll(Specification<Listing> specification, Pageable pageable);
 
     // Tim theo host
     @EntityGraph(attributePaths = {"photos", "pricing", "houseRules"})

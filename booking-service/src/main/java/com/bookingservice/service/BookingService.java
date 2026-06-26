@@ -142,16 +142,27 @@ public class BookingService {
                 checkInTo
         );
 
-        List<AdminReservationSummaryResponse> filtered = bookings.stream()
+        List<Booking> filtered = bookings.stream()
                 .filter(booking -> matchesAdminReservationFilters(booking, search, guest, host, listing, bookingCode))
-                .map(this::mapToAdminReservationSummary)
                 .toList();
 
         int safeSize = Math.max(1, Math.min(size, 200));
         int safePage = Math.max(0, page);
         int fromIndex = Math.min(safePage * safeSize, filtered.size());
         int toIndex = Math.min(fromIndex + safeSize, filtered.size());
-        return filtered.subList(fromIndex, toIndex);
+        List<Booking> pageBookings = filtered.subList(fromIndex, toIndex);
+        String bearerToken = "Bearer " + jwt.getTokenValue();
+        Map<UUID, ListingResponse> listingMap = fetchListingsForBookings(bearerToken, pageBookings);
+        Map<UUID, PublicUserResponse> userMap = fetchUsersForAdminReservations(pageBookings);
+
+        return pageBookings.stream()
+                .map(booking -> mapToAdminReservationSummary(
+                        booking,
+                        listingMap.get(booking.getListingId()),
+                        userMap.get(booking.getGuestId()),
+                        userMap.get(booking.getHostId())
+                ))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -201,13 +212,21 @@ public class BookingService {
                 || (value != null && value.toLowerCase().contains(query.trim().toLowerCase()));
     }
 
-    private AdminReservationSummaryResponse mapToAdminReservationSummary(Booking booking) {
+    private AdminReservationSummaryResponse mapToAdminReservationSummary(
+            Booking booking,
+            ListingResponse listing,
+            PublicUserResponse guest,
+            PublicUserResponse host
+    ) {
         return AdminReservationSummaryResponse.builder()
                 .bookingId(booking.getBookingId())
                 .reservationCode(reservationCode(booking))
                 .listingId(booking.getListingId())
+                .listingTitle(listing != null ? listing.getTitle() : null)
                 .guestId(booking.getGuestId())
+                .guestName(guest != null ? guest.getFullName() : null)
                 .hostId(booking.getHostId())
+                .hostName(host != null ? host.getFullName() : null)
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
                 .status(booking.getStatus())
@@ -217,6 +236,35 @@ public class BookingService {
                 .createdAt(booking.getCreatedAt())
                 .riskFlags(adminRiskFlags(booking))
                 .build();
+    }
+
+    private Map<UUID, PublicUserResponse> fetchUsersForAdminReservations(List<Booking> bookings) {
+        Set<UUID> userIds = bookings.stream()
+                .flatMap(booking -> java.util.stream.Stream.of(booking.getGuestId(), booking.getHostId()))
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+
+        try {
+            List<PublicUserResponse> users = userClient.getPublicUsers(new BatchPublicUserProfileRequest(
+                    userIds.stream().map(UUID::toString).toList()));
+            if (users == null || users.isEmpty()) {
+                return Map.of();
+            }
+
+            return users.stream()
+                    .filter(user -> user.getKeycloakUserId() != null)
+                    .collect(Collectors.toMap(
+                            user -> UUID.fromString(user.getKeycloakUserId()),
+                            Function.identity(),
+                            (left, right) -> left));
+        } catch (RuntimeException ex) {
+            log.warn("Failed to batch fetch admin reservation users. userCount={}", userIds.size(), ex);
+            return Map.of();
+        }
     }
 
     private AdminReservationDetailResponse mapToAdminReservationDetail(Booking booking) {

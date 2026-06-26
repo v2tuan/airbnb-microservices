@@ -345,9 +345,14 @@ export async function waiveAdminHostPenalty(
 
 export async function listAdminListings(
   token: string | null,
+  limit = 200,
 ): Promise<ApiResponse<ListingResponse[]>> {
-  // TODO backend: replace with GET /listings/admin when listing-service exposes admin-only listing search.
-  return unwrap(await apiClient.get(`${prefix}/listings`, authConfig(token)));
+  return unwrap(
+    await apiClient.get(
+      `${prefix}/listings/admin?limit=${limit}`,
+      authConfig(token),
+    ),
+  );
 }
 
 export async function suspendAdminListing(
