@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import ChatbotWidget from "@/components/chatbot/ChatbotWidget";
 import { cn } from "@/lib/utils";
 
 type AppShellProps = {
@@ -42,7 +41,6 @@ export default function AppShell({
       )}
 
       {footer}
-      <ChatbotWidget />
     </div>
   );
 }

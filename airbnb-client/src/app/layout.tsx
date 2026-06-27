@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Figtree, Geist, Geist_Mono } from "next/font/google";
+import ChatbotWidget from "@/components/chatbot/ChatbotWidget";
 import { cn } from "@/lib/utils";
+import { ChatbotProvider } from "@/providers/chatbot-provider";
 import ModalProvider from "@/providers/ModalProvider";
 import Providers from "@/providers/provider";
 import "./globals.css";
@@ -33,8 +35,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <ModalProvider />
-          {children}
+          <ChatbotProvider>
+            <ModalProvider />
+            {children}
+            <ChatbotWidget />
+          </ChatbotProvider>
         </Providers>
       </body>
     </html>

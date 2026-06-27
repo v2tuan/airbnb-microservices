@@ -19,11 +19,7 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {
-  ChatbotAuthenticationError,
-  type ChatbotListingCard,
-  streamChatbotResponse,
-} from "@/api/endpoints/chatbot";
+import type { ChatbotListingCard } from "@/api/endpoints/chatbot";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -33,51 +29,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { type ChatMessage, useChatbot } from "@/providers/chatbot-provider";
 
-type ChatMessage = {
-  id: string;
-  role: "assistant" | "user";
-  content: string;
-  listings?: ChatbotListingCard[];
-  isStreaming?: boolean;
-};
-
-const createMessageId = () => {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-const createInitialMessages = (): ChatMessage[] => [
-  {
-    id: createMessageId(),
-    role: "assistant",
-    content:
-      "Xin chào! Mình là **Chat AI**. Bạn có thể hỏi mình về nơi lưu trú, khu vực nên ở hoặc cách lên kế hoạch chuyến đi.",
-  },
-];
-
-const CHATBOT_CONVERSATION_ID_STORAGE_KEY = "airbnb_chatbot_conversation_id";
-const STREAM_TOKEN_FLUSH_INTERVAL_MS = 32;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 96;
-
-const readStoredConversationId = () => {
-  if (typeof window === "undefined") return null;
-
-  return sessionStorage.getItem(CHATBOT_CONVERSATION_ID_STORAGE_KEY);
-};
-
-const storeConversationId = (conversationId: string | null) => {
-  if (typeof window === "undefined") return;
-
-  // Keep the id in sessionStorage so route changes in the same browser tab keep
-  // sending the same backend conversation id. We intentionally use sessionStorage
-  // instead of localStorage so a very old chat does not silently affect future days.
-  if (conversationId) {
-    sessionStorage.setItem(CHATBOT_CONVERSATION_ID_STORAGE_KEY, conversationId);
-    return;
-  }
-
-  sessionStorage.removeItem(CHATBOT_CONVERSATION_ID_STORAGE_KEY);
-};
 
 const markdownComponents: Components = {
   h1: ({ className, ...props }) => (
@@ -418,26 +372,21 @@ function MessageBubble({
 }
 
 export default function ChatbotWidget() {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    createInitialMessages(),
-  );
-  const [conversationId, setConversationId] = useState<string | null>(() =>
-    readStoredConversationId(),
-  );
-  const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  const {
+    open,
+    setOpen,
+    messages,
+    input,
+    setInput,
+    isStreaming,
+    canSubmit,
+    sendMessage,
+    startNewChat,
+    askListing,
+  } = useChatbot();
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const activeAssistantIdRef = useRef<string | null>(null);
-  const pendingTokenBufferRef = useRef("");
-  const tokenFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const shouldAutoScrollRef = useRef(true);
-
-  const canSubmit = useMemo(() => {
-    return input.trim().length > 0 && !isStreaming;
-  }, [input, isStreaming]);
 
   const latestMessageLayoutKey = useMemo(() => {
     const latestMessage = messages[messages.length - 1];
@@ -494,193 +443,26 @@ export default function ChatbotWidget() {
 
   useEffect(() => {
     return () => {
-      abortRef.current?.abort();
-
-      if (tokenFlushTimerRef.current !== null) {
-        clearTimeout(tokenFlushTimerRef.current);
-      }
-
       if (scrollFrameRef.current !== null) {
         cancelAnimationFrame(scrollFrameRef.current);
       }
     };
   }, []);
 
-  const updateAssistantMessage = useCallback(
-    (
-      assistantId: string,
-      updater: (message: ChatMessage) => ChatMessage,
-    ) => {
-      setMessages((currentMessages) =>
-        currentMessages.map((message) =>
-          message.id === assistantId ? updater(message) : message,
-        ),
-      );
-    },
-    [],
-  );
-
-  const clearTokenFlushTimer = useCallback(() => {
-    if (tokenFlushTimerRef.current === null) return;
-
-    clearTimeout(tokenFlushTimerRef.current);
-    tokenFlushTimerRef.current = null;
-  }, []);
-
-  const flushPendingAssistantTokens = useCallback(
-    (assistantId: string) => {
-      const pendingToken = pendingTokenBufferRef.current;
-
-      if (!pendingToken) return;
-
-      pendingTokenBufferRef.current = "";
-      updateAssistantMessage(assistantId, (message) => ({
-        ...message,
-        content: `${message.content}${pendingToken}`,
-      }));
-    },
-    [updateAssistantMessage],
-  );
-
-  const scheduleTokenFlush = useCallback(
-    (assistantId: string) => {
-      if (tokenFlushTimerRef.current !== null) return;
-
-      // SSE can deliver many tiny chunks. Flushing them in short batches avoids
-      // reparsing Markdown and repainting the chat bubble for every token.
-      tokenFlushTimerRef.current = setTimeout(() => {
-        tokenFlushTimerRef.current = null;
-        flushPendingAssistantTokens(assistantId);
-      }, STREAM_TOKEN_FLUSH_INTERVAL_MS);
-    },
-    [flushPendingAssistantTokens],
-  );
-
-  const resetTokenBuffer = useCallback(() => {
-    clearTokenFlushTimer();
-    pendingTokenBufferRef.current = "";
-  }, [clearTokenFlushTimer]);
-
-  const sendMessage = async (rawMessage: string) => {
-    const trimmedMessage = rawMessage.trim();
-
-    if (!trimmedMessage || isStreaming) return;
-
-    abortRef.current?.abort();
-    resetTokenBuffer();
-    shouldAutoScrollRef.current = true;
-
-    const controller = new AbortController();
-    const userMessage: ChatMessage = {
-      id: createMessageId(),
-      role: "user",
-      content: trimmedMessage,
-    };
-    const assistantMessage: ChatMessage = {
-      id: createMessageId(),
-      role: "assistant",
-      content: "",
-      isStreaming: true,
-    };
-
-    abortRef.current = controller;
-    activeAssistantIdRef.current = assistantMessage.id;
-    setInput("");
-    setIsStreaming(true);
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      userMessage,
-      assistantMessage,
-    ]);
-
-    try {
-      await streamChatbotResponse({
-        message: trimmedMessage,
-        conversationId,
-        signal: controller.signal,
-        onConversationId: (nextConversationId) => {
-          if (activeAssistantIdRef.current !== assistantMessage.id) return;
-
-          setConversationId(nextConversationId);
-          storeConversationId(nextConversationId);
-        },
-        onToken: (token) => {
-          if (activeAssistantIdRef.current !== assistantMessage.id) return;
-
-          pendingTokenBufferRef.current += token;
-          scheduleTokenFlush(assistantMessage.id);
-        },
-        onListings: (listings) => {
-          if (activeAssistantIdRef.current !== assistantMessage.id) return;
-
-          updateAssistantMessage(assistantMessage.id, (message) => ({
-            ...message,
-            listings,
-          }));
-        },
-        onError: (message) => {
-          if (activeAssistantIdRef.current !== assistantMessage.id) return;
-
-          clearTokenFlushTimer();
-          flushPendingAssistantTokens(assistantMessage.id);
-          updateAssistantMessage(assistantMessage.id, (currentMessage) => ({
-            ...currentMessage,
-            content: currentMessage.content || message,
-          }));
-        },
-      });
-    } catch (error) {
-      if (
-        !(error instanceof DOMException && error.name === "AbortError") &&
-        activeAssistantIdRef.current === assistantMessage.id
-      ) {
-        const fallbackMessage =
-          error instanceof ChatbotAuthenticationError
-            ? error.message
-            : "Xin lỗi, mình chưa thể kết nối Chat AI lúc này. Bạn thử lại sau nhé.";
-
-        clearTokenFlushTimer();
-        flushPendingAssistantTokens(assistantMessage.id);
-        updateAssistantMessage(assistantMessage.id, (message) => ({
-          ...message,
-          content: message.content || fallbackMessage,
-        }));
-      }
-    } finally {
-      if (activeAssistantIdRef.current === assistantMessage.id) {
-        clearTokenFlushTimer();
-        flushPendingAssistantTokens(assistantMessage.id);
-        updateAssistantMessage(assistantMessage.id, (message) => ({
-          ...message,
-          isStreaming: false,
-        }));
-        activeAssistantIdRef.current = null;
-        abortRef.current = null;
-        setIsStreaming(false);
-      }
-    }
-  };
-
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    shouldAutoScrollRef.current = true;
     void sendMessage(input);
   };
 
   const handleNewChat = () => {
-    abortRef.current?.abort();
-    resetTokenBuffer();
-    activeAssistantIdRef.current = null;
-    abortRef.current = null;
-    setIsStreaming(false);
-    setInput("");
-    setConversationId(null);
-    storeConversationId(null);
     shouldAutoScrollRef.current = true;
-    setMessages(createInitialMessages());
+    startNewChat();
   };
 
   const handleAskListing = (listing: ChatbotListingCard) => {
-    void sendMessage(`Tôi muốn biết thêm về ${listing.title}.`);
+    shouldAutoScrollRef.current = true;
+    askListing(listing);
   };
 
   const handleInputKeyDown = (
@@ -690,6 +472,7 @@ export default function ChatbotWidget() {
       event.preventDefault();
 
       if (canSubmit) {
+        shouldAutoScrollRef.current = true;
         void sendMessage(input);
       }
     }
