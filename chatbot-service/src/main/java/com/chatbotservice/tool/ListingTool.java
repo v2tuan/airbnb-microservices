@@ -2,6 +2,11 @@ package com.chatbotservice.tool;
 
 import com.chatbotservice.client.ListingFeignClient;
 import com.chatbotservice.configuration.ChatbotProperties;
+import com.chatbotservice.context.ConversationListingContextStore;
+import com.chatbotservice.context.ListingResolveResult;
+import com.chatbotservice.context.ListingSearchSnapshot;
+import com.chatbotservice.context.ListingSnapshot;
+import com.chatbotservice.context.SearchCriteriaSnapshot;
 import com.chatbotservice.dto.listing.AmenityResponse;
 import com.chatbotservice.dto.listing.ApiResponse;
 import com.chatbotservice.dto.listing.DailyAvailabilityResponse;
@@ -22,6 +27,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.text.Normalizer;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
@@ -33,16 +39,21 @@ import java.util.UUID;
 @Slf4j
 public class ListingTool {
     private static final String LISTING_CARDS_CONTEXT_KEY = "listingCards";
+    private static final String CONVERSATION_ID_CONTEXT_KEY = "conversationId";
+    private static final String USER_ID_CONTEXT_KEY = "userId";
 
     private final ListingFeignClient listingFeignClient;
     private final ChatbotProperties properties;
+    private final ConversationListingContextStore listingContextStore;
 
     public ListingTool(
             ListingFeignClient listingFeignClient,
-            ChatbotProperties properties
+            ChatbotProperties properties,
+            ConversationListingContextStore listingContextStore
     ) {
         this.listingFeignClient = listingFeignClient;
         this.properties = properties;
+        this.listingContextStore = listingContextStore;
     }
 
     @Tool(
@@ -190,6 +201,7 @@ public class ListingTool {
                     .toList();
 
             addListingCardsToContext(toolContext, listingCards);
+            saveSearchSnapshot(toolContext, listings, filters);
 
             return formatResults(listings);
         } catch (Exception exception) {
@@ -203,24 +215,36 @@ public class ListingTool {
             description = """
                     Check whether a real listing is bookable for a specific date or date range.
                     Use this when the user asks if a room/listing is available, free, bookable,
-                    or still open on a date. The listingId must come from previous tool results
-                    or from the user's explicit selection. Do not invent listingId values.
+                    or still open on a date. Prefer listingId when it is available from previous
+                    tool results. Otherwise pass listingTitle with the room name, title, or a
+                    distinctive phrase from the conversation. Do not invent listingId values.
+                    If the tool returns NEED_LISTING_SELECTION, ask the user to confirm which
+                    listing they mean before checking availability again.
                     If the user asks about one date only, use checkIn as that date and omit checkOut.
                     """
     )
     public String checkListingAvailability(
-            @ToolParam(description = "Exact listingId UUID from a previous search_listings result or explicit user selection.")
+            @ToolParam(required = false, description = "Exact listingId UUID from a previous search_listings result or explicit user selection.")
             String listingId,
+            @ToolParam(required = false, description = "Listing title, room name, or distinctive phrase when the user refers to a room without listingId.")
+            String listingTitle,
             @ToolParam(description = "Check-in date in ISO format yyyy-MM-dd. For a one-day question, use the date the user asked about.")
             LocalDate checkIn,
             @ToolParam(required = false, description = "Check-out date in ISO format yyyy-MM-dd. If the user asks for one date only, leave this empty.")
-            LocalDate checkOut
+            LocalDate checkOut,
+            ToolContext toolContext
     ) {
-        log.info("Checking listing availability - listingId={}, checkIn={}, checkOut={}", listingId, checkIn, checkOut);
+        log.info(
+                "Checking listing availability - listingId={}, listingTitle={}, checkIn={}, checkOut={}",
+                listingId,
+                listingTitle,
+                checkIn,
+                checkOut
+        );
 
-        UUID parsedListingId = parseListingId(listingId);
-        if (parsedListingId == null) {
-            return "INVALID_LISTING_ID: listingId is required and must be one of the UUID values returned by search_listings.";
+        ListingReference listingReference = resolveListingReference(toolContext, listingId, listingTitle);
+        if (!listingReference.resolved()) {
+            return listingReference.message();
         }
 
         if (checkIn == null) {
@@ -234,7 +258,7 @@ public class ListingTool {
 
         try {
             ApiResponse<ListingAvailabilityResponse> response = listingFeignClient.checkBookableAvailability(
-                    parsedListingId,
+                    listingReference.listingId(),
                     checkIn,
                     normalizedCheckOut
             );
@@ -245,7 +269,7 @@ public class ListingTool {
             }
 
             String checkResponse = formatAvailabilityResult(availability);
-            log.info("Check Response: ", checkResponse);
+            log.info("Availability tool response: {}", checkResponse);
             return checkResponse;
         } catch (Exception exception) {
             log.warn("Availability tool failed", exception);
@@ -257,6 +281,73 @@ public class ListingTool {
         return response != null && response.data() != null
                 ? response.data()
                 : List.of();
+    }
+
+    private void saveSearchSnapshot(
+            ToolContext toolContext,
+            List<ListingResponse> listings,
+            SearchFilters filters
+    ) {
+        ToolConversationScope scope = toolConversationScope(toolContext);
+        if (scope == null || listings == null || listings.isEmpty()) {
+            return;
+        }
+
+        // Context này là dữ liệu có cấu trúc cho backend resolve các câu hỏi tiếp theo.
+        // Nó không thay thế ChatMemory của Spring AI, mà chỉ giúp tool không phải đoán listingId.
+        List<ListingSnapshot> listingSnapshots = listings.stream()
+                .map(this::toListingSnapshot)
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (listingSnapshots.isEmpty()) {
+            return;
+        }
+
+        ListingSearchSnapshot snapshot = new ListingSearchSnapshot(
+                UUID.randomUUID().toString(),
+                toSearchCriteriaSnapshot(filters),
+                listingSnapshots,
+                Instant.now()
+        );
+
+        listingContextStore.saveSearch(scope.userId(), scope.conversationId(), snapshot);
+    }
+
+    private ListingSnapshot toListingSnapshot(ListingResponse listing) {
+        if (listing == null || listing.listingId() == null) {
+            return null;
+        }
+
+        ListingPricingResponse pricing = listing.pricing();
+
+        return new ListingSnapshot(
+                listing.listingId(),
+                listing.title(),
+                listing.city(),
+                listing.country(),
+                pricing != null ? pricing.basePrice() : null,
+                pricing != null ? pricing.currency() : null,
+                listing.maxGuests(),
+                listing.roomType(),
+                listing.propertyType()
+        );
+    }
+
+    private SearchCriteriaSnapshot toSearchCriteriaSnapshot(SearchFilters filters) {
+        return new SearchCriteriaSnapshot(
+                filters.keyword(),
+                filters.city(),
+                filters.state(),
+                filters.country(),
+                filters.guests(),
+                filters.minPrice(),
+                filters.maxPrice(),
+                filters.amenityNames(),
+                filters.checkIn(),
+                filters.checkOut(),
+                filters.sortBy()
+        );
     }
 
     private UUID parseListingId(String listingId) {
@@ -277,6 +368,104 @@ public class ListingTool {
         }
 
         return checkOut;
+    }
+
+    private ListingReference resolveListingReference(
+            ToolContext toolContext,
+            String listingId,
+            String listingTitle
+    ) {
+        UUID parsedListingId = parseListingId(listingId);
+        String effectiveListingTitle = StringUtils.hasText(listingTitle) ? listingTitle : listingId;
+        ToolConversationScope scope = toolConversationScope(toolContext);
+
+        if (parsedListingId != null) {
+            String title = scope != null
+                    ? listingContextStore.findListingById(scope.userId(), scope.conversationId(), parsedListingId)
+                    .map(ListingSnapshot::title)
+                    .orElse(null)
+                    : null;
+
+            return ListingReference.resolved(parsedListingId, title);
+        }
+
+        if (scope == null) {
+            return ListingReference.unresolved(
+                    "NEED_LISTING_SELECTION: No conversation listing context is available. Ask the user to choose or search for a listing first."
+            );
+        }
+
+        ListingResolveResult resolveResult = listingContextStore.resolveListing(
+                scope.userId(),
+                scope.conversationId(),
+                effectiveListingTitle
+        );
+
+        return switch (resolveResult.status()) {
+            case FOUND -> ListingReference.resolved(
+                    resolveResult.listing().listingId(),
+                    resolveResult.listing().title()
+            );
+            case NO_CONTEXT -> ListingReference.unresolved(
+                    "NEED_LISTING_SELECTION: No previous search result is available. Ask the user to search listings first."
+            );
+            case NOT_FOUND -> ListingReference.unresolved(
+                    "NEED_LISTING_SELECTION: Could not find that listing in previous search results.\n"
+                            + formatListingOptions(resolveResult.candidates())
+            );
+            case AMBIGUOUS -> ListingReference.unresolved(
+                    "NEED_LISTING_SELECTION: The listing reference is ambiguous. Ask the user to choose one of these options.\n"
+                            + formatListingOptions(resolveResult.candidates())
+            );
+        };
+    }
+
+    private ToolConversationScope toolConversationScope(ToolContext toolContext) {
+        if (toolContext == null || toolContext.getContext() == null) {
+            return null;
+        }
+
+        String userId = contextString(toolContext, USER_ID_CONTEXT_KEY);
+        String conversationId = contextString(toolContext, CONVERSATION_ID_CONTEXT_KEY);
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(conversationId)) {
+            return null;
+        }
+
+        return new ToolConversationScope(userId, conversationId);
+    }
+
+    private String contextString(ToolContext toolContext, String key) {
+        Object value = toolContext.getContext().get(key);
+        return value instanceof String text && StringUtils.hasText(text) ? text : null;
+    }
+
+    private String formatListingOptions(List<ListingSnapshot> listings) {
+        if (listings == null || listings.isEmpty()) {
+            return "Available options: none.";
+        }
+
+        StringBuilder builder = new StringBuilder("Available options from previous searches:\n");
+        for (ListingSnapshot listing : listings) {
+            builder.append("- listingId=")
+                    .append(listing.listingId())
+                    .append(" | title=")
+                    .append(nullToDash(listing.title()))
+                    .append(" | city=")
+                    .append(nullToDash(listing.city()))
+                    .append(" | basePrice=")
+                    .append(nullToDash(listing.basePrice()))
+                    .append(" | currency=")
+                    .append(nullToDash(listing.currency()))
+                    .append(" | maxGuests=")
+                    .append(nullToDash(listing.maxGuests()))
+                    .append(" | roomType=")
+                    .append(nullToDash(listing.roomType()))
+                    .append(" | propertyType=")
+                    .append(nullToDash(listing.propertyType()))
+                    .append("\n");
+        }
+
+        return builder.toString();
     }
 
     private String formatAvailabilityResult(ListingAvailabilityResponse availability) {
@@ -798,5 +987,22 @@ public class ListingTool {
             LocalDate checkOut,
             String sortBy
     ) {
+    }
+
+    private record ToolConversationScope(String userId, String conversationId) {
+    }
+
+    private record ListingReference(UUID listingId, String title, String message) {
+        static ListingReference resolved(UUID listingId, String title) {
+            return new ListingReference(listingId, title, null);
+        }
+
+        static ListingReference unresolved(String message) {
+            return new ListingReference(null, null, message);
+        }
+
+        boolean resolved() {
+            return listingId != null;
+        }
     }
 }

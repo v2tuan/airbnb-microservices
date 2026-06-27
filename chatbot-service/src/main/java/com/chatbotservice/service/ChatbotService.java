@@ -30,6 +30,8 @@ import java.util.regex.Pattern;
 @Slf4j
 public class ChatbotService {
     private static final String LISTING_CARDS_CONTEXT_KEY = "listingCards";
+    private static final String CONVERSATION_ID_CONTEXT_KEY = "conversationId";
+    private static final String USER_ID_CONTEXT_KEY = "userId";
     private static final Pattern SAFE_CONVERSATION_ID = Pattern.compile("[A-Za-z0-9_-]{1,80}");
 
     private static final String SYSTEM_PROMPT = """
@@ -41,8 +43,10 @@ public class ChatbotService {
             - Tra loi bang Markdown hop le: dung heading, **in dam**, danh sach, bang va code block khi phu hop.
             - Khi nguoi dung hoi du lieu phong, gia, vi tri hoac suc chua, hay dung tool `search_listings`.
             - Khi nguoi dung hoi phong/listing con trong, co the dat duoc, available/free/bookable theo ngay hoac khoang ngay, hay dung tool `check_listing_availability`.
-            - Voi `check_listing_availability`, chi duoc dung listingId da xuat hien trong ket qua tool truoc do hoac nguoi dung cung cap ro rang. Khong duoc tu bia listingId.
-            - Neu nguoi dung hoi "phong nay" nhung lich su co nhieu listing va khong ro can nao, hay hoi lai nguoi dung muon kiem tra can nao.
+            - Voi `check_listing_availability`, uu tien dung listingId da xuat hien trong ket qua tool truoc do hoac nguoi dung cung cap ro rang. Khong duoc tu bia listingId.
+            - Neu nguoi dung noi ten phong, cum tu trong ten phong, hoac thong tin dac trung cua can ho nhung khong co listingId, hay truyen listingTitle vao tool availability.
+            - Neu nguoi dung hoi "phong nay" nhung khong chac listing nao, goi tool availability voi thong tin dang co; tool se tim trong cac ket qua tim kiem truoc do va yeu cau xac nhan neu mo ho.
+            - Neu tool tra ve NEED_LISTING_SELECTION, hay hoi lai nguoi dung can kiem tra can ho nao, dua ra ten/city/gia cua cac lua chon neu co.
             - Neu nguoi dung chi hoi mot ngay, hieu la 1 dem: checkIn la ngay do va checkOut la ngay ke tiep.
             - Khi tool availability tra ve dailyAvailability, hay noi ro: co dat duoc tron khoang khong, ngay/dem nao con trong, ngay/dem nao khong trong va ly do neu co.
             - Khong bia listing, gia, tinh trang phong, booking, thanh toan hoac thong tin nguoi dung.
@@ -65,9 +69,8 @@ public class ChatbotService {
             ObjectMapper objectMapper,
             ChatMemory chatMemory
     ) {
-        // MessageChatMemoryAdvisor is the Spring AI component that provides multi-turn
-        // conversation memory by conversation id. We no longer keep a separate listing
-        // context cache beside this standard chat memory.
+        // ChatMemory lưu hội thoại tự nhiên cho LLM.
+        // Listing context riêng chỉ lưu snapshot có cấu trúc để tool resolve đúng listingId.
         this.chatClient = builder
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
@@ -88,7 +91,7 @@ public class ChatbotService {
                 .system(systemPrompt())
                 .user(message)
                 .tools(listingTool)
-                .toolContext(toolContext(userId, listingCards))
+                .toolContext(toolContext(userId, conversation.publicId(), listingCards))
                 .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, conversation.memoryKey()))
                 .call()
                 .content();
@@ -104,7 +107,7 @@ public class ChatbotService {
                 .system(systemPrompt())
                 .user(message)
                 .tools(listingTool)
-                .toolContext(toolContext(userId, listingCards))
+                .toolContext(toolContext(userId, conversation.publicId(), listingCards))
                 .advisors(advisor -> advisor.param(ChatMemory.CONVERSATION_ID, conversation.memoryKey()))
                 .stream()
                 .content()
@@ -134,10 +137,12 @@ public class ChatbotService {
 
     private Map<String, Object> toolContext(
             String userId,
+            String conversationId,
             List<ListingCardResponse> listingCards
     ) {
         return Map.of(
-                "userId", userId,
+                USER_ID_CONTEXT_KEY, userId,
+                CONVERSATION_ID_CONTEXT_KEY, conversationId,
                 LISTING_CARDS_CONTEXT_KEY, listingCards
         );
     }
