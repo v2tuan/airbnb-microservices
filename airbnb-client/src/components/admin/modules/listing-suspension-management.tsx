@@ -126,8 +126,8 @@ export function ListingSuspensionManagementModule() {
     <>
       <AdminPageHeader
         eyebrow="Listing operations"
-        title="Listing suspension management"
-        description="Suspend or unsuspend listings. Suspension blocks new booking requests but must not automatically cancel existing bookings."
+        title="Listing management"
+        description="Review listing inventory, status, location and bookability controls from listing-service."
       />
       <div className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
         <div className="grid gap-4 md:grid-cols-3">
@@ -155,7 +155,7 @@ export function ListingSuspensionManagementModule() {
           <AdminCard className="p-0">
             <AdminSectionHeader
               title="Listing inventory"
-              description="Suspended listings are excluded from new booking requests without cancelling existing bookings."
+              description="Select a listing to manage bookability. Existing reservations remain governed by their booking lifecycle."
             />
             <div className="p-5">
               {loading ? <AdminLoadingRows /> : null}

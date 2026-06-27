@@ -32,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -145,6 +146,23 @@ public class ListingService implements IListingService {
         log.info("Getting all listings");
 
         return listingRepository.findAll().stream()
+                .map(listingMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ListingResponse> getAdminListings(ListingStatus status, String keyword, Integer limit) {
+        int safeLimit = normalizeAdminListingLimit(limit);
+        String normalizedKeyword = normalizeFilter(keyword);
+
+        log.info("Getting admin listings status={}, keyword={}, limit={}", status, normalizedKeyword, safeLimit);
+
+        Pageable pageable = PageRequest.of(0, safeLimit, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        return listingRepository.findAll(adminListingSpecification(status, normalizedKeyword), pageable)
+                .getContent()
+                .stream()
                 .map(listingMapper::toResponse)
                 .toList();
     }
@@ -684,6 +702,40 @@ public class ListingService implements IListingService {
         }
 
         return Math.min(limit, 100);
+    }
+
+    private int normalizeAdminListingLimit(Integer limit) {
+        if (limit == null || limit < 1) {
+            return 200;
+        }
+
+        return Math.min(limit, 500);
+    }
+
+    private Specification<Listing> adminListingSpecification(ListingStatus status, String keyword) {
+        return (root, query, criteriaBuilder) -> {
+            if (query != null) {
+                query.distinct(true);
+            }
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (status != null) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+
+            if (keyword != null) {
+                String pattern = "%" + keyword.toLowerCase(Locale.ROOT) + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("city")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("country")), pattern),
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("hostId")), pattern)
+                ));
+            }
+
+            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
+        };
     }
 
     private BigDecimal basePriceOrMax(Listing listing) {
