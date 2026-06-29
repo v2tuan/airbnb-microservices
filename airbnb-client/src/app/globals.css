@@ -127,3 +127,142 @@
     @apply font-sans;
   }
 }
+
+.admin-dark {
+  color-scheme: light;
+  --background: oklch(0.985 0.003 260);
+  --foreground: oklch(0.13 0.01 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.13 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.13 0.01 260);
+  --primary: oklch(0.13 0.01 260);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.004 260);
+  --secondary-foreground: oklch(0.13 0.01 260);
+  --muted: oklch(0.95 0.004 260);
+  --muted-foreground: oklch(0.48 0.014 260);
+  --accent: oklch(0.93 0.004 260);
+  --accent-foreground: oklch(0.13 0.01 260);
+  --border: oklch(0.89 0.006 260);
+  --input: oklch(0.89 0.006 260);
+  --ring: oklch(0.7 0.012 260);
+  background: #f7f7f8;
+}
+
+.admin-dark .bg-white,
+.admin-dark .bg-white\/95,
+.admin-dark .bg-\[\#fff\] {
+  background-color: #ffffff !important;
+}
+
+.admin-dark .bg-\[\#f7f7f7\],
+.admin-dark .bg-\[\#f2f2f2\],
+.admin-dark .bg-neutral-50,
+.admin-dark .bg-neutral-100 {
+  background-color: #f0f0f3 !important;
+}
+
+.admin-dark .hover\:bg-\[\#f7f7f7\]:hover,
+.admin-dark .hover\:bg-neutral-100:hover,
+.admin-dark .hover\:bg-accent:hover {
+  background-color: #e7e7eb !important;
+}
+
+.admin-dark .border-\[\#ebebeb\],
+.admin-dark .border-\[\#dddddd\],
+.admin-dark .border-\[\#eeeeee\],
+.admin-dark .border-neutral-200,
+.admin-dark .border-neutral-300,
+.admin-dark .border-border {
+  border-color: #dedee6 !important;
+}
+
+.admin-dark .ring-\[\#dddddd\] {
+  --tw-ring-color: #dedee6 !important;
+}
+
+.admin-dark .text-\[\#222222\],
+.admin-dark .text-neutral-950,
+.admin-dark .text-neutral-900 {
+  color: #0b0b0f !important;
+}
+
+.admin-dark .text-\[\#3f3f3f\],
+.admin-dark .text-\[\#6a6a6a\],
+.admin-dark .text-neutral-700,
+.admin-dark .text-neutral-600 {
+  color: #696b78 !important;
+}
+
+.admin-dark .text-\[\#929292\],
+.admin-dark .text-muted-foreground {
+  color: #8a8d99 !important;
+}
+
+.admin-dark .shadow-none {
+  box-shadow: none !important;
+}
+
+.admin-dark .bg-rose-50 {
+  background-color: #fff1f3 !important;
+}
+
+.admin-dark .bg-emerald-50 {
+  background-color: #ecfdf3 !important;
+}
+
+.admin-dark .bg-amber-50 {
+  background-color: #fffbeb !important;
+}
+
+.admin-dark .bg-blue-50,
+.admin-dark .bg-indigo-50 {
+  background-color: #eff6ff !important;
+}
+
+.admin-dark .bg-red-50 {
+  background-color: #fef2f2 !important;
+}
+
+.admin-dark .border-rose-200,
+.admin-dark .border-emerald-200,
+.admin-dark .border-amber-200,
+.admin-dark .border-blue-200,
+.admin-dark .border-indigo-200,
+.admin-dark .border-red-200 {
+  border-color: #dedee6 !important;
+}
+
+.admin-dark input,
+.admin-dark textarea,
+.admin-dark select {
+  background-color: #ffffff !important;
+  border-color: #dedee6 !important;
+  color: #0b0b0f !important;
+}
+
+.admin-dark input::placeholder,
+.admin-dark textarea::placeholder {
+  color: #8a8d99 !important;
+}
+
+.admin-dark table tr {
+  border-color: #eeeeee !important;
+}
+
+.admin-dark table tr:hover {
+  background-color: #f7f7f8 !important;
+}
+
+.admin-dark table thead tr {
+  background-color: #f7f7f8 !important;
+}
+
+.admin-dark table th {
+  color: #696b78 !important;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

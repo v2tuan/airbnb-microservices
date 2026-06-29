@@ -55,6 +55,12 @@ const navItems = [
     icon: ReceiptText,
   },
   {
+    href: "/admin/users",
+    label: "Users",
+    description: "Accounts and hosts",
+    icon: User,
+  },
+  {
     href: "/admin/refunds",
     label: "Refunds",
     description: "Refund operations",
@@ -147,7 +153,7 @@ export function AdminAccountMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="h-10 rounded-full border-[#dddddd] bg-white px-2 pr-3 shadow-none hover:bg-[#f7f7f7]"
+          className="h-10 rounded-full border-[#dedee6] bg-white px-2 pr-3 text-[#0b0b0f] shadow-none hover:bg-[#f3f3f6]"
         >
           <Avatar className="size-8">
             <AvatarImage src={authUser?.avatarUrl || undefined} alt="avatar" />
@@ -155,11 +161,14 @@ export function AdminAccountMenu({
               {getInitials(displayName, email)}
             </AvatarFallback>
           </Avatar>
-          <ChevronDown className="size-4 text-[#6a6a6a]" />
+          <ChevronDown className="size-4 text-[#696b78]" />
           <span className="sr-only">Open admin account menu</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72 rounded-[14px] bg-white">
+      <DropdownMenuContent
+        align="end"
+        className="admin-dark w-72 rounded-[14px] border-[#dedee6] bg-white text-[#0b0b0f]"
+      >
         <DropdownMenuLabel className="p-3">
           <div className="flex items-start gap-3">
             <Avatar className="size-10">
@@ -172,16 +181,16 @@ export function AdminAccountMenu({
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-[#222222]">
+              <span className="block truncate text-sm font-semibold text-[#0b0b0f]">
                 {displayName}
               </span>
-              <span className="mt-0.5 block truncate text-xs text-[#6a6a6a]">
+              <span className="mt-0.5 block truncate text-xs text-[#696b78]">
                 {email ?? "No email available"}
               </span>
               <span className="mt-1 block truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-[#ff385c]">
                 Role: {roleLabel}
               </span>
-              <span className="mt-1 inline-flex rounded-full border border-[#ebebeb] bg-[#f7f7f7] px-2 py-0.5 text-[11px] font-medium text-[#6a6a6a]">
+              <span className="mt-1 inline-flex rounded-full border border-[#dedee6] bg-[#f3f3f6] px-2 py-0.5 text-[11px] font-medium text-[#696b78]">
                 {operationLabel}
               </span>
             </div>
@@ -288,7 +297,7 @@ function AdminNavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 function AdminSidebar() {
   return (
-    <aside className="sticky top-0 hidden h-screen w-[288px] shrink-0 border-r border-[#ebebeb] bg-white px-5 py-6 lg:flex lg:flex-col">
+    <aside className="sticky top-0 hidden h-screen w-[288px] shrink-0 border-r border-[#dedee6] bg-[#f4f4f6] px-5 py-6 lg:flex lg:flex-col">
       <AdminBrandBlock />
 
       <div className="mt-6 flex-1 overflow-y-auto pr-1">
@@ -316,8 +325,11 @@ function MobileAdminNav() {
               <span className="sr-only">Open admin navigation</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[340px] bg-white">
-            <SheetHeader className="border-b border-[#ebebeb]">
+          <SheetContent
+            side="left"
+            className="admin-dark w-[340px] border-[#dedee6] bg-[#f4f4f6] text-[#0b0b0f]"
+          >
+            <SheetHeader className="border-b border-[#dedee6]">
               <SheetTitle>
                 <AdminBrandBlock />
               </SheetTitle>
@@ -342,15 +354,15 @@ function AccessGate({
   children?: ReactNode;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f7f7] px-4">
-      <section className="max-w-lg rounded-[20px] border border-[#dddddd] bg-white p-8 text-center shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_2px_6px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.10)]">
+    <main className="admin-dark flex min-h-screen items-center justify-center bg-[#f7f7f8] px-4 text-[#0b0b0f]">
+      <section className="max-w-lg rounded-[20px] border border-[#dedee6] bg-white p-8 text-center shadow-none">
         <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-rose-50 text-[#ff385c]">
           <AlertTriangle className="size-6" />
         </div>
-        <h1 className="mt-5 text-2xl font-semibold tracking-tight text-[#222222]">
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight text-[#0b0b0f]">
           {title}
         </h1>
-        <p className="mt-3 text-sm leading-6 text-[#6a6a6a]">{description}</p>
+        <p className="mt-3 text-sm leading-6 text-[#696b78]">{description}</p>
         <div className="mt-6 flex justify-center gap-3">{children}</div>
       </section>
     </main>
@@ -362,7 +374,7 @@ export function AdminGuard({ children }: { children: ReactNode }) {
 
   if (!hydrated) {
     return (
-      <main className="min-h-screen bg-white p-6">
+      <main className="admin-dark min-h-screen bg-[#f7f7f8] p-6 text-[#0b0b0f]">
         <div className="mx-auto h-[520px] max-w-5xl animate-pulse rounded-[20px] bg-[#f7f7f7]" />
       </main>
     );
@@ -403,7 +415,7 @@ export function AdminGuard({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-white text-[#222222]">
+    <div className="admin-dark min-h-screen bg-[#f7f7f8] text-[#0b0b0f]">
       <div className="flex min-h-screen">
         <AdminSidebar />
         <div className="min-w-0 flex-1">

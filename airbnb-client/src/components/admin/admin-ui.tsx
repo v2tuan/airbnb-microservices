@@ -1,6 +1,7 @@
 import { AlertCircle, Inbox } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import { AdminAccountMenu } from "@/components/admin/admin-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -76,13 +77,17 @@ export function AdminPageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="border-b border-[#ebebeb] bg-white">
-      <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-5 py-5 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+    <header className="border-b border-[#dedee6] bg-white/95 backdrop-blur">
+      <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-5 py-6 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
         <div className="max-w-3xl">
-          <h1 className="text-[24px] font-semibold leading-[1.2] tracking-[-0.01em] text-[#222222]">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#dedee6] bg-[#f4f4f6] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#696b78]">
+            <span className="size-1.5 rounded-full bg-[#ff385c]" />
+            {eyebrow}
+          </div>
+          <h1 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.01em] text-[#0b0b0f]">
             {title}
           </h1>
-          <p className="mt-1.5 max-w-2xl text-sm leading-5 text-[#6a6a6a]">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[#696b78]">
             {description}
           </p>
         </div>
@@ -105,7 +110,7 @@ export function AdminCard({
   return (
     <Card
       className={cn(
-        "rounded-[14px] border-[#dddddd] bg-white p-5 shadow-none",
+        "rounded-[16px] border-[#dedee6] bg-white p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]",
         className,
       )}
     >
@@ -119,35 +124,72 @@ export function AdminMetricCard({
   value,
   note,
   accent = "neutral",
+  icon: Icon,
 }: {
   label: string;
   value: string | number;
   note: string;
   accent?: "neutral" | "brand" | "success" | "warning" | "danger";
+  icon?: LucideIcon;
 }) {
   const accents = {
-    neutral: "bg-[#f7f7f7] text-[#222222]",
-    brand: "bg-rose-50 text-[#ff385c]",
-    success: "bg-emerald-50 text-emerald-700",
-    warning: "bg-amber-50 text-amber-800",
-    danger: "bg-red-50 text-red-700",
+    neutral: {
+      icon: "bg-[#f4f4f6] text-[#0b0b0f]",
+      dot: "bg-[#a6a7ad]",
+      bar: "bg-[#0b0b0f]",
+    },
+    brand: {
+      icon: "bg-rose-50 text-[#ff385c]",
+      dot: "bg-[#ff385c]",
+      bar: "bg-[#ff385c]",
+    },
+    success: {
+      icon: "bg-emerald-50 text-emerald-700",
+      dot: "bg-emerald-500",
+      bar: "bg-emerald-500",
+    },
+    warning: {
+      icon: "bg-amber-50 text-amber-800",
+      dot: "bg-amber-400",
+      bar: "bg-amber-400",
+    },
+    danger: {
+      icon: "bg-red-50 text-red-700",
+      dot: "bg-red-500",
+      bar: "bg-red-500",
+    },
   };
+  const style = accents[accent];
 
   return (
-    <Card className="rounded-[14px] border-[#dddddd] bg-white py-5 shadow-none">
-      <CardHeader className="gap-0 px-5">
-        <CardTitle className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6a6a6a]">
-          {label}
-        </CardTitle>
-        <CardAction>
-          <span className={cn("block size-2 rounded-full", accents[accent])} />
+    <Card className="group relative overflow-hidden rounded-[16px] border-[#dedee6] bg-white py-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,24,40,0.08)]">
+      <span className={cn("absolute inset-x-0 top-0 h-1", style.bar)} />
+      <CardHeader className="flex-row items-start justify-between gap-3 px-5">
+        <div className="min-w-0">
+          <CardTitle className="text-xs font-semibold uppercase tracking-[0.08em] text-[#696b78]">
+            {label}
+          </CardTitle>
+        </div>
+        <CardAction className="m-0">
+          {Icon ? (
+            <span
+              className={cn(
+                "flex size-10 items-center justify-center rounded-[12px]",
+                style.icon,
+              )}
+            >
+              <Icon className="size-4" />
+            </span>
+          ) : (
+            <span className={cn("block size-2 rounded-full", style.dot)} />
+          )}
         </CardAction>
       </CardHeader>
       <CardContent className="px-5">
-        <p className="text-[28px] font-semibold leading-tight tracking-[-0.01em] text-[#222222]">
+        <p className="text-[30px] font-semibold leading-tight tracking-[-0.01em] text-[#0b0b0f]">
           {value}
         </p>
-        <p className="mt-2 text-sm leading-5 text-[#6a6a6a]">{note}</p>
+        <p className="mt-2 text-sm leading-5 text-[#696b78]">{note}</p>
       </CardContent>
     </Card>
   );
@@ -232,7 +274,7 @@ export function AdminEmptyState({
   actionLabel?: string;
 }) {
   return (
-    <Empty className="min-h-64 rounded-[14px] border border-dashed border-[#dddddd] bg-[#f7f7f7]">
+    <Empty className="min-h-64 rounded-[16px] border border-dashed border-[#dedee6] bg-[#f4f4f6]">
       <EmptyHeader>
         <EmptyMedia
           variant="icon"
@@ -267,7 +309,7 @@ export function AdminErrorState({
   description: string;
 }) {
   return (
-    <Alert className="rounded-[14px] border-amber-200 bg-amber-50 text-amber-950">
+    <Alert className="rounded-[16px] border-amber-200 bg-amber-50 text-amber-950 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
       <AlertCircle className="size-4" />
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription className="text-amber-800">
@@ -304,13 +346,13 @@ export function AdminSectionHeader({
   action?: ReactNode;
 }) {
   return (
-    <CardHeader className="border-b border-[#ebebeb] pb-5">
+    <CardHeader className="border-b border-[#dedee6] bg-white/80 pb-5">
       <div>
-        <CardTitle className="text-base font-semibold leading-tight text-[#222222]">
+        <CardTitle className="text-base font-semibold leading-tight text-[#0b0b0f]">
           {title}
         </CardTitle>
         {description ? (
-          <CardDescription className="mt-1 leading-6 text-[#6a6a6a]">
+          <CardDescription className="mt-1 leading-6 text-[#696b78]">
             {description}
           </CardDescription>
         ) : null}

@@ -162,6 +162,22 @@ export interface AdminListingStatusRequest {
   suspendedUntil?: string;
 }
 
+export interface AdminUserRecord {
+  userId: string;
+  keycloakUserId: string;
+  fullName: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatarUrl?: string | null;
+  gender?: string | null;
+  host: boolean;
+  superhost?: boolean | null;
+  hostVerificationStatus?: string | null;
+  stripeAccountStatus?: "NONE" | "PENDING" | "ACTIVE" | "RESTRICTED" | string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface AdminPaymentOverviewSummary {
   paymentCount: number;
   capturedAmount: number;
@@ -352,6 +368,14 @@ export async function listAdminListings(
       `${prefix}/listings/admin?limit=${limit}`,
       authConfig(token),
     ),
+  );
+}
+
+export async function listAdminUsers(
+  token: string | null,
+): Promise<ApiResponse<AdminUserRecord[]>> {
+  return unwrap(
+    await apiClient.get(`${prefix}/users/admin/users`, authConfig(token)),
   );
 }
 

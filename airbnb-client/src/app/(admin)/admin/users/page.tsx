@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { UsersManagementModule } from "@/components/admin/modules/users-management";
 
 export default function AdminUsersPage() {
-  redirect("/admin");
+  return <UsersManagementModule />;
 }

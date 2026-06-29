@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, Bell, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type AuditEventRecord,
@@ -83,18 +84,21 @@ export function AuditEventsViewModule() {
             label="Events"
             value={metrics.total}
             note="Loaded audit entries."
+            icon={Bell}
           />
           <AdminMetricCard
             accent="danger"
             label="Critical"
             value={metrics.critical}
             note="Requires immediate review."
+            icon={ShieldAlert}
           />
           <AdminMetricCard
             accent="warning"
             label="Warnings"
             value={metrics.warnings}
             note="Operationally notable events."
+            icon={AlertTriangle}
           />
         </div>
         <AdminCard className="p-0">
@@ -132,7 +136,7 @@ export function AuditEventsViewModule() {
                     </p>
                     <p className="mt-3 text-xs text-[#6a6a6a]">
                       {formatAdminDate(item.occurredAt)} /{" "}
-                      {item.actorRole ?? "SYSTEM"} {item.actorId ?? ""}
+                      {item.actorRole ?? "SYSTEM"}
                     </p>
                   </div>
                 ))}

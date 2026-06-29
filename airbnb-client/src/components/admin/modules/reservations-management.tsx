@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ExternalLink } from "lucide-react";
+import { Ban, CalendarDays, ExternalLink, ShieldAlert, TicketCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -89,6 +89,18 @@ const initialFilters: ReservationFilters = {
 
 function getSummaryCode(item: AdminReservationSummary) {
   return item.reservationCode ?? item.bookingId.slice(0, 8);
+}
+
+function getGuestLabel(item: AdminReservationSummary) {
+  return item.guestName?.trim() || "Guest name unavailable";
+}
+
+function getHostLabel(item: AdminReservationSummary) {
+  return item.hostName?.trim() || "Host name unavailable";
+}
+
+function getListingLabel(item: AdminReservationSummary) {
+  return item.listingTitle?.trim() || "Listing title unavailable";
 }
 
 function getDetailTimeline(
@@ -213,6 +225,10 @@ export function ReservationsManagementModule() {
 
   const canSubmit = bookingId.trim() && reason.trim() && adminNote.trim();
   const timeline = getDetailTimeline(detail, selected);
+  const selectedActionReservation = useMemo(
+    () => items.find((item) => item.bookingId === bookingId) ?? null,
+    [bookingId, items],
+  );
 
   function updateFilter<K extends keyof ReservationFilters>(
     key: K,
@@ -282,18 +298,21 @@ export function ReservationsManagementModule() {
             value={metrics.total}
             note="Admin list response rows."
             accent="brand"
+            icon={TicketCheck}
           />
           <AdminMetricCard
             label="Force cancellable"
             value={metrics.forceCancelable}
             note="CONFIRMED or CHECKED_IN only."
             accent="warning"
+            icon={ShieldAlert}
           />
           <AdminMetricCard
             label="Admin cancelled"
             value={metrics.adminCancelled}
             note="CANCELLED_BY_ADMIN bookings."
             accent="danger"
+            icon={Ban}
           />
         </div>
 
@@ -366,7 +385,7 @@ export function ReservationsManagementModule() {
               <Input
                 value={filters.guest}
                 onChange={(event) => updateFilter("guest", event.target.value)}
-                placeholder="Guest name or id"
+                placeholder="Guest name"
                 className="h-14 rounded-[8px]"
               />
             </FieldLabel>
@@ -374,7 +393,7 @@ export function ReservationsManagementModule() {
               <Input
                 value={filters.host}
                 onChange={(event) => updateFilter("host", event.target.value)}
-                placeholder="Host name or id"
+                placeholder="Host name"
                 className="h-14 rounded-[8px]"
               />
             </FieldLabel>
@@ -384,7 +403,7 @@ export function ReservationsManagementModule() {
                 onChange={(event) =>
                   updateFilter("listing", event.target.value)
                 }
-                placeholder="Listing title or id"
+                placeholder="Listing title"
                 className="h-14 rounded-[8px]"
               />
             </FieldLabel>
@@ -438,7 +457,7 @@ export function ReservationsManagementModule() {
                             {getSummaryCode(item)}
                           </p>
                           <p className="text-xs text-[#6a6a6a]">
-                            {item.listingTitle ?? item.listingId}
+                            {getListingLabel(item)}
                           </p>
                         </TableCell>
                         <TableCell>
@@ -448,8 +467,8 @@ export function ReservationsManagementModule() {
                           {formatAdminDate(item.checkInDate)} -{" "}
                           {formatAdminDate(item.checkOutDate)}
                         </TableCell>
-                        <TableCell>{item.guestName ?? item.guestId}</TableCell>
-                        <TableCell>{item.hostName ?? item.hostId}</TableCell>
+                        <TableCell>{getGuestLabel(item)}</TableCell>
+                        <TableCell>{getHostLabel(item)}</TableCell>
                         <TableCell>
                           {formatCurrency(item.totalAmount, item.currency)}
                         </TableCell>
@@ -468,7 +487,7 @@ export function ReservationsManagementModule() {
                               disabled={!canForceCancelStatus(item.status)}
                               onClick={() => setBookingId(item.bookingId)}
                             >
-                              Use id
+                              Select
                             </Button>
                           </div>
                         </TableCell>
@@ -491,12 +510,17 @@ export function ReservationsManagementModule() {
               </p>
             </div>
             <div className="mt-5 space-y-4">
-              <FieldLabel label="Booking id">
+              <FieldLabel label="Selected reservation">
                 <Input
-                  value={bookingId}
-                  onChange={(event) => setBookingId(event.target.value)}
-                  placeholder="UUID"
+                  value={
+                    selectedActionReservation
+                      ? `${getSummaryCode(selectedActionReservation)} - ${getListingLabel(selectedActionReservation)}`
+                      : ""
+                  }
+                  onChange={() => undefined}
+                  placeholder="Select a reservation from the queue"
                   className="h-14 rounded-[8px]"
+                  readOnly
                 />
               </FieldLabel>
               <FieldLabel label="Reason">
@@ -602,7 +626,6 @@ export function ReservationsManagementModule() {
                     Booking info
                   </h3>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <DetailLine label="Booking id" value={selected.bookingId} />
                     <DetailLine
                       label="Reservation code"
                       value={
@@ -632,11 +655,7 @@ export function ReservationsManagementModule() {
                     <div className="mt-3 space-y-3">
                       <DetailLine
                         label="Name"
-                        value={detail?.guest.name ?? selected.guestName}
-                      />
-                      <DetailLine
-                        label="Id"
-                        value={detail?.guest.id ?? selected.guestId}
+                        value={detail?.guest.name ?? getGuestLabel(selected)}
                       />
                     </div>
                   </div>
@@ -647,11 +666,7 @@ export function ReservationsManagementModule() {
                     <div className="mt-3 space-y-3">
                       <DetailLine
                         label="Name"
-                        value={detail?.host.name ?? selected.hostName}
-                      />
-                      <DetailLine
-                        label="Id"
-                        value={detail?.host.id ?? selected.hostId}
+                        value={detail?.host.name ?? getHostLabel(selected)}
                       />
                     </div>
                   </div>
@@ -662,11 +677,7 @@ export function ReservationsManagementModule() {
                     <div className="mt-3 space-y-3">
                       <DetailLine
                         label="Title"
-                        value={detail?.listing.title ?? selected.listingTitle}
-                      />
-                      <DetailLine
-                        label="Id"
-                        value={detail?.listing.id ?? selected.listingId}
+                        value={detail?.listing.title ?? getListingLabel(selected)}
                       />
                     </div>
                   </div>

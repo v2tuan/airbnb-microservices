@@ -4,7 +4,9 @@ import com.event.dto.NotificationEvent;
 import com.userservice.dto.identity.*;
 import com.userservice.dto.request.RegistrationRequest;
 import com.userservice.dto.request.UserUpdateRequestDTO;
+import com.userservice.dto.response.AdminUserResponseDTO;
 import com.userservice.dto.response.UserProfileResponseDTO;
+import com.userservice.entity.HostProfile;
 import com.userservice.entity.User;
 import com.userservice.mapper.UserMapper;
 import com.userservice.repository.*;
@@ -12,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Sort;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +54,14 @@ public class UserService {
   public UserProfileResponseDTO getMe(String authorizationHeader) {
     User user = getUserFromAuthorizationHeader(authorizationHeader);
     return toUserProfileResponse(user);
+  }
+
+  @Transactional(readOnly = true)
+  public List<AdminUserResponseDTO> getAdminUsers() {
+    return userRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"))
+        .stream()
+        .map(this::toAdminUserResponse)
+        .toList();
   }
 
   @Transactional
@@ -110,6 +121,26 @@ public class UserService {
         user.getAvatarUrl(),
         List.of(),
         user.getHostProfile() != null
+    );
+  }
+
+  private AdminUserResponseDTO toAdminUserResponse(User user) {
+    HostProfile hostProfile = user.getHostProfile();
+
+    return new AdminUserResponseDTO(
+        user.getUserId(),
+        user.getKeycloakUserId(),
+        user.getFullName().trim(),
+        user.getFirstName(),
+        user.getLastName(),
+        user.getAvatarUrl(),
+        user.getGender(),
+        hostProfile != null,
+        hostProfile != null ? hostProfile.getIsSuperhost() : null,
+        hostProfile != null ? hostProfile.getVerificationStatus() : null,
+        user.getStripeAccountStatus(),
+        user.getCreatedAt(),
+        user.getUpdatedAt()
     );
   }
 
