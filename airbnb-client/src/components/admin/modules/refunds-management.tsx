@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, Clock3, ReceiptText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type AdminRefundRecord,
@@ -34,6 +35,10 @@ function refundTone(status: AdminRefundRecord["status"]) {
   if (status === "FAILED") return "danger";
   if (status === "PROCESSING") return "warning";
   return "brand";
+}
+
+function shortCode(value?: string | null) {
+  return value ? value.slice(0, 8).toUpperCase() : "N/A";
 }
 
 export function RefundsManagementModule() {
@@ -96,18 +101,21 @@ export function RefundsManagementModule() {
             value={metrics.total}
             note="Loaded from admin payment endpoint."
             accent="brand"
+            icon={ReceiptText}
           />
           <AdminMetricCard
             label="Pending work"
             value={metrics.pending}
             note="PENDING or PROCESSING."
             accent="warning"
+            icon={Clock3}
           />
           <AdminMetricCard
             label="Failed"
             value={metrics.failed}
             note="Requires provider/admin recovery."
             accent="danger"
+            icon={AlertTriangle}
           />
         </div>
         <AdminCard className="p-0">
@@ -140,9 +148,11 @@ export function RefundsManagementModule() {
                   {items.map((item) => (
                     <TableRow key={item.refundId} className="border-[#eeeeee]">
                       <TableCell>
-                        <p className="font-semibold">{item.refundId}</p>
+                        <p className="font-semibold">
+                          Refund {shortCode(item.refundId)}
+                        </p>
                         <p className="text-xs text-[#6a6a6a]">
-                          Booking {item.bookingId}
+                          Reservation {shortCode(item.bookingId)}
                         </p>
                       </TableCell>
                       <TableCell>

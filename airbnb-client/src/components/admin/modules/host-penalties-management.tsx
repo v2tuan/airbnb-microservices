@@ -1,5 +1,6 @@
 "use client";
 
+import { BadgeMinus, CheckCircle2, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type HostPenaltyRecord,
@@ -21,7 +22,6 @@ import {
   TextStatusPill,
 } from "@/components/admin/admin-ui";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -80,19 +80,28 @@ export function HostPenaltiesManagementModule() {
     [items],
   );
 
-  const canSubmit = penaltyId.trim() && reason.trim();
+  const selectedPenalty = useMemo(
+    () => items.find((item) => item.penaltyId === penaltyId) ?? null,
+    [items, penaltyId],
+  );
+
+  const canSubmit = !!selectedPenalty && reason.trim();
+
+  function shortCode(value?: string | null) {
+    return value ? value.slice(0, 8).toUpperCase() : "N/A";
+  }
 
   async function submitWaive() {
-    if (!canSubmit) return;
+    if (!canSubmit || !selectedPenalty) return;
 
     setSubmitting(true);
     setActionMessage(null);
     try {
-      await waiveAdminHostPenalty(token, penaltyId.trim(), reason.trim());
+      await waiveAdminHostPenalty(token, selectedPenalty.penaltyId, reason.trim());
       setActionMessage("Host penalty waived.");
       setItems((current) =>
         current.map((item) =>
-          item.penaltyId === penaltyId.trim()
+          item.penaltyId === selectedPenalty.penaltyId
             ? {
                 ...item,
                 status: "WAIVED",
@@ -125,18 +134,21 @@ export function HostPenaltiesManagementModule() {
             value={metrics.total}
             note="Penalty records returned."
             accent="brand"
+            icon={BadgeMinus}
           />
           <AdminMetricCard
             label="Active"
             value={metrics.active}
             note="Counts toward thresholds."
             accent="danger"
+            icon={ShieldAlert}
           />
           <AdminMetricCard
             label="Waived"
             value={metrics.waived}
             note="Excluded from threshold calculations."
             accent="success"
+            icon={CheckCircle2}
           />
         </div>
 
@@ -176,9 +188,11 @@ export function HostPenaltiesManagementModule() {
                         className="border-[#eeeeee]"
                       >
                         <TableCell>
-                          <p className="font-semibold">{item.penaltyId}</p>
+                          <p className="font-semibold">
+                            Penalty {shortCode(item.penaltyId)}
+                          </p>
                           <p className="text-xs text-[#6a6a6a]">
-                            Host {item.hostId}
+                            Host {shortCode(item.hostId)}
                           </p>
                         </TableCell>
                         <TableCell>
@@ -200,7 +214,7 @@ export function HostPenaltiesManagementModule() {
                             disabled={item.status !== "ACTIVE"}
                             onClick={() => setPenaltyId(item.penaltyId)}
                           >
-                            Use id
+                            Select
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -222,14 +236,39 @@ export function HostPenaltiesManagementModule() {
               </p>
             </div>
             <div className="mt-5 space-y-4">
-              <FieldLabel label="Penalty id">
-                <Input
-                  value={penaltyId}
-                  onChange={(event) => setPenaltyId(event.target.value)}
-                  placeholder="UUID"
-                  className="h-14 rounded-[8px]"
+              {selectedPenalty ? (
+                <div className="rounded-[14px] border border-[#ebebeb] bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-[#222222]">
+                        Penalty {shortCode(selectedPenalty.penaltyId)}
+                      </p>
+                      <p className="mt-1 text-sm text-[#6a6a6a]">
+                        Host {shortCode(selectedPenalty.hostId)} / Booking{" "}
+                        {shortCode(selectedPenalty.bookingId)}
+                      </p>
+                    </div>
+                    <TextStatusPill
+                      tone={
+                        selectedPenalty.status === "ACTIVE"
+                          ? "danger"
+                          : "neutral"
+                      }
+                    >
+                      {selectedPenalty.status}
+                    </TextStatusPill>
+                  </div>
+                  <p className="mt-3 text-sm text-[#6a6a6a]">
+                    {selectedPenalty.points} point(s), reason{" "}
+                    {selectedPenalty.reasonCode ?? "not set"}.
+                  </p>
+                </div>
+              ) : (
+                <AdminEmptyState
+                  title="No penalty selected"
+                  description="Select an active penalty from the ledger before submitting a waiver."
                 />
-              </FieldLabel>
+              )}
               <FieldLabel label="Waiver reason">
                 <Textarea
                   value={reason}

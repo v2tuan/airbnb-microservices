@@ -83,8 +83,8 @@ const emptyPayment: AdminPaymentOverview = {
 };
 
 const revenueConfig = {
-  captured: { label: "Captured", color: "#16a34a" },
-  refunded: { label: "Refunded", color: "#ff385c" },
+  captured: { label: "Captured", color: "#050507" },
+  refunded: { label: "Refunded", color: "#a6a7ad" },
 } satisfies ChartConfig;
 
 const visitsConfig = {
@@ -92,10 +92,10 @@ const visitsConfig = {
 } satisfies ChartConfig;
 
 const reservationStatusConfig = {
-  count: { label: "Reservations", color: "#2563eb" },
+  count: { label: "Reservations", color: "#050507" },
 } satisfies ChartConfig;
 
-const pieColors = ["#ff385c", "#2563eb", "#16a34a", "#f59e0b"];
+const pieColors = ["#050507", "#5b5d68", "#a6a7ad", "#d7d8de"];
 
 function formatDay(value: string) {
   const date = new Date(value);
@@ -143,11 +143,11 @@ function displayReservationCode(item: AdminReservationSummary) {
 }
 
 function displayGuest(item: AdminReservationSummary) {
-  return item.guestName?.trim() || `Guest #${shortId(item.guestId, 6)}`;
+  return item.guestName?.trim() || "Guest name unavailable";
 }
 
 function displayListing(item: AdminReservationSummary) {
-  return item.listingTitle?.trim() || `Listing #${shortId(item.listingId, 6)}`;
+  return item.listingTitle?.trim() || "Listing title unavailable";
 }
 
 function getListingCover(item: ListingResponse) {
@@ -252,7 +252,7 @@ function buildTopBookedListings(
     counts.set(reservation.listingId, {
       listingId: reservation.listingId,
       title:
-        listing?.title ?? reservation.listingTitle ?? reservation.listingId,
+        listing?.title ?? reservation.listingTitle ?? "Listing title unavailable",
       city: listing?.city,
       country: listing?.country,
       coverImageUrl: listing ? getListingCover(listing) : undefined,
@@ -421,17 +421,18 @@ export function AdminOverviewModule() {
             return (
               <Card
                 key={item.label}
-                className="rounded-[10px] border-[#dddddd] bg-white py-0 shadow-none"
+                className="group relative overflow-hidden rounded-[16px] border-[#dedee6] bg-white py-0 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(16,24,40,0.08)]"
               >
-                <CardContent className="flex items-center justify-between gap-4 p-4">
+                <span className="absolute inset-x-0 top-0 h-1 bg-[#0b0b0f]" />
+                <CardContent className="flex items-center justify-between gap-4 p-5">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-[#6a6a6a]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#696b78]">
                       {item.label}
                     </p>
-                    <p className="mt-1 truncate text-2xl font-semibold text-[#222222]">
+                    <p className="mt-3 truncate text-[30px] font-semibold leading-tight text-[#0b0b0f]">
                       {item.value}
                     </p>
-                    <p className="mt-1 truncate text-xs text-[#6a6a6a]">
+                    <p className="mt-2 truncate text-sm text-[#696b78]">
                       {item.note}
                     </p>
                   </div>
@@ -439,7 +440,7 @@ export function AdminOverviewModule() {
                     asChild
                     variant="ghost"
                     size="icon"
-                    className={cn("size-10 shrink-0 rounded-full", item.tone)}
+                    className={cn("size-11 shrink-0 rounded-[14px]", item.tone)}
                   >
                     <Link href={item.href}>
                       <Icon className="size-4" />
@@ -475,22 +476,25 @@ export function AdminOverviewModule() {
               {revenueFlow.length ? (
                 <ChartContainer config={revenueConfig} className="h-[350px]">
                   <AreaChart data={revenueFlow}>
-                    <CartesianGrid vertical={false} stroke="#ebebeb" />
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="#eeeeee"
+                    />
                     <XAxis dataKey="day" tickLine={false} axisLine={false} />
                     <YAxis hide />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Area
                       dataKey="captured"
                       type="natural"
-                      fill="#dcfce7"
-                      stroke="#16a34a"
+                      fill="rgba(5,5,7,0.08)"
+                      stroke="#050507"
                       strokeWidth={2}
                     />
                     <Area
                       dataKey="refunded"
                       type="natural"
-                      fill="#fff1f3"
-                      stroke="#ff385c"
+                      fill="rgba(166,167,173,0.18)"
+                      stroke="#a6a7ad"
                       strokeWidth={2}
                     />
                   </AreaChart>
@@ -575,7 +579,10 @@ export function AdminOverviewModule() {
                     className="h-[260px]"
                   >
                     <BarChart data={reservationStatusRows} layout="vertical">
-                      <CartesianGrid horizontal={false} stroke="#ebebeb" />
+                      <CartesianGrid
+                        horizontal={false}
+                        stroke="#eeeeee"
+                      />
                       <XAxis type="number" hide />
                       <YAxis
                         dataKey="status"
@@ -587,7 +594,7 @@ export function AdminOverviewModule() {
                       <ChartTooltip content={<ChartTooltipContent />} />
                       <Bar
                         dataKey="count"
-                        fill="#2563eb"
+                        fill="#050507"
                         radius={[0, 8, 8, 0]}
                       />
                     </BarChart>
@@ -691,7 +698,7 @@ export function AdminOverviewModule() {
               <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead>ID</TableHead>
+                    <TableHead>Reservation</TableHead>
                     <TableHead>User</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Amount</TableHead>

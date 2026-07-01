@@ -1,6 +1,14 @@
 "use client";
 
-import { Banknote, CreditCard, RefreshCcw, WalletCards } from "lucide-react";
+import {
+  Banknote,
+  CircleDollarSign,
+  CreditCard,
+  ListChecks,
+  RefreshCcw,
+  RotateCcw,
+  WalletCards,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -66,13 +74,13 @@ const emptyOverview: AdminPaymentOverview = {
 };
 
 const paymentFlowConfig = {
-  captured: { label: "Captured", color: "#16a34a" },
-  refunded: { label: "Refunded", color: "#ff385c" },
-  payout: { label: "Payout", color: "#2563eb" },
+  captured: { label: "Captured", color: "#050507" },
+  refunded: { label: "Refunded", color: "#a6a7ad" },
+  payout: { label: "Payout", color: "#5b5d68" },
 } satisfies ChartConfig;
 
 const statusConfig = {
-  count: { label: "Transactions", color: "#222222" },
+  count: { label: "Transactions", color: "#050507" },
 } satisfies ChartConfig;
 
 function statusTone(status: string) {
@@ -97,6 +105,10 @@ function formatDay(value: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+function shortCode(value?: string | null) {
+  return value ? value.slice(0, 8).toUpperCase() : "N/A";
 }
 
 export function TransactionsManagementModule() {
@@ -161,12 +173,14 @@ export function TransactionsManagementModule() {
             value={formatCurrency(overview.summary.capturedAmount, currency)}
             note={`${overview.summary.paymentCount} successful payments`}
             accent="success"
+            icon={CircleDollarSign}
           />
           <AdminMetricCard
             label="Refunded"
             value={formatCurrency(overview.summary.refundedAmount, currency)}
             note={`${overview.summary.refundCount} refund records`}
             accent="brand"
+            icon={RotateCcw}
           />
           <AdminMetricCard
             label="Pending payouts"
@@ -176,12 +190,14 @@ export function TransactionsManagementModule() {
             )}
             note={`${overview.summary.pendingPayoutCount} payout items`}
             accent="warning"
+            icon={WalletCards}
           />
           <AdminMetricCard
             label="Queue"
             value={overview.queue.length}
             note="Transactions needing review"
             accent="neutral"
+            icon={ListChecks}
           />
         </section>
 
@@ -202,28 +218,31 @@ export function TransactionsManagementModule() {
               ) : paymentFlow.length ? (
                 <ChartContainer config={paymentFlowConfig} className="h-80">
                   <LineChart data={paymentFlow}>
-                    <CartesianGrid vertical={false} stroke="#ebebeb" />
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="#eeeeee"
+                    />
                     <XAxis dataKey="day" tickLine={false} axisLine={false} />
                     <YAxis hide />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Line
                       dataKey="captured"
                       type="monotone"
-                      stroke="#16a34a"
+                      stroke="#050507"
                       strokeWidth={2}
                       dot={false}
                     />
                     <Line
                       dataKey="refunded"
                       type="monotone"
-                      stroke="#ff385c"
+                      stroke="#a6a7ad"
                       strokeWidth={2}
                       dot={false}
                     />
                     <Line
                       dataKey="payout"
                       type="monotone"
-                      stroke="#2563eb"
+                      stroke="#5b5d68"
                       strokeWidth={2}
                       dot={false}
                     />
@@ -252,7 +271,10 @@ export function TransactionsManagementModule() {
               ) : overview.transactionStatus.length ? (
                 <ChartContainer config={statusConfig} className="h-80">
                   <BarChart data={overview.transactionStatus} layout="vertical">
-                    <CartesianGrid horizontal={false} stroke="#ebebeb" />
+                    <CartesianGrid
+                      horizontal={false}
+                      stroke="#eeeeee"
+                    />
                     <XAxis type="number" hide />
                     <YAxis
                       dataKey="status"
@@ -262,7 +284,7 @@ export function TransactionsManagementModule() {
                       width={118}
                     />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" fill="#222222" radius={[0, 8, 8, 0]} />
+                    <Bar dataKey="count" fill="#050507" radius={[0, 8, 8, 0]} />
                   </BarChart>
                 </ChartContainer>
               ) : (
@@ -310,12 +332,16 @@ export function TransactionsManagementModule() {
                     <TableRow key={item.id}>
                       <TableCell>
                         <p className="font-semibold text-[#222222]">
-                          {item.id}
+                          {item.type.replaceAll("_", " ")} {shortCode(item.id)}
                         </p>
                         <p className="text-xs text-[#6a6a6a]">{item.owner}</p>
                       </TableCell>
                       <TableCell>{item.type}</TableCell>
-                      <TableCell>{item.bookingId ?? "Not linked"}</TableCell>
+                      <TableCell>
+                        {item.bookingId
+                          ? `Reservation ${shortCode(item.bookingId)}`
+                          : "Not linked"}
+                      </TableCell>
                       <TableCell>
                         <TextStatusPill tone={statusTone(item.status)}>
                           {item.status}

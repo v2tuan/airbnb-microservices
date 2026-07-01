@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, CheckCircle2, Inbox } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   decideAdminComplaint,
@@ -66,6 +67,10 @@ function complaintTone(status: ComplaintStatus) {
   }
   if (status === "RESOLVED") return "success";
   return "neutral";
+}
+
+function shortCode(value?: string | null) {
+  return value ? value.slice(0, 8).toUpperCase() : "N/A";
 }
 
 export function ComplaintsManagementModule() {
@@ -176,18 +181,21 @@ export function ComplaintsManagementModule() {
             label="Loaded"
             value={metrics.total}
             note="Complaints in current filter."
+            icon={Inbox}
           />
           <AdminMetricCard
             accent="danger"
             label="Escalated"
             value={metrics.escalated}
             note="Ready for admin decision."
+            icon={AlertTriangle}
           />
           <AdminMetricCard
             accent="success"
             label="Resolved"
             value={metrics.resolved}
             note="Completed decisions in view."
+            icon={CheckCircle2}
           />
         </div>
 
@@ -248,7 +256,7 @@ export function ComplaintsManagementModule() {
                         {complaint.description}
                       </p>
                       <p className="mt-3 text-xs text-[#6a6a6a]">
-                        Booking {complaint.bookingId} / Created{" "}
+                        Reservation {shortCode(complaint.bookingId)} / Created{" "}
                         {formatAdminDate(complaint.createdAt)}
                       </p>
                     </button>
@@ -278,8 +286,8 @@ export function ComplaintsManagementModule() {
                   <p className="text-sm font-semibold text-[#222222]">
                     {selected.type.replaceAll("_", " ")}
                   </p>
-                  <p className="mt-1 break-all text-xs text-[#6a6a6a]">
-                    {selected.complaintId}
+                  <p className="mt-1 text-xs text-[#6a6a6a]">
+                    Reservation {shortCode(selected.bookingId)}
                   </p>
                 </div>
                 <FieldLabel label="Allowed decision">
