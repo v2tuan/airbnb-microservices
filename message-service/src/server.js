@@ -7,6 +7,8 @@ import { APIs_V1 } from './routes/v1'
 import { env } from './config/environment'
 import { errorHandlingMiddleware } from '~/middlewares/exampleMiddleware'
 import { initSocket } from './sockets'
+import { startNotificationRealtimeConsumer, stopNotificationRealtimeConsumer } from '~/services/notificationRealtimeConsumer'
+import { disconnectNotificationPublisher } from '~/services/notificationPublisher'
 
 const START_SERVER = () => {
   const app = express()
@@ -15,6 +17,9 @@ const START_SERVER = () => {
 
   const server = http.createServer(app)
   const io = initSocket(server)
+  void startNotificationRealtimeConsumer(io).catch((error) => {
+    console.error('Failed to start notification realtime consumer', error)
+  })
 
   app.use((req, res, next) => {
     req.io = io
@@ -49,6 +54,8 @@ const START_SERVER = () => {
 
   exitHook(() => {
     console.log('Disconnecting from MongoDB')
+    void stopNotificationRealtimeConsumer()
+    void disconnectNotificationPublisher()
     mongoose.connection.close()
     console.log('Disconnected from MongoDB')
   })

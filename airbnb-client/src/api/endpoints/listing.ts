@@ -281,10 +281,11 @@ export const unwrapApiData = <T>(payload: ApiResponse<T> | T): T => {
 export const listingAPI = {
   getHomeSections: (
     limit?: number,
+    token?: string | null,
   ): Promise<AxiosResponse<ApiResponse<HomeSectionResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/sections`, {
       params: { limit },
-      ...publicRequest,
+      ...withAuth(token ?? null),
     });
   },
 

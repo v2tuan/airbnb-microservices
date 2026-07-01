@@ -49,12 +49,12 @@ const ListingCard: React.FC<ListingCardProps> = ({
         onClick={recordClick}
       >
         {/* Image Container */}
-        <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-200">
+        <div className="group/image relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-200">
           <Image
             src={listing.coverImageUrl}
             alt={listing.title}
             fill
-            className="object-cover transition duration-300 group-hover:scale-105"
+            className="object-cover transition duration-300 group-hover/image:scale-105"
             sizes="(max-width: 767px) 75vw, (max-width: 1023px) 20vw, 15vw"
           />
 

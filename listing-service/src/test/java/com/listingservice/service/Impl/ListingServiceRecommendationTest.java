@@ -13,6 +13,7 @@ import com.listingservice.service.ActivityClient;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.RecommendationClient;
 import com.listingservice.service.RatingClient;
+import com.listingservice.service.RecentlyViewedClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,6 +31,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +50,9 @@ class ListingServiceRecommendationTest {
     RecommendationClient recommendationClient;
 
     @Mock
+    RecentlyViewedClient recentlyViewedClient;
+
+    @Mock
     RatingClient ratingClient;
 
     @Mock
@@ -60,29 +65,59 @@ class ListingServiceRecommendationTest {
     void getHomeSectionsShouldPutRecommendationFirstForAuthenticatedUser() {
         String userId = UUID.randomUUID().toString();
         UUID recommendedId = UUID.randomUUID();
+        UUID recentlyViewedId = UUID.randomUUID();
         UUID staticHanoiId = UUID.randomUUID();
         UUID staticDalatId = UUID.randomUUID();
 
         when(recommendationClient.getRecommendedListingIds(userId, 10)).thenReturn(List.of(recommendedId));
+        when(recentlyViewedClient.getRecentlyViewedListingIds(userId, 10)).thenReturn(List.of(recentlyViewedId));
         when(listingRepository.findByListingIdIn(List.of(recommendedId))).thenReturn(List.of(recommendedListing(recommendedId)));
+        when(listingRepository.findByListingIdIn(List.of(recentlyViewedId))).thenReturn(List.of(recommendedListing(recentlyViewedId)));
         when(listingRepository.findHomeCardsByCity(eq("Hanoi"), eq(ListingStatus.ACTIVE), any()))
                 .thenReturn(List.of(homeCard(staticHanoiId, "Hanoi stay")));
         when(listingRepository.findHomeCardsByCity(eq("Dalat"), eq(ListingStatus.ACTIVE), any()))
                 .thenReturn(List.of(homeCard(staticDalatId, "Dalat stay")));
         when(ratingClient.getListingRatingSummaries(anyList())).thenReturn(Map.of(
                 recommendedId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.90"), 27L),
+                recentlyViewedId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.80"), 12L),
                 staticHanoiId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.70"), 11L),
                 staticDalatId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.50"), 8L)
         ));
 
         List<HomeSectionResponse> sections = listingService.getHomeSections(10, userId);
 
-        assertThat(sections).hasSize(3);
+        assertThat(sections).hasSize(4);
         assertThat(sections.getFirst().getSectionKey()).isEqualTo("recommendations-for-you");
         assertThat(sections.getFirst().getListings())
                 .extracting(HomeListingCardResponse::getListingId)
                 .containsExactly(recommendedId);
         assertThat(sections.getFirst().getListings().getFirst().getRating()).isEqualByComparingTo("4.90");
+        assertThat(sections.get(1).getSectionKey()).isEqualTo("recently-viewed");
+        assertThat(sections.get(1).getListings())
+                .extracting(HomeListingCardResponse::getListingId)
+                .containsExactly(recentlyViewedId);
+    }
+
+    @Test
+    void getHomeSectionsShouldHidePersonalizedSectionsForAnonymousUser() {
+        UUID staticHanoiId = UUID.randomUUID();
+        UUID staticDalatId = UUID.randomUUID();
+
+        when(listingRepository.findHomeCardsByCity(eq("Hanoi"), eq(ListingStatus.ACTIVE), any()))
+                .thenReturn(List.of(homeCard(staticHanoiId, "Hanoi stay")));
+        when(listingRepository.findHomeCardsByCity(eq("Dalat"), eq(ListingStatus.ACTIVE), any()))
+                .thenReturn(List.of(homeCard(staticDalatId, "Dalat stay")));
+        when(ratingClient.getListingRatingSummaries(anyList())).thenReturn(Map.of(
+                staticHanoiId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.70"), 11L),
+                staticDalatId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.50"), 8L)
+        ));
+
+        List<HomeSectionResponse> sections = listingService.getHomeSections(10, null);
+
+        assertThat(sections).hasSize(2);
+        assertThat(sections.getFirst().getSectionKey()).isEqualTo("popular-hanoi");
+        assertThat(sections.get(1).getSectionKey()).isEqualTo("dalat-weekend");
+        verifyNoInteractions(recommendationClient, recentlyViewedClient);
     }
 
     @Test

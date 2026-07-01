@@ -22,6 +22,7 @@ import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.IListingService;
 import com.listingservice.service.RecommendationClient;
 import com.listingservice.service.RatingClient;
+import com.listingservice.service.RecentlyViewedClient;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -65,6 +66,7 @@ public class ListingService implements IListingService {
     IListingMapper listingMapper;
     ActivityClient activityClient;
     RecommendationClient recommendationClient;
+    RecentlyViewedClient recentlyViewedClient;
     RatingClient ratingClient;
     AvailabilityClient availabilityClient;
 
@@ -336,7 +338,10 @@ public class ListingService implements IListingService {
         int safeLimit = normalizeLimit(limitPerSection);
         List<HomeSectionResponse> sections = new java.util.ArrayList<>();
 
-        buildRecommendationSection(userId, safeLimit).ifPresent(sections::add);
+        if (hasUserId(userId)) {
+            buildRecommendationSection(userId, safeLimit).ifPresent(sections::add);
+            buildRecentlyViewedSection(userId, safeLimit).ifPresent(sections::add);
+        }
         sections.addAll(List.of(
                 buildSection("popular-hanoi", "Popular homes in Hanoi", "Hanoi", safeLimit),
                 buildSection("dalat-weekend", "Available in Dalat this weekend", "Dalat", safeLimit)
@@ -433,6 +438,41 @@ public class ListingService implements IListingService {
         return Optional.of(HomeSectionResponse.builder()
                 .sectionKey("recommendations-for-you")
                 .title("Recommended for you")
+                .city(null)
+                .listings(cards)
+                .build());
+    }
+
+    private Optional<HomeSectionResponse> buildRecentlyViewedSection(String userId, int limit) {
+        List<UUID> recentlyViewedIds = recentlyViewedClient.getRecentlyViewedListingIds(userId, limit);
+        if (recentlyViewedIds.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Map<UUID, Listing> listingsById = listingRepository.findByListingIdIn(recentlyViewedIds).stream()
+                .filter(listing -> listing.getStatus() == ListingStatus.ACTIVE)
+                .collect(Collectors.toMap(
+                        Listing::getListingId,
+                        listing -> listing,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        List<HomeListingCardResponse> cards = recentlyViewedIds.stream()
+                .map(listingsById::get)
+                .filter(Objects::nonNull)
+                .map(this::toHomeCard)
+                .toList();
+
+        if (cards.isEmpty()) {
+            return Optional.empty();
+        }
+
+        applyRatings(cards);
+
+        return Optional.of(HomeSectionResponse.builder()
+                .sectionKey("recently-viewed")
+                .title("Recently viewed")
                 .city(null)
                 .listings(cards)
                 .build());
@@ -772,6 +812,10 @@ public class ListingService implements IListingService {
         }
 
         return Math.min(limitPerSection, MAX_SECTION_LIMIT);
+    }
+
+    private boolean hasUserId(String userId) {
+        return userId != null && !userId.isBlank();
     }
 
     private boolean matchesIgnoreCase(String actual, String expected) {

@@ -18,7 +18,7 @@ import {
 import { activityAPI } from "@/api/endpoints/activity";
 import { listingAPI, unwrapApiData, type ListingResponse } from "@/api/endpoints/listing";
 import { ratingAPI } from "@/api/endpoints/rating";
-import { userAPI, type PublicHostResponseDTO } from "@/api/endpoints/user";
+import { userAPI, type PublicUserProfile } from "@/api/endpoints/user";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
@@ -252,10 +252,10 @@ export default function RoomDetail() {
       if (!hostId) return;
 
       try {
-        const hostResponse = await userAPI.getPublicHostByKeycloakUserId(hostId);
+        const hostResponse = await userAPI.getPublicProfileById(hostId);
         if (cancelled) return;
 
-        const hostProfile = hostResponse.data as PublicHostResponseDTO | undefined;
+        const hostProfile = hostResponse.data as PublicUserProfile | undefined;
 
         setHost({
           id: hostProfile?.keycloakUserId ?? hostProfile?.userId?.toString() ?? hostId,
@@ -305,14 +305,10 @@ export default function RoomDetail() {
   useEffect(() => {
     if (!listing?.listingId) return;
 
-    const timer = window.setTimeout(() => {
-      const token = localStorage.getItem("access_token");
-      if (!token) return;
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
 
-      void activityAPI.recordActivity(token, listing.listingId, { eventType: "VIEW" });
-    }, 10000);
-
-    return () => window.clearTimeout(timer);
+    void activityAPI.recordActivity(token, listing.listingId, { eventType: "VIEW" });
   }, [listing?.listingId]);
 
   if (loading) {
@@ -416,11 +412,11 @@ export default function RoomDetail() {
                         href={`/users/profile/${hostProfileId}`}
                         className="mt-1 inline-block text-lg font-semibold text-[#222222] underline-offset-4 hover:underline"
                       >
-                        {host?.fullName ?? "LocalHost"}
+                        {host?.fullName ?? host?.keycloakUserId ?? listing.hostId}
                       </Link>
                     ) : (
                       <p className="mt-1 text-lg font-semibold text-[#222222]">
-                        {host?.fullName ?? "LocalHost"}
+                        {host?.fullName ?? host?.keycloakUserId ?? listing.hostId}
                       </p>
                     )}
                     <p className="mt-1 text-sm text-zinc-500">
@@ -448,7 +444,10 @@ export default function RoomDetail() {
               </section>
 
               <section className="border-b border-[#ebebeb] pb-8">
-                <ListingInfo data={listing} hostName={host?.fullName ?? "LocalHost"} />
+                <ListingInfo
+                  data={listing}
+                  hostName={host?.fullName ?? host?.keycloakUserId ?? listing.hostId}
+                />
               </section>
 
               <section className="border-b border-[#ebebeb] pb-8">

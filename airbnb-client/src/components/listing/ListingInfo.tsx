@@ -13,7 +13,7 @@ interface ListingData {
 
 export function ListingInfo({
   data,
-  hostName = "LocalHost",
+  hostName = "Host",
 }: {
   data: ListingData;
   hostName?: string;

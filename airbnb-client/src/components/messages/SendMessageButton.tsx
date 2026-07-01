@@ -2,11 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSelector } from "react-redux";
 import { createOrGetConversation } from "@/api/message";
+import { selectCurrentUser } from "@/features/auth/authSelectors";
 
 export default function SendMessageButton({ otherUserId }: { otherUserId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const currentUser = useSelector(selectCurrentUser);
+
+  const currentUserId =
+    currentUser?.keycloakUserId ?? currentUser?.id ?? currentUser?._id ?? null;
+
+  if (currentUserId && otherUserId && String(currentUserId) === String(otherUserId)) {
+    return null;
+  }
 
   const extractConversationId = (res: any): string | null => {
     if (!res) return null;

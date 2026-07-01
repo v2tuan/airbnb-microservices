@@ -1,7 +1,7 @@
 package com.listingservice.service;
 
-import com.listingservice.dto.response.RecommendationResponse;
-import com.listingservice.repository.client.RecommendationServiceFeignClient;
+import com.listingservice.dto.response.RecentlyViewedResponse;
+import com.listingservice.repository.client.RecentlyViewedServiceFeignClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -12,31 +12,31 @@ import java.util.UUID;
 @Component
 @Slf4j
 @RequiredArgsConstructor
-public class RecommendationClient {
+public class RecentlyViewedClient {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final String ANONYMOUS_USER_ID = "__anonymous__";
 
-    private final RecommendationServiceFeignClient recommendationServiceFeignClient;
+    private final RecentlyViewedServiceFeignClient recentlyViewedServiceFeignClient;
 
-    public List<UUID> getRecommendedListingIds(String userId, Integer limit) {
+    public List<UUID> getRecentlyViewedListingIds(String userId, Integer limit) {
         int safeLimit = normalizeLimit(limit);
         String effectiveUserId = (userId == null || userId.isBlank()) ? ANONYMOUS_USER_ID : userId;
 
         try {
-            RecommendationResponse response = recommendationServiceFeignClient.recommendForUser(effectiveUserId, safeLimit);
-            if (response == null || response.recommendations() == null || response.recommendations().isEmpty()) {
+            RecentlyViewedResponse response = recentlyViewedServiceFeignClient.getRecentlyViewed(effectiveUserId, safeLimit);
+            if (response == null || response.recentlyViewed() == null || response.recentlyViewed().isEmpty()) {
                 return List.of();
             }
 
-            return response.recommendations().stream()
+            return response.recentlyViewed().stream()
                     .map(item -> item == null ? null : item.listingId())
                     .filter(id -> id != null && !id.isBlank())
                     .map(this::safeParseUuid)
                     .filter(java.util.Objects::nonNull)
                     .toList();
         } catch (Exception ex) {
-            log.warn("Failed to fetch recommendations for userId={}", userId, ex);
+            log.warn("Failed to fetch recently viewed listings for userId={}", userId, ex);
             return List.of();
         }
     }

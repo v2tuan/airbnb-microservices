@@ -1,7 +1,14 @@
 "use client";
 
+import { listingAPI, type ListingResponse, unwrapApiData } from "@/api/endpoints/listing";
+import { fetchMessages, sendMessage } from "@/api/message";
+import { useAuth } from "@/hooks/useAuth";
+import { useConversations } from "@/hooks/useConversations";
+import { useSocket } from "@/hooks/useSocket";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from "next/image";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import {
   Archive,
@@ -15,13 +22,6 @@ import {
   Tag,
   Users,
 } from "lucide-react";
-import { listingAPI, type ListingResponse, unwrapApiData } from "@/api/endpoints/listing";
-import { fetchMessages } from "@/api/message";
-import { useAuth } from "@/hooks/useAuth";
-import { useSocket } from "@/hooks/useSocket";
-import { useConversations } from "@/hooks/useConversations";
-import { sendMessage } from "@/api/message";
-import { useSearchParams, useParams } from "next/navigation";
 
 type Conversation = {
   id: string;
@@ -91,7 +91,7 @@ const listingPreviewCache = new Map<string, ListingPreview>();
 
 const fetchListingPreview = async (
   listingId: string,
-  fallbackTitle: string
+  fallbackTitle: string,
 ): Promise<ListingPreview> => {
   const cached = listingPreviewCache.get(listingId);
   if (cached) return cached;
@@ -176,7 +176,9 @@ function ListingFrame({
       <div className="min-w-0 flex-1 py-1 pr-1">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">House link preview</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              House link preview
+            </p>
             <h3 className="mt-1 truncate text-sm font-semibold text-zinc-900">
               {listing?.title ?? fallbackTitle}
             </h3>
@@ -241,7 +243,7 @@ function ListingLinkPreview({
   debounceMs?: number;
 }) {
   const [listing, setListing] = useState<ListingPreview | null>(
-    () => listingPreviewCache.get(listingId) ?? null
+    () => listingPreviewCache.get(listingId) ?? null,
   );
   const [loading, setLoading] = useState(!listingPreviewCache.has(listingId));
 
@@ -277,20 +279,25 @@ function ListingLinkPreview({
 function GuestMessagesPageContent() {
   const { user } = useAuth();
   const { socket } = useSocket();
-  const { conversations, loading: conversationsLoading, updateConversationLastMessage } = useConversations();
-  const searchParams = useSearchParams();
-  const params = useParams();
-  const pathId = (params as any)?.id as string | undefined;
-  const qConversationId = searchParams?.get("conversationId");
+  const { conversations, updateConversationLastMessage } = useConversations();
+  const params = useParams<{ id?: string }>();
+  const conversationId = typeof params?.id === "string" ? params.id : null;
 
-  // prefer path param if present, otherwise fallback to query param
-  const conversationId = pathId ?? qConversationId ?? null;
+  const emptyConversation: Conversation = {
+    id: "empty",
+    conversationId: "empty",
+    partnerId: undefined,
+    name: conversationId ? "Conversation not found" : "Select a conversation",
+    avatar: "",
+    listing: "",
+    time: "",
+    preview: "",
+  };
 
-  const activeConversation = conversationId
-    ? conversations.find(c => c.conversationId === conversationId) ||
-      { id: conversationId, conversationId: conversationId, partnerId: undefined, name: "Conversation", avatar: "", listing: "", time: "", preview: "" }
-    : conversations[0] ||
-      { id: "empty", conversationId: "empty", partnerId: undefined, name: "No conversations", avatar: "", listing: "", time: "", preview: "" };
+  const activeConversation =
+    conversationId && conversations.find((conversation) => conversation.conversationId === conversationId)
+      ? conversations.find((conversation) => conversation.conversationId === conversationId)!
+      : emptyConversation;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draftText, setDraftText] = useState("");
@@ -321,7 +328,6 @@ function GuestMessagesPageContent() {
     isOwnMessage(senderId) ? "guest" : "host";
 
   useEffect(() => {
-    // Để match sender chính xác, cần có keycloakUserId (JWT sub).
     if (!conversationId || !user?.keycloakUserId) {
       setMessages([]);
       return;
@@ -336,15 +342,15 @@ function GuestMessagesPageContent() {
         const normalized = (Array.isArray(payload) ? payload : []).map((message: any) => ({
           id: message._id ?? message.id ?? String(Date.now()),
           sender: resolveSenderRole(message.senderId?._id ?? message.senderId?.id ?? message.senderId),
-          text: message.text ?? '',
+          text: message.text ?? "",
           createdAt: formatMessageTime(message.createdAt),
-        }))
+        }));
 
         if (!cancelled) {
           setMessages(normalized);
         }
       } catch (error) {
-        console.error('Failed to fetch messages:', error);
+        console.error("Failed to fetch messages:", error);
         if (!cancelled) {
           setMessages([]);
         }
@@ -410,7 +416,7 @@ function GuestMessagesPageContent() {
   }, [activeConversation.conversationId, socket, user?.keycloakUserId]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !conversationId) return;
 
     const text = draftText.trim();
 
@@ -429,15 +435,16 @@ function GuestMessagesPageContent() {
       window.clearTimeout(typingTimeout);
       socket.emit("typing:stop", { conversationId: activeConversation.conversationId });
     };
-  }, [activeConversation.conversationId, draftText, socket]);
+  }, [activeConversation.conversationId, conversationId, draftText, socket]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (!conversationId) return;
+
     const text = draftText.trim();
     if (!text) return;
 
-    // optimistic message
     const tmpId = `tmp-${Date.now()}`;
     const tmpCreatedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -453,10 +460,7 @@ function GuestMessagesPageContent() {
 
     if (draftListingId) {
       void fetchListingPreview(draftListingId, extractListingTitle(text)).then((preview) => {
-        updateConversationLastMessage(
-          activeConversation.conversationId,
-          summarizeListingMessage(text, preview.title)
-        );
+        updateConversationLastMessage(activeConversation.conversationId, summarizeListingMessage(text, preview.title));
       });
     } else {
       updateConversationLastMessage(activeConversation.conversationId, text);
@@ -464,10 +468,11 @@ function GuestMessagesPageContent() {
 
     setDraftText("");
 
-    // notify stop typing
     try {
       socket?.emit("typing:stop", { conversationId: activeConversation.conversationId });
-    } catch {}
+    } catch {
+      // ignore socket cleanup errors
+    }
 
     setIsSending(true);
 
@@ -486,25 +491,21 @@ function GuestMessagesPageContent() {
           : tmpCreatedAt;
 
         setMessages((curr) =>
-          curr.map((m) =>
-            m.id === tmpId
+          curr.map((message) =>
+            message.id === tmpId
               ? {
                   id: serverMsg._id,
                   sender: "guest",
                   text: serverMsg.text ?? text,
                   createdAt: serverCreatedAt,
                 }
-              : m
-          )
+              : message,
+          ),
         );
-      } else {
-        // if server didn't return expected shape, leave optimistic message as-is
       }
     } catch (error) {
-      // remove temp message on failure
-      setMessages((curr) => curr.filter((m) => m.id !== tmpId));
+      setMessages((curr) => curr.filter((message) => message.id !== tmpId));
       console.error("Failed to send message", error);
-      // Optionally: show toast or error UI
     } finally {
       setIsSending(false);
     }
@@ -520,8 +521,8 @@ function GuestMessagesPageContent() {
         </div>
 
         <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-[0_12px_45px_rgba(15,23,42,0.08)]">
-          <div className="grid min-h-[68vh] grid-cols-1 lg:grid-cols-[360px_1fr]">
-            <aside className="border-b border-zinc-200 lg:border-b-0 lg:border-r">
+          <div className="grid h-[calc(100dvh-190px)] min-h-[68vh] grid-cols-1 lg:grid-cols-[360px_1fr]">
+            <aside className="min-h-0 border-b border-zinc-200 lg:border-b-0 lg:border-r">
               <div className="space-y-4 border-b border-zinc-200 p-4 sm:p-5">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
@@ -533,47 +534,59 @@ function GuestMessagesPageContent() {
                 </div>
 
                 <div className="flex items-center gap-2 text-xs font-medium text-zinc-600">
-                  <button className="rounded-full border border-zinc-300 px-3 py-1.5 transition hover:border-zinc-900 hover:text-zinc-900">All</button>
-                  <button className="rounded-full border border-zinc-200 px-3 py-1.5 transition hover:border-zinc-900 hover:text-zinc-900">Unread</button>
-                  <button className="rounded-full border border-zinc-200 px-3 py-1.5 transition hover:border-zinc-900 hover:text-zinc-900">Archived</button>
+                  <button className="rounded-full border border-zinc-300 px-3 py-1.5 transition hover:border-zinc-900 hover:text-zinc-900">
+                    All
+                  </button>
+                  <button className="rounded-full border border-zinc-200 px-3 py-1.5 transition hover:border-zinc-900 hover:text-zinc-900">
+                    Unread
+                  </button>
+                  <button className="rounded-full border border-zinc-200 px-3 py-1.5 transition hover:border-zinc-900 hover:text-zinc-900">
+                    Archived
+                  </button>
                 </div>
               </div>
 
-              <div className="max-h-[48vh] overflow-y-auto lg:max-h-[60vh]">
-                {conversations.map((conversation) => {
-                  const isActive = conversation.conversationId === activeConversation.conversationId;
+              <ScrollArea className="h-[calc(100dvh-332px)] min-h-0 lg:h-[calc(100dvh-318px)]">
+                <div className="min-h-0">
+                  {conversations.length > 0 ? (
+                    conversations.map((conversation) => {
+                      const isActive = conversation.conversationId === activeConversation.conversationId;
 
-                  return (
-                    <button
-                      key={conversation.id}
-                      type="button"
-                      className={`group w-full border-b border-zinc-100 px-4 py-4 text-left transition sm:px-5 ${
-                        isActive ? "bg-zinc-50" : "hover:bg-zinc-50"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white">
-                          {conversation.avatar}
-                        </div>
+                      return (
+                        <Link
+                          key={conversation.id}
+                          href={`/guest/messages/${conversation.conversationId}`}
+                          className={`group block border-b border-zinc-100 px-4 py-4 text-left transition sm:px-5 ${
+                            isActive ? "bg-zinc-50" : "hover:bg-zinc-50"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white">
+                              {conversation.avatar}
+                            </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="truncate text-sm font-semibold text-zinc-900">{conversation.name}</p>
-                            <span className="shrink-0 text-xs text-zinc-500">{conversation.time}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="truncate text-sm font-semibold text-zinc-900">{conversation.name}</p>
+                                <span className="shrink-0 text-xs text-zinc-500">{conversation.time}</span>
+                              </div>
+                              <p className="truncate text-xs text-zinc-500">{conversation.listing}</p>
+                              <p className="mt-1 truncate text-sm text-zinc-700">{conversation.preview}</p>
+                            </div>
+
+                            {conversation.unread ? <CircleDot className="mt-1 h-4 w-4 shrink-0 text-rose-500" /> : null}
                           </div>
-                          <p className="truncate text-xs text-zinc-500">{conversation.listing}</p>
-                          <p className="mt-1 truncate text-sm text-zinc-700">{conversation.preview}</p>
-                        </div>
-
-                        {conversation.unread ? <CircleDot className="mt-1 h-4 w-4 shrink-0 text-rose-500" /> : null}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                        </Link>
+                      );
+                    })
+                  ) : (
+                    <div className="px-4 py-10 text-sm text-zinc-500">No conversations yet.</div>
+                  )}
+                </div>
+              </ScrollArea>
             </aside>
 
-            <section className="flex flex-col">
+            <section className="flex min-h-0 flex-col">
               <header className="border-b border-zinc-200 px-4 py-4 sm:px-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -592,71 +605,94 @@ function GuestMessagesPageContent() {
                   </div>
 
                   <div className="flex items-center gap-2 text-zinc-500">
-                    <button type="button" className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900" aria-label="Star conversation">
+                    <button
+                      type="button"
+                      className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900"
+                      aria-label="Star conversation"
+                    >
                       <Star className="h-4 w-4" />
                     </button>
-                    <button type="button" className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900" aria-label="Label conversation">
+                    <button
+                      type="button"
+                      className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900"
+                      aria-label="Label conversation"
+                    >
                       <Tag className="h-4 w-4" />
                     </button>
-                    <button type="button" className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900" aria-label="Archive conversation">
+                    <button
+                      type="button"
+                      className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900"
+                      aria-label="Archive conversation"
+                    >
                       <Archive className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
               </header>
 
-              <div className="relative flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+              <div className="relative flex min-h-0 flex-1 flex-col px-4 py-6 sm:px-6">
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-white to-transparent" />
 
-                <div className="mx-auto flex max-w-3xl flex-col gap-4">
-                  {messages.map((message) => {
-                    const listingId = extractListingId(message.text);
-                    const fallbackTitle = extractListingTitle(message.text);
-                    const isGuestMessage = message.sender === "guest";
+                <ScrollArea className="relative min-h-0 flex-1 pr-3">
+                  <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-2">
+                    {conversationId ? (
+                      messages.length > 0 ? (
+                        messages.map((message) => {
+                          const listingId = extractListingId(message.text);
+                          const fallbackTitle = extractListingTitle(message.text);
+                          const isGuestMessage = message.sender === "guest";
 
-                    return (
-                      <div
-                        key={message.id}
-                        className={`max-w-[88%] ${isGuestMessage ? "ml-auto" : "mr-auto"} animate-in fade-in duration-500`}
-                      >
-                        <div
-                          className={`rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                            isGuestMessage
-                              ? "rounded-br-md bg-zinc-900 text-white"
-                              : "rounded-bl-md bg-zinc-100 text-zinc-800"
-                          }`}
-                        >
-                          {listingId ? (
-                            <div className="space-y-3">
-                              <p className={`text-xs ${isGuestMessage ? "text-zinc-300" : "text-zinc-500"}`}>
-                                Shared a room link
-                              </p>
-                              <ListingLinkPreview
-                                listingId={listingId}
-                                fallbackTitle={fallbackTitle}
-                              />
-                              <Link
-                                href={`/rooms/${listingId}`}
-                                className={`inline-flex items-center gap-1 text-xs font-medium underline-offset-2 hover:underline ${
-                                  isGuestMessage ? "text-rose-200 hover:text-white" : "text-rose-600 hover:text-rose-700"
+                          return (
+                            <div
+                              key={message.id}
+                              className={`max-w-[88%] ${isGuestMessage ? "ml-auto" : "mr-auto"} animate-in fade-in duration-500`}
+                            >
+                              <div
+                                className={`rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                                  isGuestMessage
+                                    ? "rounded-br-md bg-zinc-900 text-white"
+                                    : "rounded-bl-md bg-zinc-100 text-zinc-800"
                                 }`}
                               >
-                                <Link2 className="h-3.5 w-3.5" />
-                                Open listing
-                              </Link>
-                            </div>
-                          ) : (
-                            <p className="whitespace-pre-wrap leading-6">{message.text}</p>
-                          )}
-                        </div>
+                                {listingId ? (
+                                  <div className="space-y-3">
+                                    <p className={`text-xs ${isGuestMessage ? "text-zinc-300" : "text-zinc-500"}`}>
+                                      Shared a room link
+                                    </p>
+                                    <ListingLinkPreview listingId={listingId} fallbackTitle={fallbackTitle} />
+                                    <Link
+                                      href={`/rooms/${listingId}`}
+                                      className={`inline-flex items-center gap-1 text-xs font-medium underline-offset-2 hover:underline ${
+                                        isGuestMessage ? "text-rose-200 hover:text-white" : "text-rose-600 hover:text-rose-700"
+                                      }`}
+                                    >
+                                      <Link2 className="h-3.5 w-3.5" />
+                                      Open listing
+                                    </Link>
+                                  </div>
+                                ) : (
+                                  <p className="whitespace-pre-wrap leading-6">{message.text}</p>
+                                )}
+                              </div>
 
-                        <p className={`mt-1 text-[11px] ${isGuestMessage ? "text-right text-zinc-400" : "text-zinc-500"}`}>
-                          {message.createdAt}
-                        </p>
+                              <p className={`mt-1 text-[11px] ${isGuestMessage ? "text-right text-zinc-400" : "text-zinc-500"}`}>
+                                {message.createdAt}
+                              </p>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
+                          No messages in this conversation yet.
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
+                        Select a conversation to open its thread.
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                </ScrollArea>
               </div>
 
               <footer className="border-t border-zinc-200 p-4 sm:p-5">
@@ -677,13 +713,14 @@ function GuestMessagesPageContent() {
                     onChange={(event) => setDraftText(event.target.value)}
                     placeholder="Write a message"
                     className="max-h-40 min-h-11.5 flex-1 resize-y rounded-2xl border border-zinc-300 px-4 py-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-900"
+                    disabled={!conversationId}
                   />
                   <button
                     type="submit"
-                    disabled={isSending || !draftText.trim()}
+                    disabled={isSending || !draftText.trim() || !conversationId}
                     className={`inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-medium text-white transition ${
-                      isSending || !draftText.trim()
-                        ? "bg-zinc-700/60 cursor-not-allowed"
+                      isSending || !draftText.trim() || !conversationId
+                        ? "cursor-not-allowed bg-zinc-700/60"
                         : "bg-zinc-900 hover:bg-zinc-700"
                     }`}
                   >
@@ -695,7 +732,7 @@ function GuestMessagesPageContent() {
                 {draftListingId ? (
                   <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
                     <Sparkles className="h-3.5 w-3.5" />
-                    Room link detected — preview will be sent as a clickable listing card
+                    Room link detected - preview will be sent as a clickable listing card
                   </p>
                 ) : null}
               </footer>

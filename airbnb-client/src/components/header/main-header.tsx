@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useSelector } from "react-redux"
 import Logo from "../logo"
 import SearchBar from "./search-bar"
+import NotificationBell from "./notification-bell"
 import UserMenu from "./user-menu"
 import { selectCurrentUser, selectIsAuthenticated } from "@/features/auth/authSelectors"
 import Image from "next/image"
@@ -279,6 +280,8 @@ function MainHeader() {
                         >
                             {isHost ? "Welcoming guests" : "Become a host"}
                         </Link>
+
+                        <NotificationBell />
 
                         {isAuthenticated && user?.avatarUrl ? (
                             <Image

@@ -3,6 +3,14 @@ spring:
     name: notification-service
   mongodb:
     uri: ${NOTIFICATION_MONGODB_URI:mongodb://localhost:27017/airbnb_db}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/airbnb}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/airbnb/protocol/openid-connect/certs}
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
@@ -37,3 +45,5 @@ eureka:
 notification:
   templates:
     USER_REGISTERED: email/welcome_email
+  kafka:
+    topic: ${KAFKA_NOTIFICATION_TOPIC:notification.events}

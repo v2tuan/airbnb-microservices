@@ -280,6 +280,8 @@ services:
       args:
         APP_PORT: 8084
     image: airbnb/notification-service:local
+    ports:
+      - "8084:8084"
     expose:
       - "8084"
     environment:
@@ -316,11 +318,14 @@ services:
       WEBSITE_DOMAIN_DEVELOPMENT: ${APP_FRONTEND_URL:-http://localhost:3000}
       FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:3000}
       FRONTEND_PROD_URL: ${FRONTEND_PROD_URL:-}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      KAFKA_NOTIFICATION_TOPIC: ${KAFKA_NOTIFICATION_TOPIC:-notification.events}
     networks:
       - airbnb-net
     extra_hosts: *host-gateway
     depends_on:
       - keycloak
+      - kafka
 
   airbnb-client:
     build:
@@ -331,6 +336,7 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8888}
         NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
         NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8888}
+        NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:8084/notification}
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
         NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     image: airbnb/airbnb-client:local
@@ -342,6 +348,7 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8888}
       NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
       NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8888}
+      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:8084/notification}
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     depends_on:

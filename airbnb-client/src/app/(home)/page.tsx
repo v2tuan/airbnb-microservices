@@ -6,6 +6,7 @@ import { HomeSectionResponse, listingAPI, unwrapApiData } from "@/api/endpoints/
 import ListingCard from "@/components/cards/ListingCard";
 import { useWishlistStore } from "@/hooks/useWishlistStore";
 import useLoginModal from "@/hooks/userLoginModal";
+import { authStorage } from "@/lib/auth-storage";
 import { useSelector } from "react-redux";
 import { selectIsAuthenticated } from "@/features/auth/authSelectors";
 import type { RootState } from "@/store";
@@ -14,7 +15,7 @@ export default function Home() {
   const [sections, setSections] = useState<HomeSectionResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
-  const scrollRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const loginModal = useLoginModal();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const token = useSelector((state: RootState) => state.auth.token);
@@ -23,34 +24,54 @@ export default function Home() {
     useWishlistStore();
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchData = async () => {
       try {
-        const response = await listingAPI.getHomeSections();
+        const requestToken = token ?? authStorage.getAccessToken();
+        const response = await listingAPI.getHomeSections(undefined, requestToken);
+        if (cancelled) return;
+
         if (response.data.code === 1000) {
           setSections(unwrapApiData(response.data));
+          setErrorMessage("");
         } else {
-          setErrorMessage(response.data.message ?? "Không thể tải dữ liệu.");
+          setErrorMessage(response.data.message ?? "Khong the tai du lieu.");
         }
-      } catch (error) {
-        setErrorMessage("Đã có lỗi xảy ra khi kết nối server.");
+      } catch {
+        if (cancelled) return;
+        setErrorMessage("Da co loi xay ra khi ket noi server.");
       } finally {
+        if (cancelled) return;
         setLoading(false);
       }
     };
-    fetchData();
-  }, []);
+
+    if (isAuthenticated && !token && !authStorage.getAccessToken()) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLoading(true);
+    void fetchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, token]);
 
   useEffect(() => {
-    if (!isAuthenticated || !token) return;
-    void hydrateWishlist(token);
+    const requestToken = token ?? authStorage.getAccessToken();
+    if (!isAuthenticated && !requestToken) return;
+    if (!requestToken) return;
+    void hydrateWishlist(requestToken);
   }, [hydrateWishlist, isAuthenticated, token]);
 
   const handleToggleWishlist = async (listingId: string) => {
     const authToken =
       token ??
-      (typeof window !== "undefined"
-        ? localStorage.getItem("access_token")
-        : null);
+      (typeof window !== "undefined" ? localStorage.getItem("access_token") : null);
 
     if (!authToken) {
       loginModal.onOpen();
@@ -62,13 +83,13 @@ export default function Home() {
 
   const scroll = (key: string, direction: "left" | "right") => {
     const container = scrollRefs.current[key];
-    if (container) {
-      const scrollAmount = container.clientWidth * 0.8;
-      container.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
+    if (!container) return;
+
+    const scrollAmount = container.clientWidth * 0.8;
+    container.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
+    });
   };
 
   if (loading) return <div className="py-8 text-center">Loading...</div>;
@@ -79,9 +100,8 @@ export default function Home() {
       <div className="flex flex-col gap-12">
         {sections.map((section) => (
           <section key={section.sectionKey} className="group relative space-y-4">
-            {/* Header */}
             <div className="flex items-center justify-between pr-2">
-              <div className="group/title flex items-center gap-1 cursor-pointer">
+              <div className="group/title flex cursor-pointer items-center gap-1">
                 <h2 className="text-xl font-bold tracking-tight text-neutral-900 group-hover/title:underline md:text-2xl">
                   {section.title}
                 </h2>
@@ -91,20 +111,19 @@ export default function Home() {
               <div className="hidden items-center gap-3 md:flex">
                 <button
                   onClick={() => scroll(section.sectionKey, "left")}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white shadow-sm hover:bg-neutral-50 transition"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white shadow-sm transition hover:bg-neutral-50"
                 >
                   <ChevronLeft size={18} />
                 </button>
                 <button
                   onClick={() => scroll(section.sectionKey, "right")}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white shadow-sm hover:bg-neutral-50 transition"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-300 bg-white shadow-sm transition hover:bg-neutral-50"
                 >
                   <ChevronRight size={18} />
                 </button>
               </div>
             </div>
 
-            {/* Carousel Container */}
             <div
               ref={(el) => {
                 scrollRefs.current[section.sectionKey] = el;
@@ -117,8 +136,8 @@ export default function Home() {
                   key={listing.listingId}
                   className="
                     flex-none
-                    basis-[72%] 
-                    md:basis-[calc((100%-4*1rem)/5)] 
+                    basis-[72%]
+                    md:basis-[calc((100%-4*1rem)/5)]
                     lg:basis-[calc((100%-6*1rem)/7)]
                   "
                   style={{ scrollSnapAlign: "start" }}
