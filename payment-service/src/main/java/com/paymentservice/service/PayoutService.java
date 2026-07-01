@@ -54,41 +54,41 @@ public class PayoutService {
     }
 
     private void processSinglePayout(Payout payout, LocalDateTime now) {
-//        // Luôn kiểm tra trạng thái booking mới nhất trước khi chuyển tiền cho host.
-//        BookingResponse booking = bookingClient.getBooking(serviceTokenProvider.bearerToken(), payout.getBookingId());
-//
-//        if (isCancelledStatus(booking.getStatus())) {
-//            payout.setStatus(PayoutStatus.CANCELLED);
-//            payout.setFailureReason("Booking was cancelled before payout");
-//            payoutRepository.save(payout);
-//            return;
-//        }
-//
-//        if (!isPaymentEligibleForPayout(payout, now)) {
-//            return;
-//        }
-//
-//        // Chỉ payout sau khi khách đã check-in/check-out/completed; nếu chưa thì hẹn kiểm tra lại.
-//        if (booking.getStatus() != BookingStatus.CHECKED_IN
-//                && booking.getStatus() != BookingStatus.CHECKED_OUT
-//                && booking.getStatus() != BookingStatus.COMPLETED) {
-//            payout.setStatus(PayoutStatus.PENDING_CHECKIN);
-//            payout.setScheduledAt(now.plusMinutes(30));
-//            payoutRepository.save(payout);
-//            return;
-//        }
-//
-//        LocalDateTime eligibleAt = booking.getCheckedInAt() != null
-//                ? booking.getCheckedInAt().plusHours(24)
-//                : booking.getCheckInDate().atStartOfDay().plusDays(1);
-//
-//        if (now.isBefore(eligibleAt)) {
-//            // Booking đã hợp lệ nhưng chưa đủ thời gian giữ tiền, dời lịch payout tới mốc eligibleAt.
-//            payout.setStatus(PayoutStatus.SCHEDULED);
-//            payout.setScheduledAt(eligibleAt);
-//            payoutRepository.save(payout);
-//            return;
-//        }
+        // Luôn kiểm tra trạng thái booking mới nhất trước khi chuyển tiền cho host.
+        BookingResponse booking = bookingClient.getBooking(serviceTokenProvider.bearerToken(), payout.getBookingId());
+
+        if (isCancelledStatus(booking.getStatus())) {
+            payout.setStatus(PayoutStatus.CANCELLED);
+            payout.setFailureReason("Booking was cancelled before payout");
+            payoutRepository.save(payout);
+            return;
+        }
+
+        if (!isPaymentEligibleForPayout(payout, now)) {
+            return;
+        }
+
+        // Chỉ payout sau khi khách đã check-in/check-out/completed; nếu chưa thì hẹn kiểm tra lại.
+        if (booking.getStatus() != BookingStatus.CHECKED_IN
+                && booking.getStatus() != BookingStatus.CHECKED_OUT
+                && booking.getStatus() != BookingStatus.COMPLETED) {
+            payout.setStatus(PayoutStatus.PENDING_CHECKIN);
+            payout.setScheduledAt(now.plusMinutes(30));
+            payoutRepository.save(payout);
+            return;
+        }
+
+        LocalDateTime eligibleAt = booking.getCheckedInAt() != null
+                ? booking.getCheckedInAt().plusHours(24)
+                : booking.getCheckInDate().atStartOfDay().plusDays(1);
+
+        if (now.isBefore(eligibleAt)) {
+            // Booking đã hợp lệ nhưng chưa đủ thời gian giữ tiền, dời lịch payout tới mốc eligibleAt.
+            payout.setStatus(PayoutStatus.SCHEDULED);
+            payout.setScheduledAt(eligibleAt);
+            payoutRepository.save(payout);
+            return;
+        }
 
         try {
             // Đánh dấu PROCESSING trước khi gọi Stripe để trạng thái DB phản ánh payout đang được xử lý.

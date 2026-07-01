@@ -99,6 +99,7 @@ class BookingFlowV2RulesTest {
                 .currency("USD")
                 .numberOfAdults(2)
                 .build();
+        when(bookingRepository.tryAcquireListingBookingLock(LISTING_ID.toString())).thenReturn(true);
         when(listingClient.getListingById("Bearer token", LISTING_ID))
                 .thenReturn(ApiResponse.<ListingResponse>builder().data(activeListing()).build());
         when(bookingRepository.findConflictingBookings(eq(LISTING_ID), any(), any())).thenReturn(List.of());
@@ -119,6 +120,25 @@ class BookingFlowV2RulesTest {
         assertThat(bookingCaptor.getValue().getStatus()).isEqualTo(BookingStatus.PENDING_PAYMENT);
         assertThat(bookingCaptor.getValue().getTotalNights()).isEqualTo(2);
         verify(paymentClient, never()).createBookingRefund(any(), any(), any());
+    }
+
+    @Test
+    void checkoutFailsFastWhenListingBookingLockIsBusy() {
+        CreateBookingRequest request = CreateBookingRequest.builder()
+                .roomId(LISTING_ID)
+                .checkInDate(LocalDate.now().plusDays(10))
+                .checkOutDate(LocalDate.now().plusDays(12))
+                .currency("USD")
+                .numberOfAdults(2)
+                .build();
+        when(bookingRepository.tryAcquireListingBookingLock(LISTING_ID.toString())).thenReturn(false);
+
+        assertThatThrownBy(() -> bookingService.createBooking(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Another booking is being processed");
+
+        verify(listingClient, never()).getListingById(any(), any());
+        verify(bookingRepository, never()).save(any(Booking.class));
     }
 
     @Test

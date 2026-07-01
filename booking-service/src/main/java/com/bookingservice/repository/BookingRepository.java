@@ -43,8 +43,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     lock theo transaction hiện tại
     auto release khi transaction commit/rollback
      */
-    @Query(value = "SELECT pg_advisory_xact_lock(hashtext(:listingId))", nativeQuery = true)
-    Object acquireListingBookingLock(@Param("listingId") String listingId);
+    @Query(value = "SELECT pg_try_advisory_xact_lock(hashtext(:listingId))", nativeQuery = true)
+    Boolean tryAcquireListingBookingLock(@Param("listingId") String listingId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT b FROM Booking b WHERE b.bookingId = :bookingId")

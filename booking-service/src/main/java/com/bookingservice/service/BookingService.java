@@ -446,7 +446,9 @@ public class BookingService {
         }
 
         // Lock listing ngăn double booking
-        bookingRepository.acquireListingBookingLock(request.getRoomId().toString());
+        if (!Boolean.TRUE.equals(bookingRepository.tryAcquireListingBookingLock(request.getRoomId().toString()))) {
+            throw BusinessException.conflict("Another booking is being processed for this listing. Please try again.");
+        }
 
         ListingResponse listing = listingClient
                 .getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId())

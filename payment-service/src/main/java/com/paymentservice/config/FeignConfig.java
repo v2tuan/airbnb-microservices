@@ -9,6 +9,7 @@ import feign.RequestInterceptor;
 import feign.Retryer;
 import feign.codec.ErrorDecoder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,12 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class FeignConfig {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+
+    @Value("${feign.client.config.default.connect-timeout-seconds:1}")
+    private long connectTimeoutSeconds;
+
+    @Value("${feign.client.config.default.read-timeout-seconds:10}")
+    private long readTimeoutSeconds;
 
     @Bean
     public RequestInterceptor requestInterceptor() {
@@ -57,7 +64,7 @@ public class FeignConfig {
 
     @Bean
     public Request.Options feignRequestOptions() {
-        return new Request.Options(1, TimeUnit.SECONDS, 3, TimeUnit.SECONDS, true);
+        return new Request.Options(connectTimeoutSeconds, TimeUnit.SECONDS, readTimeoutSeconds, TimeUnit.SECONDS, true);
     }
 
     @Bean
