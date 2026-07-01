@@ -1,0 +1,122 @@
+%% Airbnb Microservices - architecture overview for slides
+flowchart LR
+    Browser["User / Browser"]
+    Client["airbnb-client<br/>Next.js :3000"]
+    Gateway["api-gateway<br/>Spring Cloud Gateway :8888<br/>/api/v1 + OAuth2 JWT"]
+    Eureka[("discovery-service<br/>Eureka :8761")]
+    Keycloak["Keycloak<br/>OIDC realm: airbnb"]
+    Kafka[("Kafka<br/>event bus :9092 / 29092")]
+
+    subgraph Services["Application services"]
+        UserSvc["user-service :8082<br/>auth, profile, host onboarding"]
+        ListingSvc["listing-service :8081<br/>listings, pricing, search, availability UI"]
+        BookingSvc["booking-service :8086<br/>booking lifecycle, availability, cancellation"]
+        PaymentSvc["payment-service :8087<br/>checkout, Stripe webhook, refund, payout"]
+        RatingSvc["rating-service :8085<br/>reviews, rating summary"]
+        WishlistSvc["wishlist-service :8083<br/>saved listings and collections"]
+        ActivitySvc["activity-service :8089<br/>activity tracking, recommendations"]
+        NotificationSvc["notification-service :8084<br/>email notifications"]
+        MessageSvc["message-service :8017<br/>Express, Socket.IO chat"]
+        ChatbotSvc["chatbot-service :8090<br/>AI assistant, listing search"]
+    end
+
+    subgraph DataStores["Data stores"]
+        UserDb[("PostgreSQL<br/>user_db")]
+        ListingDb[("PostgreSQL<br/>listing_db")]
+        BookingDb[("PostgreSQL<br/>booking_db")]
+        PaymentDb[("PostgreSQL<br/>payment_db")]
+        WishlistDb[("PostgreSQL<br/>wishlist_db")]
+        ActivityDb[("PostgreSQL<br/>activity_db")]
+        RatingDb[("PostgreSQL<br/>rating data")]
+        NotificationMongo[("MongoDB<br/>notification data")]
+        MessageMongo[("MongoDB<br/>airbnb_message")]
+        KeycloakDb[("PostgreSQL<br/>Keycloak DB")]
+        Redis[("Redis optional<br/>payment cache")]
+    end
+
+    subgraph External["External providers"]
+        Stripe["Stripe<br/>PaymentIntent, Connect, webhook"]
+        Cloudinary["Cloudinary<br/>image upload"]
+        Mail["SMTP / Brevo<br/>email delivery"]
+        Gemini["Google GenAI / Gemini<br/>chatbot model"]
+    end
+
+    Browser --> Client
+    Client -->|"REST /api/v1 + Bearer JWT"| Gateway
+    Client <-->|"Socket.IO /socket.io"| Gateway
+
+    Gateway -->|"lb://user-service"| UserSvc
+    Gateway -->|"lb://listing-service"| ListingSvc
+    Gateway -->|"lb://booking-service"| BookingSvc
+    Gateway -->|"lb://payment-service"| PaymentSvc
+    Gateway -->|"lb://rating-service"| RatingSvc
+    Gateway -->|"lb://wishlist-service"| WishlistSvc
+    Gateway -->|"lb://chatbot-service"| ChatbotSvc
+    Gateway -->|"HTTP + WS direct"| MessageSvc
+
+    Gateway -.->|"fetch routes / service lookup"| Eureka
+    UserSvc -.->|"register / discover"| Eureka
+    ListingSvc -.->|"register / discover"| Eureka
+    BookingSvc -.->|"register / discover"| Eureka
+    PaymentSvc -.->|"register / discover"| Eureka
+    RatingSvc -.->|"register / discover"| Eureka
+    WishlistSvc -.->|"register / discover"| Eureka
+    ActivitySvc -.->|"register / discover"| Eureka
+    NotificationSvc -.->|"register / discover"| Eureka
+    ChatbotSvc -.->|"register / discover"| Eureka
+
+    Gateway -.->|"JWT validation / JWKS"| Keycloak
+    UserSvc -->|"create/login/refresh users"| Keycloak
+    PaymentSvc -->|"client credential token"| Keycloak
+    MessageSvc -.->|"verify Keycloak JWT / gateway user header"| Keycloak
+
+    UserSvc <--> UserDb
+    ListingSvc <--> ListingDb
+    BookingSvc <--> BookingDb
+    PaymentSvc <--> PaymentDb
+    WishlistSvc <--> WishlistDb
+    ActivitySvc <--> ActivityDb
+    RatingSvc <--> RatingDb
+    NotificationSvc <--> NotificationMongo
+    MessageSvc <--> MessageMongo
+    Keycloak <--> KeycloakDb
+    PaymentSvc -.->|"cache if enabled"| Redis
+
+    BookingSvc -->|"Feign: listing info, suspend/unsuspend"| ListingSvc
+    BookingSvc -->|"Feign: public profiles"| UserSvc
+    BookingSvc -->|"Feign: refunds"| PaymentSvc
+    PaymentSvc -->|"Feign: create/update booking"| BookingSvc
+    PaymentSvc -->|"Feign: host Stripe account"| UserSvc
+    ListingSvc -->|"Feign: booking availability"| BookingSvc
+    ListingSvc -->|"Feign: rating summary"| RatingSvc
+    ListingSvc -->|"Feign: activities/recommendations"| ActivitySvc
+    RatingSvc -->|"Feign: reviewer profiles"| UserSvc
+    UserSvc -->|"Feign: host listings"| ListingSvc
+    UserSvc -->|"Feign: host rating summary"| RatingSvc
+    ChatbotSvc -->|"Feign: search and availability"| ListingSvc
+
+    UserSvc -->|"topic: user.notification.email"| Kafka
+    BookingSvc -->|"topic: notifications"| Kafka
+    PaymentSvc -->|"topics: payment.*, payout.*, refund.*, notifications"| Kafka
+    Kafka -->|"consume: user.notification.email"| NotificationSvc
+
+    PaymentSvc <--> Stripe
+    UserSvc -->|"Stripe Connect onboarding"| Stripe
+    UserSvc --> Cloudinary
+    MessageSvc --> Cloudinary
+    NotificationSvc --> Mail
+    ChatbotSvc --> Gemini
+
+    classDef client fill:#e8f4ff,stroke:#2b6cb0,stroke-width:1px,color:#102a43;
+    classDef edge fill:#f0fdf4,stroke:#15803d,stroke-width:1px,color:#052e16;
+    classDef service fill:#fff7ed,stroke:#c2410c,stroke-width:1px,color:#431407;
+    classDef platform fill:#f5f3ff,stroke:#6d28d9,stroke-width:1px,color:#2e1065;
+    classDef data fill:#f8fafc,stroke:#475569,stroke-width:1px,color:#0f172a;
+    classDef external fill:#fef2f2,stroke:#b91c1c,stroke-width:1px,color:#450a0a;
+
+    class Browser,Client client;
+    class Gateway edge;
+    class UserSvc,ListingSvc,BookingSvc,PaymentSvc,RatingSvc,WishlistSvc,ActivitySvc,NotificationSvc,MessageSvc,ChatbotSvc service;
+    class Eureka,Keycloak,Kafka platform;
+    class UserDb,ListingDb,BookingDb,PaymentDb,WishlistDb,ActivityDb,RatingDb,NotificationMongo,MessageMongo,KeycloakDb,Redis data;
+    class Stripe,Cloudinary,Mail,Gemini external;
