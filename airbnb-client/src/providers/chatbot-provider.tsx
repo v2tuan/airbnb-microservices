@@ -14,6 +14,7 @@ import {
 } from "react";
 import {
   ChatbotAuthenticationError,
+  type ChatbotBookingConfirmation,
   type ChatbotListingCard,
   streamChatbotResponse,
 } from "@/api/endpoints/chatbot";
@@ -23,6 +24,7 @@ export type ChatMessage = {
   role: "assistant" | "user";
   content: string;
   listings?: ChatbotListingCard[];
+  bookingConfirmation?: ChatbotBookingConfirmation;
   isStreaming?: boolean;
 };
 
@@ -202,6 +204,14 @@ export function ChatbotProvider({ children }: { children: ReactNode }) {
             updateAssistantMessage(assistantMessage.id, (message) => ({
               ...message,
               listings,
+            }));
+          },
+          onBookingConfirmation: (bookingConfirmation) => {
+            if (activeAssistantIdRef.current !== assistantMessage.id) return;
+
+            updateAssistantMessage(assistantMessage.id, (message) => ({
+              ...message,
+              bookingConfirmation,
             }));
           },
           onError: (message) => {

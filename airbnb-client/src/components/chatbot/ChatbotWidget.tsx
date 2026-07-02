@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatbotListingCard } from "@/api/endpoints/chatbot";
+import ChatbotBookingConfirmation from "@/components/chatbot/ChatbotBookingConfirmation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -364,6 +365,12 @@ function MessageBubble({
               listings={message.listings ?? []}
               onAskListing={onAskListing}
             />
+
+            {message.bookingConfirmation ? (
+              <ChatbotBookingConfirmation
+                booking={message.bookingConfirmation}
+              />
+            ) : null}
           </div>
         )}
       </div>
@@ -397,6 +404,7 @@ export default function ChatbotWidget() {
       latestMessage.id,
       latestMessage.content.length,
       latestMessage.listings?.length ?? 0,
+      latestMessage.bookingConfirmation?.listingId ?? "",
       latestMessage.isStreaming ? "streaming" : "done",
     ].join(":");
   }, [messages]);

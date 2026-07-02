@@ -31,6 +31,9 @@ public interface ListingFeignClient {
     @PostMapping("/search/filter")
     ApiResponse<List<ListingResponse>> searchListingsWithFilters(@RequestBody ListingFilterRequest request);
 
+    @GetMapping("/{listingId}")
+    ApiResponse<ListingResponse> getListingById(@PathVariable UUID listingId);
+
     @GetMapping("/{listingId}/availability/bookable")
     ApiResponse<ListingAvailabilityResponse> checkBookableAvailability(
             @PathVariable UUID listingId,

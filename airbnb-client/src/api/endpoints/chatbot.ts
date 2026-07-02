@@ -15,6 +15,34 @@ export type ChatbotListingCard = {
   instantBook?: boolean;
 };
 
+export type ChatbotBookingConfirmation = {
+  listingId: string;
+  title: string;
+  imageUrl?: string | null;
+  location: string;
+  city?: string | null;
+  country?: string | null;
+  maxGuests?: number | null;
+  roomType?: string | null;
+  propertyType?: string | null;
+  checkInDate: string;
+  checkOutDate: string;
+  totalNights: number;
+  numberOfAdults: number;
+  numberOfChildren: number;
+  numberOfInfants: number;
+  numberOfPets: number;
+  guestNotes?: string | null;
+  currency: string;
+  nightlyPrice: number;
+  accommodationSubtotal: number;
+  cleaningFee: number;
+  serviceFee: number;
+  taxes: number;
+  estimatedTotalAmount: number;
+  cancellationPolicyCode?: string | null;
+};
+
 export type ChatbotStreamOptions = {
   message: string;
   conversationId?: string | null;
@@ -22,6 +50,9 @@ export type ChatbotStreamOptions = {
   onToken: (token: string) => void;
   onConversationId?: (conversationId: string) => void;
   onListings?: (listings: ChatbotListingCard[]) => void;
+  onBookingConfirmation?: (
+    bookingConfirmation: ChatbotBookingConfirmation,
+  ) => void;
   onError?: (message: string) => void;
 };
 
@@ -194,6 +225,47 @@ const normalizeListings = (value: unknown): ChatbotListingCard[] => {
     .filter((listing): listing is ChatbotListingCard => Boolean(listing));
 };
 
+const normalizeBookingConfirmation = (
+  value: unknown,
+): ChatbotBookingConfirmation | null => {
+  if (!isRecord(value)) return null;
+
+  const listingId = toStringValue(value.listingId);
+  const title = toStringValue(value.title);
+  const checkInDate = toStringValue(value.checkInDate);
+  const checkOutDate = toStringValue(value.checkOutDate);
+
+  if (!listingId || !title || !checkInDate || !checkOutDate) return null;
+
+  return {
+    listingId,
+    title,
+    imageUrl: toStringValue(value.imageUrl),
+    location: toStringValue(value.location) ?? "Việt Nam",
+    city: toStringValue(value.city),
+    country: toStringValue(value.country),
+    maxGuests: toNumberValue(value.maxGuests),
+    roomType: toStringValue(value.roomType),
+    propertyType: toStringValue(value.propertyType),
+    checkInDate,
+    checkOutDate,
+    totalNights: toNumberValue(value.totalNights) ?? 1,
+    numberOfAdults: toNumberValue(value.numberOfAdults) ?? 1,
+    numberOfChildren: toNumberValue(value.numberOfChildren) ?? 0,
+    numberOfInfants: toNumberValue(value.numberOfInfants) ?? 0,
+    numberOfPets: toNumberValue(value.numberOfPets) ?? 0,
+    guestNotes: toStringValue(value.guestNotes),
+    currency: toStringValue(value.currency) ?? "VND",
+    nightlyPrice: toNumberValue(value.nightlyPrice) ?? 0,
+    accommodationSubtotal: toNumberValue(value.accommodationSubtotal) ?? 0,
+    cleaningFee: toNumberValue(value.cleaningFee) ?? 0,
+    serviceFee: toNumberValue(value.serviceFee) ?? 0,
+    taxes: toNumberValue(value.taxes) ?? 0,
+    estimatedTotalAmount: toNumberValue(value.estimatedTotalAmount) ?? 0,
+    cancellationPolicyCode: toStringValue(value.cancellationPolicyCode),
+  };
+};
+
 const emitLegacyPayload = (
   data: string,
   options: Pick<ChatbotStreamOptions, "onToken" | "onListings">,
@@ -263,7 +335,11 @@ const readSseFrame = (
   frame: string,
   options: Pick<
     ChatbotStreamOptions,
-    "onToken" | "onConversationId" | "onListings" | "onError"
+    | "onToken"
+    | "onConversationId"
+    | "onListings"
+    | "onBookingConfirmation"
+    | "onError"
   >,
 ) => {
   const parsedFrame = parseSseFrame(frame);
@@ -293,6 +369,16 @@ const readSseFrame = (
 
   // Backend mới gửi event `message` là token Markdown thuần. Nhánh legacy giữ lại
   // để client vẫn chịu được payload JSON cũ nếu môi trường chưa deploy đồng bộ.
+  if (parsedFrame.event === "booking_confirmation") {
+    const bookingConfirmation = normalizeBookingConfirmation(
+      JSON.parse(parsedFrame.data),
+    );
+    if (bookingConfirmation) {
+      options.onBookingConfirmation?.(bookingConfirmation);
+    }
+    return;
+  }
+
   emitLegacyPayload(parsedFrame.data, options);
 };
 
@@ -300,7 +386,12 @@ const consumeSseStream = async (
   body: ReadableStream<Uint8Array>,
   options: Pick<
     ChatbotStreamOptions,
-    "signal" | "onToken" | "onConversationId" | "onListings" | "onError"
+    | "signal"
+    | "onToken"
+    | "onConversationId"
+    | "onListings"
+    | "onBookingConfirmation"
+    | "onError"
   >,
 ) => {
   const reader = body.getReader();
