@@ -1,14 +1,14 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
+import { addMonths, endOfMonth, format, parseISO, startOfMonth } from "date-fns";
 import {
+  BedDouble,
   CalendarDays,
   CheckCircle2,
-  BedDouble,
   MapPin,
-  MessageSquare,
   Share,
   Sparkles,
   Star,
@@ -18,13 +18,14 @@ import {
 import { activityAPI } from "@/api/endpoints/activity";
 import { listingAPI, unwrapApiData, type ListingResponse } from "@/api/endpoints/listing";
 import { ratingAPI } from "@/api/endpoints/rating";
-import { userAPI, type PublicUserProfile } from "@/api/endpoints/user";
+import { userAPI, type PublicHostResponseDTO } from "@/api/endpoints/user";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
 import { ListingRatingForm } from "@/components/listing/ListingRatingForm";
 import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar } from "@/components/ui/calendar";
 
 type RatingRecord = {
@@ -45,18 +46,18 @@ type RatingRecord = {
 };
 
 type HostPreview = {
-  id?: string;
+  userId?: string;
   keycloakUserId?: string;
   fullName?: string;
   avatarUrl?: string;
-  isSuperhost?: boolean;
-  hostSince?: string;
+  superHost?: boolean;
+  joinedAt?: string;
 };
 
-const formatHostSince = (hostSince?: string) => {
-  if (!hostSince) return "Joined recently";
+const formatHostSince = (joinedAt?: string) => {
+  if (!joinedAt) return "Joined recently";
 
-  const date = new Date(hostSince);
+  const date = new Date(joinedAt);
   if (Number.isNaN(date.getTime())) return "Joined recently";
 
   return `Joined ${date.toLocaleDateString("en-US", {
@@ -64,6 +65,29 @@ const formatHostSince = (hostSince?: string) => {
     year: "numeric",
   })}`;
 };
+
+const normalizeHostPreview = (
+  value:
+    | PublicHostResponseDTO
+    | {
+        userId?: string;
+        keycloakUserId?: string;
+        fullName?: string;
+        avatarUrl?: string;
+        superHost?: boolean;
+        joinedAt?: string;
+      }
+    | null
+    | undefined,
+  fallbackHostId: string,
+): HostPreview => ({
+  userId: value?.userId?.toString(),
+  keycloakUserId: value?.keycloakUserId ?? fallbackHostId,
+  fullName: value?.fullName?.trim() || undefined,
+  avatarUrl: value?.avatarUrl?.trim() || undefined,
+  superHost: value?.superHost,
+  joinedAt: value?.joinedAt,
+});
 
 const firstDefinedString = (...values: Array<unknown>) => {
   for (const value of values) {
@@ -219,6 +243,7 @@ export default function RoomDetail() {
 
   const [listing, setListing] = useState<ListingResponse | null>(null);
   const [host, setHost] = useState<HostPreview | null>(null);
+  const [unavailableDates, setUnavailableDates] = useState<Date[]>([]);
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [averageRating, setAverageRating] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -252,22 +277,64 @@ export default function RoomDetail() {
       if (!hostId) return;
 
       try {
-        const hostResponse = await userAPI.getPublicProfileById(hostId);
+        const primaryResponse = await userAPI.getPublicHostByKeycloakUserId(hostId);
         if (cancelled) return;
 
-        const hostProfile = hostResponse.data as PublicUserProfile | undefined;
+        const primaryProfile = primaryResponse.data as PublicHostResponseDTO | undefined;
+        const hasEnoughPrimaryData =
+          Boolean(primaryProfile?.fullName?.trim()) || Boolean(primaryProfile?.avatarUrl?.trim());
 
-        setHost({
-          id: hostProfile?.keycloakUserId ?? hostProfile?.userId?.toString() ?? hostId,
-          keycloakUserId: hostProfile?.keycloakUserId ?? hostId,
-          fullName: hostProfile?.fullName,
-          avatarUrl: hostProfile?.avatarUrl,
-          isSuperhost: hostProfile?.superHost,
-          hostSince: hostProfile?.joinedAt,
-        });
+        if (hasEnoughPrimaryData) {
+          setHost(normalizeHostPreview(primaryProfile, hostId));
+          return;
+        }
+      } catch (primaryError) {
+        console.warn("Primary host lookup failed, falling back to profile endpoint:", primaryError);
+      }
+
+      try {
+        const fallbackResponse = await userAPI.getPublicProfileById(hostId);
+        if (cancelled) return;
+
+        setHost(
+          normalizeHostPreview(
+            {
+              userId: fallbackResponse.data?.userId,
+              keycloakUserId: fallbackResponse.data?.keycloakUserId,
+              fullName: fallbackResponse.data?.fullName,
+              avatarUrl: fallbackResponse.data?.avatarUrl,
+              superHost: fallbackResponse.data?.superHost,
+              joinedAt: fallbackResponse.data?.joinedAt,
+            },
+            hostId,
+          ),
+        );
       } catch (hostError) {
         console.error("Failed to fetch host profile:", hostError);
         if (!cancelled) setHost(null);
+      }
+    };
+
+    const fetchAvailability = async (listingId: string) => {
+      try {
+        const rangeStart = startOfMonth(new Date());
+        const rangeEnd = endOfMonth(addMonths(rangeStart, 11));
+        const response = await listingAPI.getAvailability(listingId, {
+          startDate: format(rangeStart, "yyyy-MM-dd"),
+          endDate: format(rangeEnd, "yyyy-MM-dd"),
+        });
+
+        if (cancelled) return;
+
+        const rows = unwrapApiData(response.data) ?? [];
+        setUnavailableDates(
+          rows
+            .filter((day) => day && day.isAvailable === false && typeof day.date === "string")
+            .map((day) => parseISO(day.date)),
+        );
+      } catch (availabilityError) {
+        console.error("Failed to fetch listing availability:", availabilityError);
+        if (!cancelled) setUnavailableDates([]);
       }
     };
 
@@ -287,6 +354,7 @@ export default function RoomDetail() {
 
         void fetchRatings();
         void fetchHost(listingData.hostId);
+        void fetchAvailability(listingData.listingId);
       } catch (fetchError) {
         console.error("Failed to fetch listing:", fetchError);
         if (!cancelled) setError(true);
@@ -311,6 +379,25 @@ export default function RoomDetail() {
     void activityAPI.recordActivity(token, listing.listingId, { eventType: "VIEW" });
   }, [listing?.listingId]);
 
+  const hostProfileId = host?.keycloakUserId ?? host?.userId ?? listing?.hostId;
+  const hostDisplayName = host?.fullName?.trim() || "Host";
+  const reviewCount = ratings.length;
+  const effectiveAverageRating = averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
+  const totalGuests = listing?.maxGuests ?? 0;
+  const bedSummary = `${listing?.numBeds ?? 0} beds`;
+  const amenities = (listing?.amenities ?? []).filter(Boolean);
+  const sleepCount = Math.max(1, Math.min(listing?.numBedrooms || 1, 3));
+  const bedsPerRoom = Math.max(1, Math.round((listing?.numBeds || sleepCount) / sleepCount));
+  const hostInitials = useMemo(() => {
+    const source = hostDisplayName;
+    return source
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("");
+  }, [host?.fullName, host?.keycloakUserId]);
+
   if (loading) {
     return <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">Loading...</div>;
   }
@@ -322,15 +409,6 @@ export default function RoomDetail() {
       </div>
     );
   }
-
-  const hostProfileId = host?.keycloakUserId ?? host?.id ?? listing.hostId;
-  const reviewCount = ratings.length;
-  const effectiveAverageRating = averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
-  const totalGuests = listing.maxGuests;
-  const bedSummary = `${listing.numBeds} beds`;
-  const amenities = (listing.amenities ?? []).filter(Boolean);
-  const sleepCount = Math.max(1, Math.min(listing.numBedrooms || 1, 3));
-  const bedsPerRoom = Math.max(1, Math.round((listing.numBeds || sleepCount) / sleepCount));
 
   return (
     <main className="min-h-screen bg-white">
@@ -369,16 +447,8 @@ export default function RoomDetail() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <DetailMeta
-                icon={Users}
-                label="Guests"
-                value={`${listing.maxGuests} max`}
-              />
-              <DetailMeta
-                icon={CalendarDays}
-                label="Beds"
-                value={`${listing.numBeds} available`}
-              />
+              <DetailMeta icon={Users} label="Guests" value={`${listing.maxGuests} max`} />
+              <DetailMeta icon={CalendarDays} label="Beds" value={`${listing.numBeds} available`} />
               <DetailMeta
                 icon={Star}
                 label="Rating"
@@ -387,7 +457,7 @@ export default function RoomDetail() {
               <DetailMeta
                 icon={Sparkles}
                 label="Host"
-                value={host?.isSuperhost ? "Superhost" : "Member host"}
+                value={host?.superHost ? "Superhost" : "Member host"}
               />
             </div>
           </div>
@@ -400,8 +470,16 @@ export default function RoomDetail() {
             <div className="min-w-0 space-y-8">
               <section className="border-b border-[#ebebeb] pb-8">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f7f7f7] text-[#222222]">
-                    <Sparkles className="h-5 w-5" />
+                  <div className="relative h-14 w-14 shrink-0">
+                    <Avatar className="h-14 w-14">
+                      <AvatarImage src={host?.avatarUrl ?? undefined} alt={host?.fullName ?? "Host"} />
+                      <AvatarFallback>{hostInitials || "H"}</AvatarFallback>
+                    </Avatar>
+                    {host?.superHost ? (
+                      <span className="absolute -right-0.5 -bottom-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#ff385c] text-white shadow-sm">
+                        <CheckCircle2 className="h-3 w-3" />
+                      </span>
+                    ) : null}
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
@@ -412,15 +490,15 @@ export default function RoomDetail() {
                         href={`/users/profile/${hostProfileId}`}
                         className="mt-1 inline-block text-lg font-semibold text-[#222222] underline-offset-4 hover:underline"
                       >
-                        {host?.fullName ?? host?.keycloakUserId ?? listing.hostId}
+                        {hostDisplayName}
                       </Link>
                     ) : (
                       <p className="mt-1 text-lg font-semibold text-[#222222]">
-                        {host?.fullName ?? host?.keycloakUserId ?? listing.hostId}
+                        {hostDisplayName}
                       </p>
                     )}
                     <p className="mt-1 text-sm text-zinc-500">
-                      {host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}
+                      {host?.joinedAt ? formatHostSince(host.joinedAt) : "Joined recently"}
                     </p>
                   </div>
                 </div>
@@ -430,13 +508,13 @@ export default function RoomDetail() {
                     <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Status</p>
                     <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#222222]">
                       <CheckCircle2 className="h-4 w-4 text-[#ff385c]" />
-                      {host?.isSuperhost ? "Superhost" : "Member host"}
+                      {host?.superHost ? "Superhost" : "Member host"}
                     </p>
                   </div>
                   <div className="rounded-[16px] bg-[#f7f7f7] p-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Joined</p>
                     <p className="mt-2 text-sm font-medium text-[#222222]">
-                      {host?.hostSince ? formatHostSince(host.hostSince) : "Joined recently"}
+                      {host?.joinedAt ? formatHostSince(host.joinedAt) : "Joined recently"}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">Public host profile</p>
                   </div>
@@ -444,9 +522,9 @@ export default function RoomDetail() {
               </section>
 
               <section className="border-b border-[#ebebeb] pb-8">
-                <ListingInfo
+                  <ListingInfo
                   data={listing}
-                  hostName={host?.fullName ?? host?.keycloakUserId ?? listing.hostId}
+                  hostName={hostDisplayName}
                 />
               </section>
 
@@ -464,10 +542,7 @@ export default function RoomDetail() {
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {Array.from({ length: sleepCount }).map((_, index) => (
-                    <div
-                      key={index}
-                      className="rounded-[18px] border border-[#ebebeb] bg-[#f7f7f7] p-5"
-                    >
+                    <div key={index} className="rounded-[18px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
                       <BedDouble className="h-6 w-6 text-[#222222]" />
                       <p className="mt-4 text-sm font-semibold text-[#222222]">
                         Bedroom {index + 1}
@@ -511,10 +586,10 @@ export default function RoomDetail() {
                   <SectionHeading
                     eyebrow="Calendar"
                     title="Availability"
-                    subtitle="Use the booking panel to pick dates. The calendar below is there to keep the page visually aligned with Airbnb's listing flow."
+                    subtitle="Unavailable dates are marked directly on the calendar."
                   />
                   <p className="text-sm text-zinc-500">
-                    Check-in and checkout are selected in the booking card
+                    Unavailable dates are crossed out
                   </p>
                 </div>
 
@@ -523,6 +598,7 @@ export default function RoomDetail() {
                     mode="range"
                     defaultMonth={new Date()}
                     numberOfMonths={2}
+                    disabled={unavailableDates}
                   />
                 </div>
               </section>
@@ -590,18 +666,12 @@ export default function RoomDetail() {
               </section>
 
               <section className="pb-2">
-                <ListingRatingPanel
-                  averageRating={averageRating}
-                  ratings={ratings}
-                />
+                <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
 
                 <div className="mt-10">
-                  <ListingRatingForm
-                    listingId={listing.listingId}
-                    hostId={listing.hostId}
-                  />
-                </div>
-              </section>
+                <ListingRatingForm listingId={listing.listingId} hostId={listing.hostId} />
+              </div>
+            </section>
             </div>
 
             <div className="lg:pt-2">
@@ -609,12 +679,15 @@ export default function RoomDetail() {
                 roomId={listing.listingId}
                 maxGuests={listing.maxGuests}
                 petsAllowed={true}
-                pricing={listing.pricing ?? {
-                  basePrice: 0,
-                  currency: "USD",
-                  cleaningFee: 0,
-                  serviceFeePercentage: 0,
-                }}
+                unavailableDates={unavailableDates}
+                pricing={
+                  listing.pricing ?? {
+                    basePrice: 0,
+                    currency: "USD",
+                    cleaningFee: 0,
+                    serviceFeePercentage: 0,
+                  }
+                }
                 rating={averageRating}
                 reviewCount={ratings.length}
               />
@@ -625,4 +698,3 @@ export default function RoomDetail() {
     </main>
   );
 }
-

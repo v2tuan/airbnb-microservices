@@ -525,6 +525,19 @@ export const listingAPI = {
       ...publicRequest,
     });
   },
+
+  getAvailability: (
+    listingId: string,
+    params: {
+      startDate: string;
+      endDate: string;
+    },
+  ): Promise<AxiosResponse<ApiResponse<AvailabilityResponse[]>>> => {
+    return apiClient.get(`${prefix}/listings/${listingId}/availability`, {
+      params,
+      ...publicRequest,
+    });
+  },
 };
 
 export default listingAPI;
