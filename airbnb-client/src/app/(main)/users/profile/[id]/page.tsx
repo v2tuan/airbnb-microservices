@@ -212,6 +212,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
     const rating = profile.stats?.overallRating;
     const reviewsCount = profile.stats?.reviewsCount;
     const listingsCount = profile.stats?.activeListingsCount;
+    const messageRecipientId = profile.host.keycloakUserId ?? profile.host.id ?? id;
 
     return (
       <main className="min-h-screen bg-white">
@@ -263,7 +264,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
               </div>
 
               <div className="flex items-center gap-3">
-                <SendMessageButton otherUserId={profile.host.keycloakUserId ?? id} />
+                <SendMessageButton otherUserId={messageRecipientId} />
               </div>
             </div>
           </section>
@@ -559,7 +560,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
                 </div>
 
                 <div className="mt-6">
-                  <SendMessageButton otherUserId={profile.host.keycloakUserId ?? id} />
+                  <SendMessageButton otherUserId={messageRecipientId} />
                 </div>
 
                 <p className="mt-4 text-center text-xs leading-6 text-zinc-500">

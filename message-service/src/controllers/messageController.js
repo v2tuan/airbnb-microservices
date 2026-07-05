@@ -1,6 +1,6 @@
 import { StatusCodes } from 'http-status-codes'
 import { messageService } from '~/services/messageService'
-import { isUserViewingConversation } from '~/sockets'
+import { emitNotification, isUserViewingConversation } from '~/sockets'
 import userModel from '~/models/users'
 import { publishNotificationEvent } from '~/services/notificationPublisher'
 
@@ -39,14 +39,31 @@ const sendMessage = async (req, res, next) => {
       void Promise.allSettled(
         recipients.map((recipientId) => {
           if (!isUserViewingConversation(recipientId, conversationId)) {
-            return publishNotificationEvent({
+            const notificationPayload = {
               eventType: 'MESSAGE',
               recipientId: String(recipientId),
               title: 'New message',
               message: `${senderName} sent you a message`,
-              meta: { conversationId: message.conversationId, messageId: message._id, href: `/guest/messages/${conversationId}` },
+              meta: {
+                conversationId: message.conversationId,
+                messageId: message._id,
+                senderId: String(senderId),
+                href: `/guest/messages/${conversationId}`
+              },
               locale: 'vi'
+            }
+
+            emitNotification(String(recipientId), {
+              _id: String(message._id),
+              type: 'MESSAGE',
+              title: notificationPayload.title,
+              message: notificationPayload.message,
+              meta: notificationPayload.meta,
+              read: false,
+              createdAt: new Date().toISOString()
             })
+
+            return publishNotificationEvent(notificationPayload)
           }
 
           return Promise.resolve()

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchConversations } from '@/api/message'
+import { notificationAPI } from '@/api/endpoints/notification'
 import { userAPI } from '@/api/endpoints/user'
 import { useAuth } from '@/hooks/useAuth'
 import { useSocket } from '@/hooks/useSocket'
@@ -22,6 +23,16 @@ const getParticipantId = (participant: any) => {
   return participant._id ?? participant.id ?? ''
 }
 
+const normalizeUserId = (value: unknown) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'object') {
+    const record = value as Record<string, any>
+    return String(record._id ?? record.id ?? record.senderId ?? record.userId ?? '')
+  }
+  return String(value)
+}
+
 const formatConversationTime = (value?: string | Date) => {
   const date = value ? new Date(value) : new Date()
   if (Number.isNaN(date.getTime())) {
@@ -30,20 +41,35 @@ const formatConversationTime = (value?: string | Date) => {
   return date.toLocaleString()
 }
 
-export const useConversations = () => {
+type UseConversationsOptions = {
+  activeConversationId?: string | null
+}
+
+export const useConversations = (options: UseConversationsOptions = {}) => {
   const { user } = useAuth()
   const { socket } = useSocket()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const profileCacheRef = useRef<Map<string, Awaited<ReturnType<typeof userAPI.getPublicProfileById>>['data']>>(new Map())
+  const unreadConversationIdsRef = useRef<Set<string>>(new Set())
+  const activeConversationId = options.activeConversationId ?? null
 
-  const keycloakUserId = user?.keycloakUserId
+  const currentUserIds = useMemo(() => {
+    return new Set(
+      [user?.keycloakUserId, user?._id, user?.id]
+        .map(normalizeUserId)
+        .filter(Boolean),
+    )
+  }, [user?.id, user?._id, user?.keycloakUserId])
+
+  const currentUserId = currentUserIds.values().next().value ?? null
+  const keycloakUserId = currentUserId
   // Chat backend dùng `keycloakUserId` (JWT sub) để xác định participants,
   // nên tránh fallback sang `id` (pin UUID) để không match sai.
 
   const updateConversationLastMessage = useCallback(
-    (conversationId: string, text: string, createdAt?: string | Date) => {
+    (conversationId: string, text: string, createdAt?: string | Date, markUnread = true) => {
       const preview = text.trim()
       if (!conversationId || !preview) return
 
@@ -57,6 +83,7 @@ export const useConversations = () => {
           ...current[index],
           preview,
           time,
+          unread: markUnread ? true : current[index].unread,
         }
 
         const next = [...current]
@@ -67,6 +94,20 @@ export const useConversations = () => {
     },
     []
   )
+
+  const clearUnreadConversation = useCallback((conversationId: string) => {
+    if (!conversationId) return
+
+    unreadConversationIdsRef.current.delete(conversationId)
+
+    setConversations((current) =>
+      current.map((conversation) =>
+        conversation.conversationId === conversationId
+          ? { ...conversation, unread: false }
+          : conversation,
+      ),
+    )
+  }, [])
 
   const conversationIdsKey = useMemo(
     () =>
@@ -111,7 +152,23 @@ export const useConversations = () => {
         const response = await fetchConversations()
         if (cancelled) return
 
-        const currentUserIds = new Set([keycloakUserId].filter(Boolean).map(String))
+        let unreadConversationIds = new Set<string>()
+        try {
+          const unreadResponse = await notificationAPI.getMyNotifications(true, 100)
+          const unreadItems = unreadResponse.data.items ?? []
+          unreadConversationIds = new Set(
+            unreadItems
+              .filter((item) => {
+                const senderId = normalizeUserId(item.meta?.senderId)
+                return !senderId || !currentUserIds.has(senderId)
+              })
+              .map((item) => String(item.meta?.conversationId ?? ''))
+              .filter(Boolean),
+          )
+        } catch {
+          unreadConversationIds = new Set()
+        }
+        unreadConversationIdsRef.current = unreadConversationIds
 
         const normalized = await Promise.all(
           (response.data || []).map(async (conv: any) => {
@@ -132,7 +189,7 @@ export const useConversations = () => {
               listing: 'Listing', // TODO: get from booking/listing
               time: formatConversationTime(conv.updatedAt),
               preview: conv.lastMessage?.text || conv.lastMessage?.message?.text || 'No messages yet',
-              unread: false // TODO: implement unread status
+              unread: unreadConversationIds.has(conv._id),
             }
           })
         )
@@ -160,6 +217,42 @@ export const useConversations = () => {
   }, [keycloakUserId])
 
   useEffect(() => {
+    if (!activeConversationId) return
+
+    let cancelled = false
+
+    const syncReadState = async () => {
+      try {
+        const unreadResponse = await notificationAPI.getMyNotifications(true, 100)
+        const unreadItems = unreadResponse.data.items ?? []
+        const matchingItems = unreadItems.filter(
+          (item) =>
+            String(item.meta?.conversationId ?? '') === activeConversationId &&
+            !currentUserIds.has(normalizeUserId(item.meta?.senderId)),
+        )
+
+        await Promise.all(
+          matchingItems.map((item) => notificationAPI.markRead(item.id)),
+        )
+
+        if (!cancelled) {
+          clearUnreadConversation(activeConversationId)
+        }
+      } catch {
+        if (!cancelled) {
+          clearUnreadConversation(activeConversationId)
+        }
+      }
+    }
+
+    void syncReadState()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeConversationId, clearUnreadConversation, currentUserIds])
+
+  useEffect(() => {
     if (!socket || !conversationIdsKey) return
 
     const conversationIds = conversationIdsKey.split(',').filter(Boolean)
@@ -180,15 +273,19 @@ export const useConversations = () => {
 
     const handleNewMessage = (payload: {
       conversationId?: string
-      message?: { text?: string; createdAt?: string }
+      message?: { text?: string; createdAt?: string; senderId?: unknown }
     }) => {
       const text = payload.message?.text?.trim() ?? ''
       if (!payload.conversationId || !text) return
 
+      const senderId = normalizeUserId(payload.message?.senderId)
+      const markUnread = payload.conversationId !== activeConversationId && !currentUserIds.has(senderId)
+
       updateConversationLastMessage(
         payload.conversationId,
         text,
-        payload.message?.createdAt
+        payload.message?.createdAt,
+        markUnread,
       )
     }
 
@@ -197,8 +294,8 @@ export const useConversations = () => {
     return () => {
       socket.off('message:new', handleNewMessage)
     }
-  }, [socket, updateConversationLastMessage])
+  }, [activeConversationId, currentUserIds, socket, updateConversationLastMessage])
 
-  return { conversations, loading, error, updateConversationLastMessage }
+  return { conversations, loading, error, updateConversationLastMessage, clearUnreadConversation }
 }
 

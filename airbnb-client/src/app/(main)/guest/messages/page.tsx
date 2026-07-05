@@ -2,17 +2,17 @@
 
 import { listingAPI, type ListingResponse, unwrapApiData } from "@/api/endpoints/listing";
 import { fetchMessages, sendMessage } from "@/api/message";
+import { userAPI } from "@/api/endpoints/user";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversations } from "@/hooks/useConversations";
 import { useSocket } from "@/hooks/useSocket";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Archive,
-  CircleDot,
+  ChevronLeft,
   Link2,
   MapPin,
   Search,
@@ -52,6 +52,30 @@ type ListingPreview = {
   currency: string;
   maxGuests: number;
 };
+
+function isImageUrl(value?: string) {
+  return typeof value === "string" && /^https?:\/\//i.test(value);
+}
+
+function getInitials(name?: string) {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function normalizeSenderId(value: unknown) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const direct = record._id ?? record.id ?? record.senderId;
+    if (typeof direct === "string") return direct;
+  }
+  return String(value);
+}
 
 const listingLinkPattern =
   /(?:https?:\/\/)?(?:[^/\s]+\/)*?(?:rooms|listings)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9_-]+)/i;
@@ -279,9 +303,12 @@ function ListingLinkPreview({
 function GuestMessagesPageContent() {
   const { user } = useAuth();
   const { socket } = useSocket();
-  const { conversations, updateConversationLastMessage } = useConversations();
   const params = useParams<{ id?: string }>();
   const conversationId = typeof params?.id === "string" ? params.id : null;
+  const { conversations, updateConversationLastMessage } = useConversations({
+    activeConversationId: conversationId,
+  });
+  const isMobileConversationOpen = !!conversationId;
 
   const emptyConversation: Conversation = {
     id: "empty",
@@ -303,6 +330,16 @@ function GuestMessagesPageContent() {
   const [draftText, setDraftText] = useState("");
   const [isRemoteTyping, setIsRemoteTyping] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [partnerAvatarUrl, setPartnerAvatarUrl] = useState("");
+  const [partnerDisplayName, setPartnerDisplayName] = useState("");
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const activeAvatarUrl =
+    partnerAvatarUrl ||
+    (isImageUrl(activeConversation.avatar) ? activeConversation.avatar : "");
+  const activeAvatarLabel =
+    partnerDisplayName || activeConversation.name || "Conversation";
 
   const draftListingId = extractListingId(draftText);
 
@@ -327,6 +364,10 @@ function GuestMessagesPageContent() {
   const resolveSenderRole = (senderId?: string): ChatMessage["sender"] =>
     isOwnMessage(senderId) ? "guest" : "host";
 
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = "auto") => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
+
   useEffect(() => {
     if (!conversationId || !user?.keycloakUserId) {
       setMessages([]);
@@ -341,7 +382,7 @@ function GuestMessagesPageContent() {
         const payload = response.data?.messages ?? response.data ?? [];
         const normalized = (Array.isArray(payload) ? payload : []).map((message: any) => ({
           id: message._id ?? message.id ?? String(Date.now()),
-          sender: resolveSenderRole(message.senderId?._id ?? message.senderId?.id ?? message.senderId),
+          sender: resolveSenderRole(normalizeSenderId(message.senderId)),
           text: message.text ?? "",
           createdAt: formatMessageTime(message.createdAt),
         }));
@@ -363,6 +404,47 @@ function GuestMessagesPageContent() {
       cancelled = true;
     };
   }, [conversationId, user?.keycloakUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPartnerProfile = async () => {
+      if (!activeConversation.partnerId) {
+        setPartnerAvatarUrl("");
+        setPartnerDisplayName(activeConversation.name ?? "");
+        return;
+      }
+
+      try {
+        const response = await userAPI.getPublicProfileById(activeConversation.partnerId);
+        if (cancelled) return;
+
+        const profile = response.data ?? null;
+        setPartnerAvatarUrl(profile?.avatarUrl ?? "");
+        setPartnerDisplayName(profile?.fullName ?? activeConversation.name ?? "");
+      } catch {
+        if (cancelled) return;
+        setPartnerAvatarUrl("");
+        setPartnerDisplayName(activeConversation.name ?? "");
+      }
+    };
+
+    void loadPartnerProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation.name, activeConversation.partnerId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollMessagesToBottom("auto");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversationId]);
 
   useEffect(() => {
     if (!socket) return;
@@ -387,6 +469,7 @@ function GuestMessagesPageContent() {
     }) => {
       const message = payload.message;
       const messageText = message?.text?.trim() ?? "";
+      const senderId = normalizeSenderId(message?.senderId);
 
       if (payload.conversationId !== activeConversation.conversationId || !message || !messageText) {
         return;
@@ -396,7 +479,7 @@ function GuestMessagesPageContent() {
         ...currentMessages,
         {
           id: message._id ?? String(Date.now()),
-          sender: resolveSenderRole(message.senderId),
+          sender: resolveSenderRole(senderId),
           text: messageText,
           createdAt: formatMessageTime(message.createdAt),
         },
@@ -414,6 +497,16 @@ function GuestMessagesPageContent() {
       socket.off("message:new", handleNewMessage);
     };
   }, [activeConversation.conversationId, socket, user?.keycloakUserId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollMessagesToBottom("smooth");
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversationId, messages]);
 
   useEffect(() => {
     if (!socket || !conversationId) return;
@@ -460,10 +553,15 @@ function GuestMessagesPageContent() {
 
     if (draftListingId) {
       void fetchListingPreview(draftListingId, extractListingTitle(text)).then((preview) => {
-        updateConversationLastMessage(activeConversation.conversationId, summarizeListingMessage(text, preview.title));
+        updateConversationLastMessage(
+          activeConversation.conversationId,
+          summarizeListingMessage(text, preview.title),
+          undefined,
+          false,
+        );
       });
     } else {
-      updateConversationLastMessage(activeConversation.conversationId, text);
+      updateConversationLastMessage(activeConversation.conversationId, text, undefined, false);
     }
 
     setDraftText("");
@@ -502,6 +600,13 @@ function GuestMessagesPageContent() {
               : message,
           ),
         );
+
+        updateConversationLastMessage(
+          activeConversation.conversationId,
+          serverMsg.text ?? text,
+          serverMsg.createdAt ?? serverCreatedAt,
+          false,
+        );
       }
     } catch (error) {
       setMessages((curr) => curr.filter((message) => message.id !== tmpId));
@@ -512,17 +617,17 @@ function GuestMessagesPageContent() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-130px)] bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_32%),linear-gradient(180deg,#fff_0%,#fff_55%,#f8fafc_100%)] px-4 pb-10 pt-6 sm:px-6 lg:px-10">
+    <main className="min-h-[calc(100vh-130px)] bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_32%),linear-gradient(180deg,#fff_0%,#fff_55%,#f8fafc_100%)] px-3 pb-6 pt-4 sm:px-6 lg:px-10">
       <section className="mx-auto w-full max-w-7xl">
-        <div className="mb-6 animate-in fade-in slide-in-from-top-2 duration-500">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">Guest inbox</p>
-          <h1 className="mt-2 text-3xl font-semibold text-zinc-900 sm:text-4xl">Messages</h1>
-          <p className="mt-2 text-sm text-zinc-600">Stay in touch with hosts and keep trip details in one place.</p>
+        <div className="mb-4 animate-in fade-in slide-in-from-top-2 duration-500 sm:mb-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-500">Guest inbox</p>
+          <h1 className="mt-1 text-2xl font-semibold text-zinc-900 sm:mt-2 sm:text-4xl">Messages</h1>
+          <p className="mt-2 max-w-2xl text-sm text-zinc-600">Stay in touch with hosts and keep trip details in one place.</p>
         </div>
 
-        <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-[0_12px_45px_rgba(15,23,42,0.08)]">
-          <div className="grid h-[calc(100dvh-190px)] min-h-[68vh] grid-cols-1 lg:grid-cols-[360px_1fr]">
-            <aside className="min-h-0 border-b border-zinc-200 lg:border-b-0 lg:border-r">
+        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_12px_45px_rgba(15,23,42,0.08)] sm:rounded-3xl">
+          <div className="grid h-[calc(100dvh-170px)] min-h-[72vh] grid-cols-1 lg:grid-cols-[340px_1fr]">
+            <aside className={`min-h-0 border-b border-zinc-200 lg:border-b-0 lg:border-r ${isMobileConversationOpen ? "hidden lg:block" : "block"}`}>
               <div className="space-y-4 border-b border-zinc-200 p-4 sm:p-5">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
@@ -546,7 +651,7 @@ function GuestMessagesPageContent() {
                 </div>
               </div>
 
-              <ScrollArea className="h-[calc(100dvh-332px)] min-h-0 lg:h-[calc(100dvh-318px)]">
+              <div className="h-[calc(100dvh-320px)] min-h-0 overflow-y-auto lg:h-[calc(100dvh-304px)]">
                 <div className="min-h-0">
                   {conversations.length > 0 ? (
                     conversations.map((conversation) => {
@@ -561,20 +666,40 @@ function GuestMessagesPageContent() {
                           }`}
                         >
                           <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white">
-                              {conversation.avatar}
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-900 text-xs font-semibold text-white">
+                              {isImageUrl(conversation.avatar) ? (
+                                <Image
+                                  src={conversation.avatar}
+                                  alt={conversation.name}
+                                  width={44}
+                                  height={44}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span>{getInitials(conversation.name)}</span>
+                              )}
                             </div>
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-3">
-                                <p className="truncate text-sm font-semibold text-zinc-900">{conversation.name}</p>
-                                <span className="shrink-0 text-xs text-zinc-500">{conversation.time}</span>
+                                <p className={`truncate text-sm ${conversation.unread ? "font-bold text-zinc-950" : "font-semibold text-zinc-900"}`}>
+                                  {conversation.name}
+                                </p>
+                                <span className={`shrink-0 text-xs ${conversation.unread ? "font-semibold text-rose-600" : "text-zinc-500"}`}>
+                                  {conversation.time}
+                                </span>
                               </div>
-                              <p className="truncate text-xs text-zinc-500">{conversation.listing}</p>
-                              <p className="mt-1 truncate text-sm text-zinc-700">{conversation.preview}</p>
+                              <p className={`truncate text-xs ${conversation.unread ? "font-medium text-zinc-700" : "text-zinc-500"}`}>
+                                {conversation.listing}
+                              </p>
+                              <p className={`mt-1 truncate text-sm ${conversation.unread ? "font-semibold text-zinc-900" : "text-zinc-700"}`}>
+                                {conversation.preview}
+                              </p>
                             </div>
 
-                            {conversation.unread ? <CircleDot className="mt-1 h-4 w-4 shrink-0 text-rose-500" /> : null}
+                            {conversation.unread ? (
+                              <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500" />
+                            ) : null}
                           </div>
                         </Link>
                       );
@@ -583,15 +708,37 @@ function GuestMessagesPageContent() {
                     <div className="px-4 py-10 text-sm text-zinc-500">No conversations yet.</div>
                   )}
                 </div>
-              </ScrollArea>
+              </div>
             </aside>
 
-            <section className="flex min-h-0 flex-col">
-              <header className="border-b border-zinc-200 px-4 py-4 sm:px-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-lg font-semibold text-zinc-900">{activeConversation.name}</p>
-                    <p className="text-sm text-zinc-500">{activeConversation.listing}</p>
+            <section className={`flex min-h-0 flex-col ${isMobileConversationOpen ? "flex" : "hidden lg:flex"}`}>
+              <header className="border-b border-zinc-200 px-4 py-3 sm:px-6 sm:py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-900 text-xs font-semibold text-white">
+                        {activeAvatarUrl ? (
+                          <Image
+                            src={activeAvatarUrl}
+                            alt={activeAvatarLabel}
+                            width={40}
+                            height={40}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span>{getInitials(activeAvatarLabel)}</span>
+                        )}
+                      </div>
+                      <Link
+                        href="/guest/messages"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition hover:border-zinc-900 hover:text-zinc-900 lg:hidden"
+                        aria-label="Back to conversations"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Link>
+                      <p className="truncate text-base font-semibold text-zinc-900 sm:text-lg">{activeAvatarLabel}</p>
+                    </div>
+                    <p className="truncate text-xs text-zinc-500 sm:text-sm">{activeConversation.listing}</p>
                     {isRemoteTyping ? (
                       <p className="mt-1 inline-flex items-center gap-2 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600">
                         <span className="flex gap-1">
@@ -604,7 +751,7 @@ function GuestMessagesPageContent() {
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-2 text-zinc-500">
+                  <div className="hidden items-center gap-2 text-zinc-500 sm:flex">
                     <button
                       type="button"
                       className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900"
@@ -630,11 +777,11 @@ function GuestMessagesPageContent() {
                 </div>
               </header>
 
-              <div className="relative flex min-h-0 flex-1 flex-col px-4 py-6 sm:px-6">
+              <div className="relative flex min-h-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6">
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-linear-to-b from-white to-transparent" />
 
-                <ScrollArea className="relative min-h-0 flex-1 pr-3">
-                  <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-2">
+                <div ref={messagesScrollRef} className="relative min-h-0 flex-1 overflow-y-auto pr-2 sm:pr-3">
+                  <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-3">
                     {conversationId ? (
                       messages.length > 0 ? (
                         messages.map((message) => {
@@ -645,7 +792,7 @@ function GuestMessagesPageContent() {
                           return (
                             <div
                               key={message.id}
-                              className={`max-w-[88%] ${isGuestMessage ? "ml-auto" : "mr-auto"} animate-in fade-in duration-500`}
+                              className={`max-w-[92%] sm:max-w-[88%] ${isGuestMessage ? "ml-auto" : "mr-auto"} animate-in fade-in duration-500`}
                             >
                               <div
                                 className={`rounded-2xl px-4 py-3 text-sm shadow-sm ${
@@ -691,11 +838,12 @@ function GuestMessagesPageContent() {
                         Select a conversation to open its thread.
                       </div>
                     )}
+                    <div ref={messagesEndRef} />
                   </div>
-                </ScrollArea>
+                </div>
               </div>
 
-              <footer className="border-t border-zinc-200 p-4 sm:p-5">
+              <footer className="border-t border-zinc-200 p-3 sm:p-5">
                 {draftListingId ? (
                   <div className="mb-3">
                     <ListingLinkPreview
@@ -706,19 +854,19 @@ function GuestMessagesPageContent() {
                   </div>
                 ) : null}
 
-                <form className="flex items-end gap-3" onSubmit={handleSubmit}>
+                <form className="flex items-end gap-2 sm:gap-3" onSubmit={handleSubmit}>
                   <textarea
                     rows={2}
                     value={draftText}
                     onChange={(event) => setDraftText(event.target.value)}
                     placeholder="Write a message"
-                    className="max-h-40 min-h-11.5 flex-1 resize-y rounded-2xl border border-zinc-300 px-4 py-3 text-sm text-zinc-800 outline-none transition focus:border-zinc-900"
+                    className="max-h-40 min-h-11.5 flex-1 resize-y rounded-2xl border border-zinc-300 px-3 py-2.5 text-sm text-zinc-800 outline-none transition focus:border-zinc-900 sm:px-4 sm:py-3"
                     disabled={!conversationId}
                   />
                   <button
                     type="submit"
                     disabled={isSending || !draftText.trim() || !conversationId}
-                    className={`inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-medium text-white transition ${
+                    className={`inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-medium text-white transition sm:px-5 ${
                       isSending || !draftText.trim() || !conversationId
                         ? "cursor-not-allowed bg-zinc-700/60"
                         : "bg-zinc-900 hover:bg-zinc-700"
