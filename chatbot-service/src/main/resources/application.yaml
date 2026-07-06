@@ -2,6 +2,9 @@ spring:
   application:
     name: chatbot-service
 
+  main:
+    web-application-type: reactive
+
   ai:
     model:
       chat: ${CHATBOT_AI_PROVIDER:google-genai}
