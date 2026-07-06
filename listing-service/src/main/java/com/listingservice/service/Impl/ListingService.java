@@ -240,7 +240,10 @@ public class ListingService implements IListingService {
             return List.of();
         }
 
-        List<Listing> candidates = listingRepository.findAll(advancedSearchSpecification(safeRequest));
+        int limit = normalizeSearchLimit(safeRequest.getLimit());
+        Pageable pageable = PageRequest.of(0, limit, advancedSearchSort(safeRequest.getSortBy()));
+        Page<Listing> candidatesPage = listingRepository.findAll(advancedSearchSpecification(safeRequest), pageable);
+        List<Listing> candidates = candidatesPage.getContent();
 
         // Availability belongs to booking-service in this architecture. Listing-service
         // owns listing attributes, then asks booking-service which candidates are free
@@ -263,7 +266,7 @@ public class ListingService implements IListingService {
         )
                 .stream()
                 .sorted(advancedSearchComparator(safeRequest.getSortBy()))
-                .limit(normalizeSearchLimit(safeRequest.getLimit()))
+                .limit(limit)
                 .map(listingMapper::toResponse)
                 .toList();
     }
@@ -723,6 +726,22 @@ public class ListingService implements IListingService {
                     .thenComparing(this::createdAtOrMin, Comparator.reverseOrder());
             default -> Comparator.comparing(this::instantBookRank)
                     .thenComparing(this::createdAtOrMin, Comparator.reverseOrder());
+        };
+    }
+
+    private Sort advancedSearchSort(String sortBy) {
+        String normalizedSort = normalizeFilter(sortBy);
+        String sort = normalizedSort != null ? normalizedSort.toUpperCase(Locale.ROOT) : "RELEVANCE";
+
+        return switch (sort) {
+            case "PRICE_ASC", "LOWEST_PRICE" -> Sort.by(Sort.Direction.ASC, "pricing.basePrice");
+            case "PRICE_DESC", "HIGHEST_PRICE" -> Sort.by(Sort.Direction.DESC, "pricing.basePrice");
+            case "CREATED_ASC", "OLDEST" -> Sort.by(Sort.Direction.ASC, "createdAt");
+            case "CREATED_DESC", "NEWEST" -> Sort.by(Sort.Direction.DESC, "createdAt");
+            case "GUESTS_DESC" -> Sort.by(Sort.Direction.DESC, "maxGuests")
+                    .and(Sort.by(Sort.Direction.DESC, "createdAt"));
+            default -> Sort.by(Sort.Direction.DESC, "instantBook")
+                    .and(Sort.by(Sort.Direction.DESC, "createdAt"));
         };
     }
 

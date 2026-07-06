@@ -26,7 +26,8 @@ import com.listingservice.constant.*;
     @Index(name = "idx_listings_status", columnList = "status"),
     @Index(name = "idx_listings_location", columnList = "city, country"),
     @Index(name = "idx_listings_host_status_created", columnList = "host_id, status, created_at"),
-    @Index(name = "idx_listings_search", columnList = "status, city, country, max_guests")
+    @Index(name = "idx_listings_search", columnList = "status, city, country, max_guests"),
+    @Index(name = "idx_listings_status_city_instant_created", columnList = "status, city, instant_book, created_at")
 })
 public class Listing extends BaseEntity {
     
