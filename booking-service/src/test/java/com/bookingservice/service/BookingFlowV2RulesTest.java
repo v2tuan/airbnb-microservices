@@ -17,6 +17,7 @@ import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.HostCancellationQuoteRepository;
 import com.bookingservice.repository.client.ListingClient;
 import com.bookingservice.repository.client.PaymentClient;
+import com.bookingservice.repository.client.RatingClient;
 import com.bookingservice.repository.client.UserClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +59,7 @@ class BookingFlowV2RulesTest {
     @Mock HostCancellationQuoteRepository hostCancellationQuoteRepository;
     @Mock ListingClient listingClient;
     @Mock PaymentClient paymentClient;
+    @Mock RatingClient ratingClient;
     @Mock UserClient userClient;
     @Mock HostPenaltyService hostPenaltyService;
     @Mock NotificationEventPublisher notificationEventPublisher;
@@ -73,6 +75,7 @@ class BookingFlowV2RulesTest {
                 hostCancellationQuoteRepository,
                 listingClient,
                 paymentClient,
+                ratingClient,
                 userClient,
                 hostPenaltyService,
                 notificationEventPublisher

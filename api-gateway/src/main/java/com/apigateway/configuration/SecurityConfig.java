@@ -118,7 +118,8 @@ public class SecurityConfig {
 
         configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:3000",
-                "http://localhost:3001"
+                "http://localhost:3001",
+                "http://103.130.211.150:3000"
         ));
 
         configuration.setAllowedMethods(List.of("*"));
