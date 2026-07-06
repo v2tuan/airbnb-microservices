@@ -6,9 +6,10 @@ x-host-gateway: &host-gateway
 x-java-env: &java-env
   JAVA_OPTS: ${JAVA_OPTS:-}
   EUREKA_DEFAULT_ZONE: http://discovery-service:8761/eureka/
-  KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
+  KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://keycloak:8080/realms/airbnb}
   KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
   KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  APP_CORS_ALLOWED_ORIGIN_PATTERNS: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:5173,http://localhost:3000,http://localhost:3001}
 
 x-spring-service: &spring-service
   networks:
@@ -142,6 +143,8 @@ services:
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      APP_COOKIE_SECURE: ${APP_COOKIE_SECURE:-false}
+      APP_COOKIE_SAME_SITE: ${APP_COOKIE_SAME_SITE:-Lax}
 
   listing-service:
     <<: *spring-service
@@ -308,7 +311,7 @@ services:
       PORT: 8017
       MONGODB_URI: ${MONGODB_URI:-}
       DATABASE_NAME: ${DATABASE_NAME:-airbnb_message}
-      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://keycloak:8080/realms/airbnb}
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
       ALLOW_LEGACY_JWT: ${ALLOW_LEGACY_JWT:-false}
       ACCESS_TOKEN_SECRET_SIGNATURE: ${ACCESS_TOKEN_SECRET_SIGNATURE:-}
@@ -318,6 +321,7 @@ services:
       WEBSITE_DOMAIN_DEVELOPMENT: ${APP_FRONTEND_URL:-http://localhost:3000}
       FRONTEND_URL: ${APP_FRONTEND_URL:-http://localhost:3000}
       FRONTEND_PROD_URL: ${FRONTEND_PROD_URL:-}
+      APP_CORS_ALLOWED_ORIGIN_PATTERNS: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:5173,http://localhost:3000,http://localhost:3001}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       KAFKA_NOTIFICATION_TOPIC: ${KAFKA_NOTIFICATION_TOPIC:-notification.events}
     networks:
@@ -336,7 +340,7 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8888}
         NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
         NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8888}
-        NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:8084/notification}
+        NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:8888/api/v1/notification}
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
         NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     image: airbnb/airbnb-client:local
@@ -348,7 +352,7 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8888}
       NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
       NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8888}
-      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:8084/notification}
+      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:8888/api/v1/notification}
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     depends_on:
