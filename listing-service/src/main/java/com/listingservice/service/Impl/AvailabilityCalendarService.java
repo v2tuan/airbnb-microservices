@@ -69,15 +69,41 @@ public class AvailabilityCalendarService implements IAvailabilityCalendarService
     @Override
     public List<AvailabilityResponse> getAvailability(UUID listingId, LocalDate startDate, LocalDate endDate) {
         log.info("Getting availability for listing: {} between {} and {}", listingId, startDate, endDate);
-        
+
         if (!listingRepository.existsById(listingId)) {
             throw new AppException(ErrorCode.LISTING_NOT_FOUND);
         }
-        
-        return availabilityCalendarRepository.findByListingListingIdAndDateBetween(listingId, startDate, endDate)
+
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            return List.of();
+        }
+
+        Map<LocalDate, AvailabilityCalendar> availabilityByDate = availabilityCalendarRepository
+                .findByListingListingIdAndDateBetween(listingId, startDate, endDate)
                 .stream()
-                .map(availabilityCalendarMapper::toResponse)
-                .toList();
+                .collect(Collectors.toMap(
+                        AvailabilityCalendar::getDate,
+                        row -> row,
+                        (left, right) -> left
+                ));
+
+        List<AvailabilityResponse> results = new ArrayList<>();
+        LocalDate currentDate = startDate;
+        while (!currentDate.isAfter(endDate)) {
+            AvailabilityCalendar calendar = availabilityByDate.get(currentDate);
+            if (calendar != null) {
+                results.add(availabilityCalendarMapper.toResponse(calendar));
+            } else {
+                results.add(AvailabilityResponse.builder()
+                        .listingId(listingId)
+                        .date(currentDate)
+                        .isAvailable(false)
+                        .build());
+            }
+            currentDate = currentDate.plusDays(1);
+        }
+
+        return results;
     }
     
     @Override

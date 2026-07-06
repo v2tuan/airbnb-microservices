@@ -1,6 +1,7 @@
 package com.listingservice.service.Impl;
 
 import com.listingservice.dto.response.CompositeListingResponse;
+import com.listingservice.dto.response.PublicHostResponseDTO;
 import com.listingservice.entity.Listing;
 import com.listingservice.entity.ListingPricing;
 import com.listingservice.repository.ListingRepository;
@@ -14,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,7 +56,7 @@ class ListingDetailServiceTest {
 
     Listing listing = Listing.builder()
         .listingId(listingId)
-        .hostId(UUID.randomUUID().toString())
+        .hostId("kc-host-1")
         .title("Room with view")
         .description("Quiet and central")
         .address("1 Main Street")
@@ -66,7 +68,7 @@ class ListingDetailServiceTest {
     when(listingRepository.findById(listingId)).thenReturn(Optional.of(listing));
     when(availabilityClient.isAvailable(listingId, checkIn, checkOut)).thenReturn(true);
     when(hostProfileClient.getHostProfile(listing.getHostId()))
-        .thenReturn(new CompositeListingResponse.HostProfileData());
+        .thenReturn(hostProfile("kc-host-1", "Nguyen Van A", "https://img.example/avatar.png"));
     when(ratingClient.getAverageRating(listingId)).thenReturn(new BigDecimal("4.75"));
 
     CompositeListingResponse response = listingDetailService.getDetail(
@@ -80,6 +82,19 @@ class ListingDetailServiceTest {
 
     assertNotNull(response.getRating());
     assertEquals(new BigDecimal("4.75"), response.getRating().getAverage());
+    assertNotNull(response.getHost());
+    assertEquals("Nguyen Van A", response.getHost().getFullName());
+    assertEquals("https://img.example/avatar.png", response.getHost().getAvatarUrl());
+  }
+
+  private CompositeListingResponse.HostProfileData hostProfile(String keycloakUserId, String fullName, String avatarUrl) {
+    CompositeListingResponse.HostProfileData host = new CompositeListingResponse.HostProfileData();
+    host.setUserId(null);
+    host.setFullName(fullName);
+    host.setAvatarUrl(avatarUrl);
+    host.setSuperHost(Boolean.TRUE);
+    host.setJoinedAt(Instant.parse("2025-01-01T00:00:00Z"));
+    return host;
   }
 }
 

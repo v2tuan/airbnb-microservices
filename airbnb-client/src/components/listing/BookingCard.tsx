@@ -32,6 +32,7 @@ interface BookingFormProps {
   // originalPrice?: number;   // giá gốc (nếu có giảm giá)
   maxGuests?: number;
   petsAllowed?: boolean;
+  unavailableDates?: Date[];
   pricing: PricingProps;
   rating?: number;
   reviewCount?: number;
@@ -41,6 +42,7 @@ export function BookingCard({
     roomId,
     maxGuests,
     petsAllowed,
+  unavailableDates = [],
   pricing,
   rating,
   reviewCount,
@@ -137,6 +139,7 @@ export function BookingCard({
               defaultMonth={new Date()}
               selected={date}
               onSelect={setDate}
+              disabled={unavailableDates}
               numberOfMonths={2}
             />
           </PopoverContent>

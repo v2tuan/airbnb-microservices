@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
-import { JwtProvider } from '~/providers/JwtProvider'
 import { env } from '~/config/environment'
+import { authenticateToken } from '~/services/authService'
 
 let ioInstance = null
 
@@ -41,8 +41,8 @@ const socketAuth = async (socket, next) => {
       return next(new Error('Authentication error: No token provided'))
     }
 
-    const decoded = await JwtProvider.verifyToken(token, env.ACCESS_TOKEN_SECRET_SIGNATURE)
-    socket.user = { id: decoded._id, email: decoded.email }
+    const auth = await authenticateToken(token)
+    socket.user = { id: auth.keycloakUserId, email: auth.email }
     next()
   } catch (error) {
     next(new Error('Authentication error: Invalid token'))
