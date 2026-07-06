@@ -33,6 +33,11 @@ public class RatingController {
     return ResponseEntity.ok(ratingService.getRating(id));
   }
 
+  @GetMapping("/bookings/{bookingId}")
+  public ResponseEntity<RatingDTO> getRatingByBooking(@PathVariable String bookingId) {
+    return ResponseEntity.ok(ratingService.getRatingByBooking(bookingId));
+  }
+
   @GetMapping("/listing/{listingId}")
   public ResponseEntity<List<RatingDTO>> getRatingsByListing(@PathVariable String listingId) {
     return ResponseEntity.ok(ratingService.getRatingsByListing(listingId));

@@ -17,6 +17,7 @@ import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.AdminReservationDetailResponse;
 import com.bookingservice.dto.response.AdminReservationSummaryResponse;
 import com.bookingservice.dto.response.BookingAvailabilityCalendarResponse;
+import com.bookingservice.dto.response.BookingReviewContextResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostCancellationQuoteResponse;
@@ -39,6 +40,7 @@ import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.HostCancellationQuoteRepository;
 import com.bookingservice.repository.client.ListingClient;
 import com.bookingservice.repository.client.PaymentClient;
+import com.bookingservice.repository.client.RatingClient;
 import com.bookingservice.repository.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -79,6 +81,7 @@ public class BookingService {
     private final HostCancellationQuoteRepository hostCancellationQuoteRepository;
     private final ListingClient listingClient;
     private final PaymentClient paymentClient;
+    private final RatingClient ratingClient;
     private final UserClient userClient;
     private final HostPenaltyService hostPenaltyService;
     private final NotificationEventPublisher notificationEventPublisher;
@@ -571,6 +574,29 @@ public class BookingService {
 
         PublicUserResponse host = fetchHostProfile(booking.getHostId());
         return mapToDetailResponse(booking, listing, host);
+    }
+
+    @Transactional(readOnly = true)
+    public BookingReviewContextResponse getMyBookingReviewContext(UUID bookingId) {
+        UUID guestId = UUID.fromString(currentJwt().getSubject());
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
+
+        if (!booking.getGuestId().equals(guestId)) {
+            throw BusinessException.notFound("Booking not found");
+        }
+
+        return BookingReviewContextResponse.builder()
+                .bookingId(booking.getBookingId())
+                .listingId(booking.getListingId())
+                .guestId(booking.getGuestId())
+                .hostId(booking.getHostId())
+                .status(booking.getStatus())
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .completedAt(booking.getCompletedAt())
+                .canReview(booking.getStatus() == BookingStatus.COMPLETED)
+                .build();
     }
 
     @Transactional
@@ -2199,14 +2225,50 @@ public class BookingService {
     }
 
     private BookingDetailResponse.ReviewSummary buildReviewSummary(Booking booking) {
-        int seed = Math.abs(booking.getListingId().hashCode());
-        BigDecimal averageRating = BigDecimal.valueOf(4.6 + (seed % 35) / 100.0)
-                .setScale(2, java.math.RoundingMode.HALF_UP);
+        try {
+            Map<String, Object> summary = ratingClient.getListingRatingSummary(booking.getListingId().toString());
+            BigDecimal averageRating = toSummaryBigDecimal(summary.get("overallRating"));
+            int reviewCount = toSummaryInt(summary.get("reviewCount"));
 
-        return BookingDetailResponse.ReviewSummary.builder()
-                .averageRating(averageRating)
-                .reviewCount(12 + seed % 140)
-                .build();
+            return BookingDetailResponse.ReviewSummary.builder()
+                    .averageRating(averageRating)
+                    .reviewCount(reviewCount)
+                    .build();
+        } catch (RuntimeException exception) {
+            log.warn("Failed to fetch rating summary listingId={}", booking.getListingId(), exception);
+            return BookingDetailResponse.ReviewSummary.builder()
+                    .averageRating(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
+                    .reviewCount(0)
+                    .build();
+        }
+    }
+
+    private BigDecimal toSummaryBigDecimal(Object value) {
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return new BigDecimal(text).setScale(2, RoundingMode.HALF_UP);
+            } catch (NumberFormatException ignored) {
+                return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
+        }
+        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private int toSummaryInt(Object value) {
+        long parsed = 0L;
+        if (value instanceof Number number) {
+            parsed = number.longValue();
+        } else if (value instanceof String text && !text.isBlank()) {
+            try {
+                parsed = Long.parseLong(text);
+            } catch (NumberFormatException ignored) {
+                parsed = 0L;
+            }
+        }
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE, parsed));
     }
 
     private BookingDetailResponse.AccessInfo buildAccessInfo(ListingResponse listing) {

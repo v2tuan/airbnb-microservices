@@ -24,6 +24,7 @@ import com.bookingservice.dto.response.BookingAvailabilityCalendarResponse;
 import com.bookingservice.dto.response.ComplaintResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
+import com.bookingservice.dto.response.BookingReviewContextResponse;
 import com.bookingservice.dto.response.HostPenaltyResponse;
 import com.bookingservice.dto.response.HostCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostReservationsPageResponse;
@@ -134,6 +135,15 @@ public class BookingController {
                 .success(true)
                 .message("Get booking detail success")
                 .data(bookingService.getMyBookingDetail(id))
+                .build());
+    }
+
+    @GetMapping("/{id}/review-context")
+    public ResponseEntity<ApiResponse<BookingReviewContextResponse>> getBookingReviewContext(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.<BookingReviewContextResponse>builder()
+                .success(true)
+                .message("Get booking review context success")
+                .data(bookingService.getMyBookingReviewContext(id))
                 .build());
     }
 

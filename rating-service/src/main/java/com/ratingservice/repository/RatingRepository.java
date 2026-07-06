@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface RatingRepository extends JpaRepository<Rating, String> {
@@ -20,6 +21,10 @@ public interface RatingRepository extends JpaRepository<Rating, String> {
   }
 
   List<Rating> findByListingId(String listingId);
+
+  Optional<Rating> findByBookingId(String bookingId);
+
+  boolean existsByBookingId(String bookingId);
 
   /**
    * Get paginated reviews for a host

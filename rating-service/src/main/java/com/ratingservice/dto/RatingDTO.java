@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -14,6 +15,7 @@ public class RatingDTO {
   private String listingId;
   private String userId;
   private String hostId;
+  private String bookingId;
   private Double overallRating;
   private Double cleanliness;
   private Double accuracy;
@@ -25,6 +27,7 @@ public class RatingDTO {
   private String reviewerFullName;
   private String reviewerAvatarUrl;
   private String reviewerLocation;
+  private List<RatingPhotoDTO> photos;
   private LocalDateTime createdAt;
 }
 

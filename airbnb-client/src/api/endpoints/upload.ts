@@ -5,6 +5,7 @@ const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
 
 export interface ImageUploadResponse {
   url: string;
+  publicId?: string | null;
 }
 
 export interface ApiResponse<T> {
@@ -17,7 +18,7 @@ export const uploadAPI = {
   uploadImage: (
     token: string | null,
     file: File,
-    folder = "airbnb/listings/photos"
+    folder = "airbnb/listings/photos",
   ): Promise<AxiosResponse<ApiResponse<ImageUploadResponse>>> => {
     const formData = new FormData();
     formData.append("file", file);

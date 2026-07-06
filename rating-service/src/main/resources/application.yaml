@@ -24,6 +24,13 @@ spring:
         default_schema: public
         format_sql: false
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/airbnb}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/airbnb/protocol/openid-connect/certs}
+
 app:
   gateway-base-url: ${APP_GATEWAY_BASE_URL:http://localhost:8888/api/v1}
 

@@ -13,6 +13,7 @@ const publicRequest: PublicRequestConfig = {
 
 export interface RatingDTO {
   id: string;
+  bookingId?: string;
   listingId: string;
   userId: string;
   hostId: string;
@@ -26,15 +27,20 @@ export interface RatingDTO {
   review: string;
   reviewerFullName?: string;
   reviewerAvatarUrl?: string;
+  photos?: RatingPhotoDTO[];
+  createdAt?: string;
+}
+
+export interface RatingPhotoDTO {
+  id?: string;
+  imageUrl: string;
+  publicId?: string;
+  sortOrder?: number;
   createdAt?: string;
 }
 
 export interface CreateRatingPayload {
-  listingId: string;
-  userId: string;
-  hostId?: string;
-  reviewerFullName?: string;
-  reviewerAvatarUrl?: string;
+  bookingId: string;
   overallRating: number;
   cleanliness: number;
   accuracy: number;
@@ -43,6 +49,7 @@ export interface CreateRatingPayload {
   location: number;
   value: number;
   review: string;
+  photos?: RatingPhotoDTO[];
 }
 
 export const ratingAPI = {
@@ -50,6 +57,11 @@ export const ratingAPI = {
     payload: CreateRatingPayload,
   ): Promise<AxiosResponse<RatingDTO>> => {
     return apiClient.post(`${prefix}/ratings`, payload);
+  },
+  getRatingByBooking: (
+    bookingId: string,
+  ): Promise<AxiosResponse<RatingDTO>> => {
+    return apiClient.get(`${prefix}/ratings/bookings/${bookingId}`);
   },
   getRatingsByListing: (
     listingId: string,

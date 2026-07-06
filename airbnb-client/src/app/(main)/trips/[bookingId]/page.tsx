@@ -255,7 +255,12 @@ export default function BookingDetailPage() {
         console.error("Failed to fetch booking detail", err);
         if (!cancelled) {
           setError(true);
-          setErrorMessage(extractApiErrorMessage(err, "This reservation does not exist or is not available for your account."));
+          setErrorMessage(
+            extractApiErrorMessage(
+              err,
+              "This reservation does not exist or is not available for your account.",
+            ),
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -307,7 +312,8 @@ export default function BookingDetailPage() {
               Booking not found
             </h1>
             <p className="mt-3 text-sm text-slate-500">
-              {errorMessage ?? "This reservation does not exist or is not available for your account."}
+              {errorMessage ??
+                "This reservation does not exist or is not available for your account."}
             </p>
             <Link
               href="/trips"
@@ -422,7 +428,12 @@ export default function BookingDetailPage() {
       setCancellationQuote(response.data);
     } catch (err) {
       console.error("Failed to load cancellation quote", err);
-      setQuoteError(extractApiErrorMessage(err, "Could not calculate the cancellation quote. Try again."));
+      setQuoteError(
+        extractApiErrorMessage(
+          err,
+          "Could not calculate the cancellation quote. Try again.",
+        ),
+      );
       setCancellationQuote(null);
     } finally {
       setQuoteLoading(false);
@@ -439,7 +450,11 @@ export default function BookingDetailPage() {
     if (!booking) return;
 
     try {
-      await cancelBooking(token, booking.bookingId, "Guest abandoned unpaid hold");
+      await cancelBooking(
+        token,
+        booking.bookingId,
+        "Guest abandoned unpaid hold",
+      );
       setBooking((current) =>
         current
           ? {
@@ -452,7 +467,9 @@ export default function BookingDetailPage() {
       setCancelRequestSent(true);
     } catch (err) {
       console.error("Failed to expire pending booking", err);
-      setQuoteError(extractApiErrorMessage(err, "Cancellation failed. Please try again."));
+      setQuoteError(
+        extractApiErrorMessage(err, "Cancellation failed. Please try again."),
+      );
     }
   };
 
@@ -476,7 +493,12 @@ export default function BookingDetailPage() {
       setCancellationQuote(null);
     } catch (err) {
       console.error("Failed to cancel booking", err);
-      setQuoteError(extractApiErrorMessage(err, "Cancellation failed. Request a new quote and try again."));
+      setQuoteError(
+        extractApiErrorMessage(
+          err,
+          "Cancellation failed. Request a new quote and try again.",
+        ),
+      );
     } finally {
       setCancelSubmitting(false);
     }
@@ -484,7 +506,6 @@ export default function BookingDetailPage() {
 
   return (
     <div className="min-h-screen bg-[#fafaf9]">
-
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <div className="mb-6 animate-fade-in-up">
           <Link
@@ -928,7 +949,7 @@ export default function BookingDetailPage() {
 
             {effectiveStatus === "COMPLETED" ? (
               <div className="animate-fade-in-up-delay-4">
-                <ReviewCard hostName={hostName} />
+                <ReviewCard hostName={hostName} bookingId={booking.bookingId} />
               </div>
             ) : null}
           </div>
