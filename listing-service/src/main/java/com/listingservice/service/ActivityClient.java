@@ -16,18 +16,18 @@ public class ActivityClient {
 
     private final ActivityServiceFeignClient activityServiceFeignClient;
 
-    public void recordActivity(String userId, UUID listingId, ActivityEventType eventType) {
-        if (userId == null || userId.isBlank() || listingId == null || eventType == null) {
+    public void recordActivity(String keycloakUserId, UUID listingId, ActivityEventType eventType) {
+        if (keycloakUserId == null || keycloakUserId.isBlank() || listingId == null || eventType == null) {
             return;
         }
 
         try {
             activityServiceFeignClient.createActivity(
-                    new ActivityIngestionRequest(userId, listingId.toString(), eventType));
+                    new ActivityIngestionRequest(keycloakUserId, listingId.toString(), eventType));
         } catch (Exception ex) {
             log.warn(
-                    "Failed to record activity for userId={}, listingId={}, eventType={}",
-                    userId,
+                    "Failed to record activity for keycloakUserId={}, listingId={}, eventType={}",
+                    keycloakUserId,
                     listingId,
                     eventType,
                     ex

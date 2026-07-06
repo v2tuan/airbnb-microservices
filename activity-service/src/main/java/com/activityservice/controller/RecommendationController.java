@@ -18,11 +18,13 @@ public class RecommendationController {
     this.collaborativeFilteringService = collaborativeFilteringService;
   }
 
-  @GetMapping("/users/{userId}")
+  @GetMapping("/users/{keycloakUserId}")
   public RecommendationResponse recommendForUser(
-      @PathVariable String userId,
+      @PathVariable String keycloakUserId,
       @RequestParam(defaultValue = "10") Integer limit) {
-    return new RecommendationResponse(userId, collaborativeFilteringService.recommend(userId, limit));
+    return new RecommendationResponse(
+        keycloakUserId,
+        collaborativeFilteringService.recommend(keycloakUserId, limit));
   }
 }
 

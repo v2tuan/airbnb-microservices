@@ -84,13 +84,13 @@ class CollaborativeFilteringServiceTest {
   }
 
   private static UserActivityRepository.UserListingWeightProjection userListingWeight(
-      String userId,
+      String keycloakUserId,
       String listingId,
       double weight) {
     return new UserActivityRepository.UserListingWeightProjection() {
       @Override
-      public String getUserId() {
-        return userId;
+      public String getKeycloakUserId() {
+        return keycloakUserId;
       }
 
       @Override

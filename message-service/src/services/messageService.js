@@ -5,6 +5,7 @@ import conversationModel from '~/models/conversations'
 import ApiError from '~/utils/ApiError'
 import { conversationService } from './conversationService'
 import { cloudinary } from '~/config/cloudinary'
+import { publishNotificationEvent } from './notificationPublisher'
 
 const uploadBufferToCloudinary = (file, options = {}) => {
   return new Promise((resolve, reject) => {
@@ -34,6 +35,10 @@ const sendMessage = async ({ conversationId, senderId, text, files = [], io }) =
     if (!conversation) {
       throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found or you are not a participant')
     }
+
+    const recipientId = conversation.participants.find(
+      (participant) => String(participant) !== String(senderId)
+    )
 
     let attachments = []
     if (Array.isArray(files) && files.length > 0) {
@@ -86,6 +91,31 @@ const sendMessage = async ({ conversationId, senderId, text, files = [], io }) =
     await message.populate('senderId', '_id userName fullName avatar')
 
     await conversationService.updateLastMessage(conversationId, message)
+
+    if (recipientId) {
+      try {
+        await publishNotificationEvent({
+          eventType: 'MESSAGE',
+          channel: 'PUSH',
+          recipientId: String(recipientId),
+          title: 'New message',
+          message: trimmedText || 'You have a new conversation update.',
+          meta: {
+            conversationId,
+            messageId: message._id,
+            senderId: String(senderId)
+          },
+          payload: {
+            conversationId,
+            messageId: message._id,
+            senderId: String(senderId),
+            text: trimmedText
+          }
+        })
+      } catch (notificationError) {
+        console.error('Failed to publish message notification', notificationError)
+      }
+    }
 
     if (io) {
       io.to(`conversation:${conversationId}`).emit('message:new', {

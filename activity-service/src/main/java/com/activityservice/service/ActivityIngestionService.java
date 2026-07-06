@@ -19,7 +19,7 @@ public class ActivityIngestionService {
   @Transactional
   public UserActivity save(ActivityRequest request) {
     UserActivity activity = new UserActivity();
-    activity.setUserId(request.userId());
+    activity.setKeycloakUserId(request.keycloakUserId());
     activity.setListingId(request.listingId());
     activity.setEventType(request.eventType());
     activity.setEventWeight(request.eventType().getWeight());
@@ -34,7 +34,7 @@ public class ActivityIngestionService {
 
   private UserActivity toEntity(ActivityRequest request) {
     UserActivity activity = new UserActivity();
-    activity.setUserId(request.userId());
+    activity.setKeycloakUserId(request.keycloakUserId());
     activity.setListingId(request.listingId());
     activity.setEventType(request.eventType());
     activity.setEventWeight(request.eventType().getWeight());

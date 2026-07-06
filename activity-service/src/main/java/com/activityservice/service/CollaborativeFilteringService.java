@@ -23,13 +23,13 @@ public class CollaborativeFilteringService {
     this.userActivityRepository = userActivityRepository;
   }
 
-  public List<RecommendationItemResponse> recommend(String userId, Integer limit) {
+  public List<RecommendationItemResponse> recommend(String keycloakUserId, Integer limit) {
     int safeLimit = (limit == null || limit < 1) ? DEFAULT_LIMIT : Math.min(limit, 100);
 
     List<UserActivityRepository.ListingPopularityProjection> popularity = userActivityRepository.findListingPopularity();
     Map<String, Double> popularityScores = buildPopularityIndex(popularity);
     Map<String, Map<String, Double>> userItemMatrix = buildUserItemMatrix();
-    Map<String, Double> targetVector = userItemMatrix.getOrDefault(userId, Map.of());
+    Map<String, Double> targetVector = userItemMatrix.getOrDefault(keycloakUserId, Map.of());
     Set<String> seenListings = targetVector.keySet();
 
     if (targetVector.isEmpty()) {
@@ -39,8 +39,8 @@ public class CollaborativeFilteringService {
     Map<String, Double> candidateScores = new HashMap<>();
 
     for (Map.Entry<String, Map<String, Double>> entry : userItemMatrix.entrySet()) {
-      String neighborUserId = entry.getKey();
-      if (neighborUserId.equals(userId)) {
+      String neighborKeycloakUserId = entry.getKey();
+      if (neighborKeycloakUserId.equals(keycloakUserId)) {
         continue;
       }
 
@@ -93,7 +93,7 @@ public class CollaborativeFilteringService {
     Map<String, Map<String, Double>> matrix = new LinkedHashMap<>();
     for (UserActivityRepository.UserListingWeightProjection projection : userActivityRepository.findAllUserListingWeights()) {
       matrix
-          .computeIfAbsent(projection.getUserId(), ignored -> new HashMap<>())
+          .computeIfAbsent(projection.getKeycloakUserId(), ignored -> new HashMap<>())
           .put(projection.getListingId(), projection.getWeight());
     }
     return matrix;

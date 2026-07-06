@@ -26,8 +26,10 @@ public class UserActivity {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  // Stored identifier is the Keycloak subject; keep the legacy column name for now
+  // because existing activity rows already live in this table.
   @Column(name = "user_id", nullable = false)
-  private String userId;
+  private String keycloakUserId;
 
   @Column(name = "listing_id", nullable = false)
   private String listingId;
@@ -56,12 +58,12 @@ public class UserActivity {
     return id;
   }
 
-  public String getUserId() {
-    return userId;
+  public String getKeycloakUserId() {
+    return keycloakUserId;
   }
 
-  public void setUserId(String userId) {
-    this.userId = userId;
+  public void setKeycloakUserId(String keycloakUserId) {
+    this.keycloakUserId = keycloakUserId;
   }
 
   public String getListingId() {

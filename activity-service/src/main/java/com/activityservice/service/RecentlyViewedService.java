@@ -25,17 +25,17 @@ public class RecentlyViewedService {
     this.userActivityRepository = userActivityRepository;
   }
 
-  public List<RecentlyViewedItemResponse> getRecentlyViewed(String userId, Integer limit) {
+  public List<RecentlyViewedItemResponse> getRecentlyViewed(String keycloakUserId, Integer limit) {
     int safeLimit = normalizeLimit(limit);
     int fetchSize = Math.min(Math.max(safeLimit * 5, safeLimit), MAX_LIMIT);
 
-    List<UserActivity> activities = ANONYMOUS_USER_ID.equals(userId) || userId == null || userId.isBlank()
+    List<UserActivity> activities = ANONYMOUS_USER_ID.equals(keycloakUserId) || keycloakUserId == null || keycloakUserId.isBlank()
         ? userActivityRepository.findByEventTypeOrderByCreatedAtDesc(
             ActivityEventType.VIEW,
             PageRequest.of(0, fetchSize, Sort.by(Sort.Direction.DESC, "createdAt"))
         )
-        : userActivityRepository.findByUserIdAndEventTypeOrderByCreatedAtDesc(
-            userId,
+        : userActivityRepository.findByKeycloakUserIdAndEventTypeOrderByCreatedAtDesc(
+            keycloakUserId,
             ActivityEventType.VIEW,
             PageRequest.of(0, fetchSize, Sort.by(Sort.Direction.DESC, "createdAt"))
         );

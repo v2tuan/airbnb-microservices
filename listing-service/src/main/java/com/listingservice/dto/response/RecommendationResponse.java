@@ -3,7 +3,7 @@ package com.listingservice.dto.response;
 import java.util.List;
 
 public record RecommendationResponse(
-        String userId,
+        String keycloakUserId,
         List<RecommendationItemResponse> recommendations
 ) {
 }

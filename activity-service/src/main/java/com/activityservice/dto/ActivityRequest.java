@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record ActivityRequest(
-    @NotBlank String userId,
+    @NotBlank String keycloakUserId,
     @NotBlank String listingId,
     @NotNull ActivityEventType eventType
 ) {

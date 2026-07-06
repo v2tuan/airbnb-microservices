@@ -1,7 +1,9 @@
 package com.listingservice.service;
 
 import com.listingservice.dto.response.RecommendationResponse;
+import com.listingservice.dto.response.PublicHostResponseDTO;
 import com.listingservice.repository.client.RecommendationServiceFeignClient;
+import com.listingservice.repository.client.UserServiceFeignClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -18,26 +20,60 @@ public class RecommendationClient {
     private static final String ANONYMOUS_USER_ID = "__anonymous__";
 
     private final RecommendationServiceFeignClient recommendationServiceFeignClient;
+    private final UserServiceFeignClient userServiceFeignClient;
 
-    public List<UUID> getRecommendedListingIds(String userId, Integer limit) {
+    public List<UUID> getRecommendedListingIds(String keycloakUserId, Integer limit) {
         int safeLimit = normalizeLimit(limit);
-        String effectiveUserId = (userId == null || userId.isBlank()) ? ANONYMOUS_USER_ID : userId;
+        String effectiveKeycloakUserId = (keycloakUserId == null || keycloakUserId.isBlank())
+                ? ANONYMOUS_USER_ID
+                : keycloakUserId;
 
         try {
-            RecommendationResponse response = recommendationServiceFeignClient.recommendForUser(effectiveUserId, safeLimit);
-            if (response == null || response.recommendations() == null || response.recommendations().isEmpty()) {
-                return List.of();
+            List<UUID> keycloakUserResults = fetchRecommendations(effectiveKeycloakUserId, safeLimit);
+            if (!keycloakUserResults.isEmpty() || ANONYMOUS_USER_ID.equals(effectiveKeycloakUserId)) {
+                return keycloakUserResults;
             }
 
-            return response.recommendations().stream()
-                    .map(item -> item == null ? null : item.listingId())
-                    .filter(id -> id != null && !id.isBlank())
-                    .map(this::safeParseUuid)
-                    .filter(java.util.Objects::nonNull)
-                    .toList();
+            String legacyUserId = resolveLegacyUserId(effectiveKeycloakUserId);
+            if (legacyUserId == null || legacyUserId.isBlank() || legacyUserId.equals(effectiveKeycloakUserId)) {
+                return keycloakUserResults;
+            }
+
+            List<UUID> legacyResults = fetchRecommendations(legacyUserId, safeLimit);
+            if (!legacyResults.isEmpty()) {
+                log.info("Recommendation fallback used legacy userId={} for keycloakUserId={}", legacyUserId, effectiveKeycloakUserId);
+            }
+            return legacyResults;
         } catch (Exception ex) {
-            log.warn("Failed to fetch recommendations for userId={}", userId, ex);
+            log.warn("Failed to fetch recommendations for keycloakUserId={}", keycloakUserId, ex);
             return List.of();
+        }
+    }
+
+    private List<UUID> fetchRecommendations(String userId, int limit) {
+        RecommendationResponse response = recommendationServiceFeignClient.recommendForUser(userId, limit);
+        if (response == null || response.recommendations() == null || response.recommendations().isEmpty()) {
+            return List.of();
+        }
+
+        return response.recommendations().stream()
+                .map(item -> item == null ? null : item.listingId())
+                .filter(id -> id != null && !id.isBlank())
+                .map(this::safeParseUuid)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private String resolveLegacyUserId(String keycloakUserId) {
+        try {
+            PublicHostResponseDTO profile = userServiceFeignClient.getPublicUser(keycloakUserId);
+            if (profile == null || profile.userId() == null) {
+                return null;
+            }
+            return profile.userId().toString();
+        } catch (Exception ex) {
+            log.debug("Unable to resolve legacy userId for keycloakUserId={}", keycloakUserId, ex);
+            return null;
         }
     }
 

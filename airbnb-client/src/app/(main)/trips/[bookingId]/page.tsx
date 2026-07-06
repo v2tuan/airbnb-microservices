@@ -950,7 +950,7 @@ export default function BookingDetailPage() {
                 onContact={() => {
                   setHostMsgSent(true);
                   router.push(
-                    `/guest/messages?hostId=${booking.host?.keycloakUserId ?? booking.hostId ?? ""}`,
+      `/guest/messages?hostId=${booking.host?.keycloakUserId ?? ""}`,
                   );
                 }}
               />

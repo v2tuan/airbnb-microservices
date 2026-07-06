@@ -12,7 +12,11 @@ export default function SendMessageButton({ otherUserId }: { otherUserId: string
   const currentUser = useSelector(selectCurrentUser);
 
   const currentUserId =
-    currentUser?.keycloakUserId ?? currentUser?.id ?? currentUser?._id ?? null;
+    currentUser?.keycloakUserId ?? null;
+
+  if (!currentUserId || !otherUserId) {
+    return null;
+  }
 
   if (currentUserId && otherUserId && String(currentUserId) === String(otherUserId)) {
     return null;

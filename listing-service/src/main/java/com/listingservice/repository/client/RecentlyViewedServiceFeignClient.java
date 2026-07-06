@@ -9,9 +9,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "activity-service", contextId = "activityServiceRecentlyViewedClient", path = "/activities")
 public interface RecentlyViewedServiceFeignClient {
 
-    @GetMapping("/users/{userId}/recently-viewed")
+    @GetMapping("/users/{keycloakUserId}/recently-viewed")
     RecentlyViewedResponse getRecentlyViewed(
-            @PathVariable String userId,
+            @PathVariable String keycloakUserId,
             @RequestParam(defaultValue = "10") Integer limit
     );
 }

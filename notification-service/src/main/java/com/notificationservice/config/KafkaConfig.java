@@ -21,12 +21,15 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers:${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}}")
     private String bootstrapServers;
 
+    @Value("${notification.kafka.group-id:notification-service-group-v2}")
+    private String groupId;
+
     @Bean
     public ConsumerFactory<String, byte[]> consumerFactory() {
         Map<String, Object> config = new HashMap<>();
 
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        config.put(ConsumerConfig.GROUP_ID_CONFIG, "notification-service-group");
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
 
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);

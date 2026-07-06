@@ -51,6 +51,28 @@ function buildPreviewTitle(notification: NotificationItem) {
   return notification.type === "MESSAGE" ? "New message" : "Notification";
 }
 
+function buildNotificationId(notification: Partial<NotificationItem> & { _id?: string }) {
+  return notification.id || notification._id || "";
+}
+
+function buildNotificationKey(notification: Partial<NotificationItem> & { _id?: string; occurredAt?: string }) {
+  const meta = notification.meta ?? {};
+  const messageId = typeof meta.messageId === "string" ? meta.messageId : "";
+  const conversationId = typeof meta.conversationId === "string" ? meta.conversationId : "";
+  const senderId = typeof meta.senderId === "string" ? meta.senderId : "";
+  const message = typeof notification.message === "string" ? notification.message : "";
+  const title = typeof notification.title === "string" ? notification.title : "";
+
+  return [
+    notification.type || "",
+    messageId,
+    conversationId,
+    senderId,
+    title.trim(),
+    message.trim(),
+  ].join("|");
+}
+
 export default function NotificationBell() {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const token = useSelector((state: RootState) => state.auth.token);
@@ -62,6 +84,7 @@ export default function NotificationBell() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const seenNotificationKeysRef = useRef<Set<string>>(new Set());
 
   const sortedItems = useMemo(
     () =>
@@ -85,8 +108,17 @@ export default function NotificationBell() {
 
       setItems(listResponse.data.items ?? []);
       setUnreadCount(countResponse.data.count ?? listResponse.data.totalUnread ?? 0);
+      seenNotificationKeysRef.current = new Set(
+        (listResponse.data.items ?? []).map((item) =>
+          buildNotificationKey({
+            ...item,
+            createdAt: item.createdAt,
+          }),
+        ),
+      );
     } catch {
-      setUnreadCount(0);
+      // Keep the last known state; transient auth/transport issues should not
+      // erase a notification that has already been rendered locally.
     } finally {
       setLoading(false);
     }
@@ -106,8 +138,50 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
-    const handleNewNotification = () => {
-      void refreshNotifications();
+    const syncNotification = (payload: NotificationItem & { _id?: string; occurredAt?: string; payload?: { text?: string } }) => {
+      if (payload.type !== "MESSAGE") return;
+      const bodyText = (payload.payload?.text || payload.message || "").trim();
+
+      const nextNotification: NotificationItem = {
+        id: buildNotificationId(payload) || `${payload.type}:${payload.createdAt ?? Date.now()}:${payload.message ?? ""}`,
+        type: payload.type,
+        title: payload.title || "New message",
+        message: bodyText,
+        meta: payload.meta ?? {},
+        read: Boolean(payload.read),
+        createdAt: payload.createdAt || payload.occurredAt,
+      };
+
+      const nextKey = buildNotificationKey({
+        ...nextNotification,
+        _id: payload._id,
+        occurredAt: payload.occurredAt,
+      });
+
+      if (seenNotificationKeysRef.current.has(nextKey)) {
+        return;
+      }
+      seenNotificationKeysRef.current.add(nextKey);
+
+      setItems((current) => {
+        const nextId = buildNotificationId(nextNotification);
+        if (!nextId) return current;
+
+        const filtered = current.filter((item) => item.id !== nextId);
+        return [nextNotification, ...filtered].slice(0, 50);
+      });
+
+      if (!nextNotification.read) {
+        setUnreadCount((current) => current + 1);
+      }
+
+      window.setTimeout(() => {
+        void refreshNotifications();
+      }, 1200);
+    };
+
+    const handleNewNotification = (payload: NotificationItem & { _id?: string }) => {
+      syncNotification(payload);
     };
 
     socket.on("notification:new", handleNewNotification);
@@ -115,6 +189,16 @@ export default function NotificationBell() {
       socket.off("notification:new", handleNewNotification);
     };
   }, [isAuthenticated, refreshNotifications, socket]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+
+    const interval = window.setInterval(() => {
+      void refreshNotifications();
+    }, 20000);
+
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated, refreshNotifications, token]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {

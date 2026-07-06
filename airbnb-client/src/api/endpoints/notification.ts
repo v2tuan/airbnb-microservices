@@ -3,7 +3,7 @@ import { authStorage } from "@/lib/auth-storage";
 
 const notificationBaseURL =
   process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL ||
-  "http://localhost:8084/notification";
+  `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8888"}/api/v1`;
 
 const notificationClient = axios.create({
   baseURL: notificationBaseURL,

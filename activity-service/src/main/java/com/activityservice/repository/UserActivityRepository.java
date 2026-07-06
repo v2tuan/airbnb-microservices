@@ -10,7 +10,7 @@ import java.util.List;
 public interface UserActivityRepository extends JpaRepository<UserActivity, Long> {
 
   interface UserListingWeightProjection {
-    String getUserId();
+    String getKeycloakUserId();
 
     String getListingId();
 
@@ -23,10 +23,10 @@ public interface UserActivityRepository extends JpaRepository<UserActivity, Long
     double getWeight();
   }
 
-  List<UserActivity> findByUserId(String userId);
+  List<UserActivity> findByKeycloakUserId(String keycloakUserId);
 
-  List<UserActivity> findByUserIdAndEventTypeOrderByCreatedAtDesc(
-      String userId,
+  List<UserActivity> findByKeycloakUserIdAndEventTypeOrderByCreatedAtDesc(
+      String keycloakUserId,
       com.activityservice.model.ActivityEventType eventType,
       Pageable pageable);
 
@@ -35,9 +35,9 @@ public interface UserActivityRepository extends JpaRepository<UserActivity, Long
       Pageable pageable);
 
   @Query("""
-      select ua.userId as userId, ua.listingId as listingId, sum(ua.eventWeight) as weight
+      select ua.keycloakUserId as keycloakUserId, ua.listingId as listingId, sum(ua.eventWeight) as weight
       from UserActivity ua
-      group by ua.userId, ua.listingId
+      group by ua.keycloakUserId, ua.listingId
       """)
   List<UserListingWeightProjection> findAllUserListingWeights();
 

@@ -3,7 +3,7 @@ package com.listingservice.dto.request;
 import com.listingservice.constant.ActivityEventType;
 
 public record ActivityIngestionRequest(
-        String userId,
+        String keycloakUserId,
         String listingId,
         ActivityEventType eventType
 ) {

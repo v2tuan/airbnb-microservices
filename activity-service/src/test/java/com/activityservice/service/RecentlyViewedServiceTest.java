@@ -33,7 +33,7 @@ class RecentlyViewedServiceTest {
   @Test
   void getRecentlyViewedReturnsLatestUniqueViewedListings() {
     Instant now = Instant.parse("2026-06-28T03:00:00Z");
-    when(userActivityRepository.findByUserIdAndEventTypeOrderByCreatedAtDesc(
+    when(userActivityRepository.findByKeycloakUserIdAndEventTypeOrderByCreatedAtDesc(
         eq("u1"),
         eq(ActivityEventType.VIEW),
         any()
@@ -68,7 +68,7 @@ class RecentlyViewedServiceTest {
 
   private static UserActivity activity(String listingId, Instant createdAt) {
     UserActivity activity = new UserActivity();
-    activity.setUserId("u1");
+    activity.setKeycloakUserId("u1");
     activity.setListingId(listingId);
     activity.setEventType(ActivityEventType.VIEW);
     activity.setEventWeight(1.0);

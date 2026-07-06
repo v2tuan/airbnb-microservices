@@ -34,7 +34,7 @@ export const startNotificationRealtimeConsumer = async (io) => {
 
     while (!running) {
       try {
-        consumer = kafka.consumer({ groupId: 'message-service-notification-realtime-group' })
+        consumer = kafka.consumer({ groupId: 'message-service-notification-realtime-group-v2' })
         await consumer.connect()
         await consumer.subscribe({ topic: env.KAFKA_NOTIFICATION_TOPIC, fromBeginning: false })
 

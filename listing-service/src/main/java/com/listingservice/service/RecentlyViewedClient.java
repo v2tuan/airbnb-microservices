@@ -1,7 +1,9 @@
 package com.listingservice.service;
 
 import com.listingservice.dto.response.RecentlyViewedResponse;
+import com.listingservice.dto.response.PublicHostResponseDTO;
 import com.listingservice.repository.client.RecentlyViewedServiceFeignClient;
+import com.listingservice.repository.client.UserServiceFeignClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -18,26 +20,60 @@ public class RecentlyViewedClient {
     private static final String ANONYMOUS_USER_ID = "__anonymous__";
 
     private final RecentlyViewedServiceFeignClient recentlyViewedServiceFeignClient;
+    private final UserServiceFeignClient userServiceFeignClient;
 
-    public List<UUID> getRecentlyViewedListingIds(String userId, Integer limit) {
+    public List<UUID> getRecentlyViewedListingIds(String keycloakUserId, Integer limit) {
         int safeLimit = normalizeLimit(limit);
-        String effectiveUserId = (userId == null || userId.isBlank()) ? ANONYMOUS_USER_ID : userId;
+        String effectiveKeycloakUserId = (keycloakUserId == null || keycloakUserId.isBlank())
+                ? ANONYMOUS_USER_ID
+                : keycloakUserId;
 
         try {
-            RecentlyViewedResponse response = recentlyViewedServiceFeignClient.getRecentlyViewed(effectiveUserId, safeLimit);
-            if (response == null || response.recentlyViewed() == null || response.recentlyViewed().isEmpty()) {
-                return List.of();
+            List<UUID> keycloakUserResults = fetchRecentlyViewed(effectiveKeycloakUserId, safeLimit);
+            if (!keycloakUserResults.isEmpty() || ANONYMOUS_USER_ID.equals(effectiveKeycloakUserId)) {
+                return keycloakUserResults;
             }
 
-            return response.recentlyViewed().stream()
-                    .map(item -> item == null ? null : item.listingId())
-                    .filter(id -> id != null && !id.isBlank())
-                    .map(this::safeParseUuid)
-                    .filter(java.util.Objects::nonNull)
-                    .toList();
+            String legacyUserId = resolveLegacyUserId(effectiveKeycloakUserId);
+            if (legacyUserId == null || legacyUserId.isBlank() || legacyUserId.equals(effectiveKeycloakUserId)) {
+                return keycloakUserResults;
+            }
+
+            List<UUID> legacyResults = fetchRecentlyViewed(legacyUserId, safeLimit);
+            if (!legacyResults.isEmpty()) {
+                log.info("Recently viewed fallback used legacy userId={} for keycloakUserId={}", legacyUserId, effectiveKeycloakUserId);
+            }
+            return legacyResults;
         } catch (Exception ex) {
-            log.warn("Failed to fetch recently viewed listings for userId={}", userId, ex);
+            log.warn("Failed to fetch recently viewed listings for keycloakUserId={}", keycloakUserId, ex);
             return List.of();
+        }
+    }
+
+    private List<UUID> fetchRecentlyViewed(String userId, int limit) {
+        RecentlyViewedResponse response = recentlyViewedServiceFeignClient.getRecentlyViewed(userId, limit);
+        if (response == null || response.recentlyViewed() == null || response.recentlyViewed().isEmpty()) {
+            return List.of();
+        }
+
+        return response.recentlyViewed().stream()
+                .map(item -> item == null ? null : item.listingId())
+                .filter(id -> id != null && !id.isBlank())
+                .map(this::safeParseUuid)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private String resolveLegacyUserId(String keycloakUserId) {
+        try {
+            PublicHostResponseDTO profile = userServiceFeignClient.getPublicUser(keycloakUserId);
+            if (profile == null || profile.userId() == null) {
+                return null;
+            }
+            return profile.userId().toString();
+        } catch (Exception ex) {
+            log.debug("Unable to resolve legacy userId for keycloakUserId={}", keycloakUserId, ex);
+            return null;
         }
     }
 

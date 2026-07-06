@@ -21,7 +21,7 @@ export default function SocketProvider({ children }: { children: React.ReactNode
     const accessToken =
       token || (typeof window !== "undefined" ? localStorage.getItem("access_token") : null)
     const url =
-      process.env.NEXT_PUBLIC_MESSAGE_SERVICE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8017'
+      process.env.NEXT_PUBLIC_MESSAGE_SERVICE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8018'
 
     if (!isAuthenticated && !accessToken) {
       setSocket(null)
@@ -30,7 +30,8 @@ export default function SocketProvider({ children }: { children: React.ReactNode
 
     const s = io(url, {
       auth: { token: accessToken },
-      transports: ['websocket']
+      transports: ['websocket', 'polling'],
+      withCredentials: true
     })
 
     setSocket(s)

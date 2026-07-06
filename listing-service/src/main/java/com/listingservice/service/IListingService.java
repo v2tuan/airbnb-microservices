@@ -47,9 +47,9 @@ public interface IListingService {
         return getHomeSections(limitPerSection, null);
     }
 
-    List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String userId);
+    List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String keycloakUserId);
 
-    void recordListingActivity(UUID listingId, String userId, ActivityEventType eventType);
+    void recordListingActivity(UUID listingId, String keycloakUserId, ActivityEventType eventType);
 
     /**
      * Get paginated listings by host with optional status filter

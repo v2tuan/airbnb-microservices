@@ -662,7 +662,11 @@ function GuestMessagesPageContent() {
                           key={conversation.id}
                           href={`/guest/messages/${conversation.conversationId}`}
                           className={`group block border-b border-zinc-100 px-4 py-4 text-left transition sm:px-5 ${
-                            isActive ? "bg-zinc-50" : "hover:bg-zinc-50"
+                            isActive
+                              ? "bg-zinc-50"
+                              : conversation.unread
+                                ? "bg-rose-50/40 hover:bg-rose-50/60"
+                                : "hover:bg-zinc-50"
                           }`}
                         >
                           <div className="flex items-start gap-3">

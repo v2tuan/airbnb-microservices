@@ -11,10 +11,10 @@ export const useAuth = () => {
 
     return {
       ...auth.user,
-      // `keycloakUserId` dùng cho chat (senderId/participants) nên không
-      // fallback nhầm sang `user.id` (pin UUID).
-      keycloakUserId: auth.user.keycloakUserId ?? auth.user._id,
-      _id: auth.user._id ?? auth.user.id,
+      // Chat và notification dùng Keycloak subject làm định danh duy nhất.
+      // Không fallback sang `user.id` vì đó là Mongo user-service id.
+      keycloakUserId: auth.user.keycloakUserId ?? null,
+      _id: auth.user.id,
     };
   }, [auth.user]);
 

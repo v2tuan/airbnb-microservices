@@ -83,6 +83,13 @@ spring:
                 - Path=${app.api-prefix}/payments/**
               filters:
                 - StripPrefix=2
+            - id: notification_service
+              uri: lb://notification-service
+              predicates:
+                - Path=${app.api-prefix}/notifications/**
+              filters:
+                - StripPrefix=2
+                - PrefixPath=/notification
             - id: message_service
               uri: ${MESSAGE_SERVICE_URI:http://localhost:8017}
               predicates:

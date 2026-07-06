@@ -57,11 +57,11 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
 
   const currentUserIds = useMemo(() => {
     return new Set(
-      [user?.keycloakUserId, user?._id, user?.id]
+      [user?.keycloakUserId]
         .map(normalizeUserId)
         .filter(Boolean),
     )
-  }, [user?.id, user?._id, user?.keycloakUserId])
+  }, [user?.keycloakUserId])
 
   const currentUserId = currentUserIds.values().next().value ?? null
   const keycloakUserId = currentUserId
@@ -253,22 +253,6 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
   }, [activeConversationId, clearUnreadConversation, currentUserIds])
 
   useEffect(() => {
-    if (!socket || !conversationIdsKey) return
-
-    const conversationIds = conversationIdsKey.split(',').filter(Boolean)
-
-    conversationIds.forEach((id) => {
-      socket.emit('conversation:join', { conversationId: id })
-    })
-
-    return () => {
-      conversationIds.forEach((id) => {
-        socket.emit('conversation:leave', { conversationId: id })
-      })
-    }
-  }, [socket, conversationIdsKey])
-
-  useEffect(() => {
     if (!socket) return
 
     const handleNewMessage = (payload: {
@@ -290,9 +274,35 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
     }
 
     socket.on('message:new', handleNewMessage)
+    const handleNewNotification = (payload: {
+      type?: string
+      message?: string
+      createdAt?: string
+      payload?: { text?: string }
+      meta?: Record<string, unknown>
+    }) => {
+      if (payload.type !== 'MESSAGE') return
+
+      const conversationId = String(payload.meta?.conversationId ?? '')
+      const text = (payload.payload?.text ?? payload.message ?? '').trim()
+      if (!conversationId || !text) return
+
+      const senderId = normalizeUserId(payload.meta?.senderId)
+      const markUnread = conversationId !== activeConversationId && !currentUserIds.has(senderId)
+
+      updateConversationLastMessage(
+        conversationId,
+        text,
+        payload.createdAt,
+        markUnread,
+      )
+    }
+
+    socket.on('notification:new', handleNewNotification)
 
     return () => {
       socket.off('message:new', handleNewMessage)
+      socket.off('notification:new', handleNewNotification)
     }
   }, [activeConversationId, currentUserIds, socket, updateConversationLastMessage])
 

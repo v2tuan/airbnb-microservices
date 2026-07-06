@@ -334,13 +334,13 @@ public class ListingService implements IListingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String userId) {
+    public List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String keycloakUserId) {
         int safeLimit = normalizeLimit(limitPerSection);
         List<HomeSectionResponse> sections = new java.util.ArrayList<>();
 
-        if (hasUserId(userId)) {
-            buildRecommendationSection(userId, safeLimit).ifPresent(sections::add);
-            buildRecentlyViewedSection(userId, safeLimit).ifPresent(sections::add);
+        if (hasKeycloakUserId(keycloakUserId)) {
+            buildRecommendationSection(keycloakUserId, safeLimit).ifPresent(sections::add);
+            buildRecentlyViewedSection(keycloakUserId, safeLimit).ifPresent(sections::add);
         }
         sections.addAll(List.of(
                 buildSection("popular-hanoi", "Popular homes in Hanoi", "Hanoi", safeLimit),
@@ -351,8 +351,8 @@ public class ListingService implements IListingService {
     }
 
     @Override
-    public void recordListingActivity(UUID listingId, String userId, ActivityEventType eventType) {
-        activityClient.recordActivity(userId, listingId, eventType);
+    public void recordListingActivity(UUID listingId, String keycloakUserId, ActivityEventType eventType) {
+        activityClient.recordActivity(keycloakUserId, listingId, eventType);
     }
 
     @Override
@@ -814,8 +814,8 @@ public class ListingService implements IListingService {
         return Math.min(limitPerSection, MAX_SECTION_LIMIT);
     }
 
-    private boolean hasUserId(String userId) {
-        return userId != null && !userId.isBlank();
+    private boolean hasKeycloakUserId(String keycloakUserId) {
+        return keycloakUserId != null && !keycloakUserId.isBlank();
     }
 
     private boolean matchesIgnoreCase(String actual, String expected) {

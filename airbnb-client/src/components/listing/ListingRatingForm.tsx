@@ -7,7 +7,10 @@ import { useRouter } from "next/navigation";
 import { ratingAPI } from "@/api/endpoints/rating";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ratingCategoryConfig, type RatingCategoryKey } from "./ratingCategories";
+import {
+  ratingCategoryConfig,
+  type RatingCategoryKey,
+} from "./ratingCategories";
 
 function readCurrentUserProfile() {
   if (typeof window === "undefined") {
@@ -22,6 +25,11 @@ function readCurrentUserProfile() {
 
     const parsed = JSON.parse(raw);
     const id = typeof parsed?.id === "string" ? parsed.id : null;
+    const keycloakUserId =
+      typeof parsed?.keycloakUserId === "string" &&
+      parsed.keycloakUserId.trim().length > 0
+        ? parsed.keycloakUserId.trim()
+        : null;
     if (!id) {
       return null;
     }
@@ -34,12 +42,14 @@ function readCurrentUserProfile() {
           : null;
 
     const avatarUrl =
-      typeof parsed?.avatarUrl === "string" && parsed.avatarUrl.trim().length > 0
+      typeof parsed?.avatarUrl === "string" &&
+      parsed.avatarUrl.trim().length > 0
         ? parsed.avatarUrl.trim()
         : null;
 
     return {
       id,
+      keycloakUserId,
       fullName,
       avatarUrl,
     };
@@ -65,7 +75,7 @@ function StarInput({
       onClick={() => onSelect(value)}
       className={cn(
         "rounded-full p-1 transition hover:scale-110",
-        isActive ? "text-amber-400" : "text-zinc-300 hover:text-amber-300"
+        isActive ? "text-amber-400" : "text-zinc-300 hover:text-amber-300",
       )}
       aria-label={`Choose ${value} star${value > 1 ? "s" : ""}`}
     >
@@ -118,7 +128,7 @@ export function ListingRatingForm({
       setLoading(true);
       await ratingAPI.createRating({
         listingId,
-        userId: profile.id,
+        userId: profile.keycloakUserId ?? profile.id,
         hostId,
         reviewerFullName: profile.fullName ?? undefined,
         reviewerAvatarUrl: profile.avatarUrl ?? undefined,
@@ -167,7 +177,9 @@ export function ListingRatingForm({
 
       <form onSubmit={onSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-zinc-800">Overall rating</label>
+          <label className="block text-sm font-medium text-zinc-800">
+            Overall rating
+          </label>
           <div className="mt-2 flex items-center gap-1">
             {Array.from({ length: 5 }, (_, idx) => idx + 1).map((value) => (
               <StarInput
@@ -185,25 +197,30 @@ export function ListingRatingForm({
             const Icon = category.icon;
 
             return (
-              <div key={category.key} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+              <div
+                key={category.key}
+                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
+              >
                 <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
                   <Icon className="h-4 w-4 text-[#ff385c]" />
                   <span>{category.label}</span>
                 </label>
                 <div className="mt-2 flex items-center gap-1">
-                  {Array.from({ length: 5 }, (_, idx) => idx + 1).map((value) => (
-                    <StarInput
-                      key={value}
-                      value={value}
-                      current={scores[category.key]}
-                      onSelect={(nextValue) => {
-                        setScores((current) => ({
-                          ...current,
-                          [category.key]: nextValue,
-                        }));
-                      }}
-                    />
-                  ))}
+                  {Array.from({ length: 5 }, (_, idx) => idx + 1).map(
+                    (value) => (
+                      <StarInput
+                        key={value}
+                        value={value}
+                        current={scores[category.key]}
+                        onSelect={(nextValue) => {
+                          setScores((current) => ({
+                            ...current,
+                            [category.key]: nextValue,
+                          }));
+                        }}
+                      />
+                    ),
+                  )}
                 </div>
               </div>
             );
@@ -211,7 +228,10 @@ export function ListingRatingForm({
         </div>
 
         <div>
-          <label htmlFor="room-review" className="block text-sm font-medium text-zinc-800">
+          <label
+            htmlFor="room-review"
+            className="block text-sm font-medium text-zinc-800"
+          >
             Review
           </label>
           <textarea

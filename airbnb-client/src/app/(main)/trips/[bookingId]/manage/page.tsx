@@ -616,7 +616,7 @@ export default function ManageReservationPage() {
                 type="button"
                 onClick={() =>
                   router.push(
-                    `/guest/messages?hostId=${booking.host?.keycloakUserId ?? booking.hostId ?? ""}`,
+      `/guest/messages?hostId=${booking.host?.keycloakUserId ?? ""}`,
                   )
                 }
                 className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors hover:bg-slate-50"

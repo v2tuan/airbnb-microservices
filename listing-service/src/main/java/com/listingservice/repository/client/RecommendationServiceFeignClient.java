@@ -9,9 +9,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "activity-service", contextId = "activityServiceRecommendationClient", path = "/recommendations")
 public interface RecommendationServiceFeignClient {
 
-    @GetMapping("/users/{userId}")
+    @GetMapping("/users/{keycloakUserId}")
     RecommendationResponse recommendForUser(
-            @PathVariable String userId,
+            @PathVariable String keycloakUserId,
             @RequestParam(defaultValue = "10") Integer limit
     );
 }

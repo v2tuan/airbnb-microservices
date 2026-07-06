@@ -212,7 +212,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
     const rating = profile.stats?.overallRating;
     const reviewsCount = profile.stats?.reviewsCount;
     const listingsCount = profile.stats?.activeListingsCount;
-    const messageRecipientId = profile.host.keycloakUserId ?? profile.host.id ?? id;
+  const messageRecipientId = profile.host.keycloakUserId ?? "";
 
     return (
       <main className="min-h-screen bg-white">

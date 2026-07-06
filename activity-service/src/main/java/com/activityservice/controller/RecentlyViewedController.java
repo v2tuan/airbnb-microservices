@@ -18,10 +18,12 @@ public class RecentlyViewedController {
     this.recentlyViewedService = recentlyViewedService;
   }
 
-  @GetMapping("/users/{userId}/recently-viewed")
+  @GetMapping("/users/{keycloakUserId}/recently-viewed")
   public RecentlyViewedResponse getRecentlyViewed(
-      @PathVariable String userId,
+      @PathVariable String keycloakUserId,
       @RequestParam(defaultValue = "10") Integer limit) {
-    return new RecentlyViewedResponse(userId, recentlyViewedService.getRecentlyViewed(userId, limit));
+    return new RecentlyViewedResponse(
+        keycloakUserId,
+        recentlyViewedService.getRecentlyViewed(keycloakUserId, limit));
   }
 }
