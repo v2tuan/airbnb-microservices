@@ -55,6 +55,8 @@ services:
       KC_DB_USERNAME: ${KC_DB_USERNAME}
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
       KC_DB_SCHEMA: ${KC_DB_SCHEMA:-public}
+      KC_HOSTNAME: ${KC_HOSTNAME}
+      KC_PROXY_HEADERS: ${KC_PROXY_HEADERS:-xforwarded}
     command:
       - start-dev
     networks:
