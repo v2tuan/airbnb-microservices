@@ -164,14 +164,23 @@ public class ListingDetailController {
 
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @GetMapping("/admin")
-    public ResponseEntity<ApiResponse<List<ListingResponse>>> getAdminListings(
+    public ResponseEntity<ApiResponse<Page<ListingResponse>>> getAdminListings(
             @RequestParam(required = false) ListingStatus status,
             @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size,
             @RequestParam(required = false) Integer limit) {
-        log.info("REST request to get admin listings status={}, keyword={}, limit={}", status, keyword, limit);
-        List<ListingResponse> response = listingService.getAdminListings(status, keyword, limit);
+        int pageSize = limit != null ? limit : size;
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(pageSize, 1), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+        log.info("REST request to get admin listings status={}, keyword={}, page={}, size={}",
+                status, keyword, pageable.getPageNumber(), pageable.getPageSize());
+        Page<ListingResponse> response = listingService.getAdminListings(status, keyword, pageable);
         return ResponseEntity.ok(
-                ApiResponse.<List<ListingResponse>>builder()
+                ApiResponse.<Page<ListingResponse>>builder()
                         .code(1000)
                         .message("Admin listings retrieved successfully")
                         .data(response)

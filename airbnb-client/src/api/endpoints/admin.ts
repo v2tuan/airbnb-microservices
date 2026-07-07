@@ -172,10 +172,41 @@ export interface AdminUserRecord {
   gender?: string | null;
   host: boolean;
   superhost?: boolean | null;
+  roles?: string[];
   hostVerificationStatus?: string | null;
-  stripeAccountStatus?: "NONE" | "PENDING" | "ACTIVE" | "RESTRICTED" | string | null;
+  stripeAccountStatus?:
+    | "NONE"
+    | "PENDING"
+    | "ACTIVE"
+    | "RESTRICTED"
+    | string
+    | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface AdminUsersQuery {
+  page?: number;
+  size?: number;
+  role?: "ALL" | "HOST" | "ADMIN" | "USER";
+}
+
+export interface AdminListingsQuery {
+  page?: number;
+  size?: number;
+  status?: string;
+  keyword?: string;
+}
+
+export interface PageResponse<T> {
+  content: T[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first?: boolean;
+  last?: boolean;
+  empty?: boolean;
 }
 
 export interface AdminPaymentOverviewSummary {
@@ -361,11 +392,17 @@ export async function waiveAdminHostPenalty(
 
 export async function listAdminListings(
   token: string | null,
-  limit = 200,
-): Promise<ApiResponse<ListingResponse[]>> {
+  query: AdminListingsQuery = {},
+): Promise<ApiResponse<PageResponse<ListingResponse>>> {
+  const params = new URLSearchParams();
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.size !== undefined) params.set("size", String(query.size));
+  if (query.status) params.set("status", query.status);
+  if (query.keyword?.trim()) params.set("keyword", query.keyword.trim());
+
   return unwrap(
     await apiClient.get(
-      `${prefix}/listings/admin?limit=${limit}`,
+      `${prefix}/listings/admin${params.toString() ? `?${params.toString()}` : ""}`,
       authConfig(token),
     ),
   );
@@ -373,9 +410,18 @@ export async function listAdminListings(
 
 export async function listAdminUsers(
   token: string | null,
-): Promise<ApiResponse<AdminUserRecord[]>> {
+  query: AdminUsersQuery = {},
+): Promise<ApiResponse<PageResponse<AdminUserRecord>>> {
+  const params = new URLSearchParams();
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.size !== undefined) params.set("size", String(query.size));
+  if (query.role) params.set("role", query.role);
+
   return unwrap(
-    await apiClient.get(`${prefix}/users/admin/users`, authConfig(token)),
+    await apiClient.get(
+      `${prefix}/users/admin/users${params.toString() ? `?${params.toString()}` : ""}`,
+      authConfig(token),
+    ),
   );
 }
 

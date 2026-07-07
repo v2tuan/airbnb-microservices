@@ -1,9 +1,10 @@
 "use client";
 
-import { Ban, Home, ListChecks } from "lucide-react";
+import { Ban, ChevronLeft, ChevronRight, Home, ListChecks } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   listAdminListings,
+  type PageResponse,
   suspendAdminListing,
   unsuspendAdminListing,
 } from "@/api/endpoints/admin";
@@ -28,6 +29,10 @@ import { Textarea } from "@/components/ui/textarea";
 export function ListingSuspensionManagementModule() {
   const { token } = useAdminToken();
   const [items, setItems] = useState<ListingResponse[]>([]);
+  const [pageData, setPageData] =
+    useState<PageResponse<ListingResponse> | null>(null);
+  const [page, setPage] = useState(0);
+  const pageSize = 12;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [listingId, setListingId] = useState("");
@@ -43,14 +48,17 @@ export function ListingSuspensionManagementModule() {
     setLoading(true);
     setError(null);
 
-    listAdminListings(token)
+    listAdminListings(token, { page, size: pageSize })
       .then((response) => {
         if (!active) return;
-        setItems(response.data ?? []);
+        const data = response.data;
+        setPageData(data ?? null);
+        setItems(data?.content ?? []);
       })
       .catch((err) => {
         if (!active) return;
         setItems([]);
+        setPageData(null);
         setError(
           getAdminErrorMessage(
             err,
@@ -65,7 +73,7 @@ export function ListingSuspensionManagementModule() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, page]);
 
   const metrics = useMemo(
     () => ({
@@ -75,6 +83,14 @@ export function ListingSuspensionManagementModule() {
     }),
     [items],
   );
+
+  const totalPages = Math.max(pageData?.totalPages ?? 1, 1);
+  const displayPage = Math.min(page + 1, totalPages);
+  const firstItem =
+    pageData && pageData.totalElements > 0 ? page * pageSize + 1 : 0;
+  const lastItem = pageData
+    ? Math.min((page + 1) * pageSize, pageData.totalElements)
+    : items.length;
 
   const selectedListing = useMemo(
     () => items.find((item) => item.listingId === listingId) ?? null,
@@ -161,8 +177,8 @@ export function ListingSuspensionManagementModule() {
         <div className="grid gap-4 md:grid-cols-3">
           <AdminMetricCard
             label="Listings"
-            value={metrics.total}
-            note="Rows returned by listing API."
+            value={pageData?.totalElements ?? metrics.total}
+            note="Total listing records."
             accent="brand"
             icon={Home}
           />
@@ -237,6 +253,44 @@ export function ListingSuspensionManagementModule() {
                   ))}
                 </div>
               ) : null}
+              {!loading && !error && pageData && pageData.totalElements > 0 ? (
+                <div className="mt-4 flex flex-col gap-3 border-t border-[#eeeeee] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-[#6a6a6a]">
+                    Showing {firstItem}-{lastItem} of {pageData.totalElements}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={page <= 0 || loading}
+                      aria-label="Previous listings page"
+                      onClick={() =>
+                        setPage((current) => Math.max(0, current - 1))
+                      }
+                    >
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="min-w-20 text-center text-sm font-medium text-[#222222]">
+                      {displayPage} / {totalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={page >= totalPages - 1 || loading}
+                      aria-label="Next listings page"
+                      onClick={() =>
+                        setPage((current) =>
+                          Math.min(totalPages - 1, current + 1),
+                        )
+                      }
+                    >
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </AdminCard>
 
@@ -246,8 +300,8 @@ export function ListingSuspensionManagementModule() {
                 Selected listing
               </h2>
               <p className="mt-2 text-sm leading-6 text-[#6a6a6a]">
-                Choose a listing from the inventory, then update its
-                bookability status.
+                Choose a listing from the inventory, then update its bookability
+                status.
               </p>
             </div>
             <div className="mt-5 space-y-4">

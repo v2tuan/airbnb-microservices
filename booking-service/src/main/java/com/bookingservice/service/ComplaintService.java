@@ -10,6 +10,7 @@ import com.bookingservice.dto.request.ListingSuspensionRequest;
 import com.bookingservice.dto.request.ListingUnsuspensionRequest;
 import com.bookingservice.dto.response.ComplaintResponse;
 import com.bookingservice.dto.response.BookingResponse;
+import com.bookingservice.dto.response.ListingResponse;
 import com.bookingservice.dto.response.ReservationDetailResponse;
 import com.bookingservice.entity.AdminComplaintDecision;
 import com.bookingservice.entity.Booking;
@@ -272,7 +273,13 @@ public class ComplaintService {
                                 .suspendedUntil(now.plusDays(7))
                                 .reason("Admin complaint decision: " + request.getAdminNote().trim())
                                 .build());
-                publishListingEvent("LISTING_SUSPENDED", complaint.getListingId(), complaint.getHostId());
+                publishListingSuspendedNotification(
+                        complaint.getListingId(),
+                        complaint.getHostId(),
+                        null,
+                        "Admin complaint decision: " + request.getAdminNote().trim(),
+                        now.plusDays(7)
+                );
                 complaint.setStatus(ComplaintStatus.RESOLVED);
                 complaint.setResolvedAt(now);
                 publishComplaintEvent("COMPLAINT_RESOLVED", complaint, true, true, false);
@@ -338,24 +345,39 @@ public class ComplaintService {
     public void suspendListing(UUID listingId, AdminListingStatusRequest request) {
         Jwt jwt = currentJwt();
         requireAdmin(jwt);
-        UUID hostId = resolveListingHostId("Bearer " + jwt.getTokenValue(), listingId);
+        ListingNotificationContext listingContext =
+                resolveListingNotificationContext("Bearer " + jwt.getTokenValue(), listingId);
         listingClient.suspendListing("Bearer " + jwt.getTokenValue(), listingId,
                 ListingSuspensionRequest.builder()
                         .suspendedUntil(request.getSuspendedUntil())
                         .reason(request.getReason())
                         .build());
-        publishListingEvent("LISTING_SUSPENDED", listingId, hostId);
+        publishListingSuspendedNotification(
+                listingId,
+                listingContext.hostId(),
+                listingContext.listingName(),
+                request.getReason(),
+                request.getSuspendedUntil()
+        );
     }
 
     public void unsuspendListing(UUID listingId, AdminListingStatusRequest request) {
         Jwt jwt = currentJwt();
         requireAdmin(jwt);
-        UUID hostId = resolveListingHostId("Bearer " + jwt.getTokenValue(), listingId);
+        ListingNotificationContext listingContext =
+                resolveListingNotificationContext("Bearer " + jwt.getTokenValue(), listingId);
         listingClient.unsuspendListing("Bearer " + jwt.getTokenValue(), listingId,
                 ListingUnsuspensionRequest.builder()
                         .reason(request.getReason())
                         .build());
-        publishListingEvent("LISTING_UNSUSPENDED", listingId, hostId);
+        publishListingNotification(
+                "LISTING_UNSUSPENDED",
+                listingId,
+                listingContext.hostId(),
+                listingContext.listingName(),
+                request.getReason(),
+                null
+        );
     }
 
     @Scheduled(fixedDelayString = "${booking.complaints.auto-escalate-delay-ms:60000}")
@@ -525,25 +547,56 @@ public class ComplaintService {
         );
     }
 
-    private void publishListingEvent(String eventType, UUID listingId, UUID hostId) {
-        Map<String, Object> payload = Map.of("listingId", listingId.toString());
+    private void publishListingSuspendedNotification(
+            UUID listingId,
+            UUID hostId,
+            String listingName,
+            String reason,
+            LocalDateTime suspendedUntil
+    ) {
+        publishListingNotification("LISTING_SUSPENDED", listingId, hostId, listingName, reason, suspendedUntil);
+    }
+
+    private void publishListingNotification(
+            String eventType,
+            UUID listingId,
+            UUID hostId,
+            String listingName,
+            String content,
+            LocalDateTime suspendedUntil
+    ) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("userId", hostId != null ? hostId.toString() : "");
+        payload.put("listingId", listingId.toString());
+        payload.put("listingName", listingName != null && !listingName.isBlank()
+                ? listingName
+                : "Listing " + listingId);
+        payload.put("suspendedAt", LocalDateTime.now());
+        payload.put("suspendedUntil", suspendedUntil);
+        payload.put("content", content != null ? content : "");
+
         if (hostId != null) {
             notificationEventPublisher.publish(eventType, hostId, "HOST", payload);
         }
         notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
     }
 
-    private UUID resolveListingHostId(String bearerToken, UUID listingId) {
+    private ListingNotificationContext resolveListingNotificationContext(String bearerToken, UUID listingId) {
         try {
             var response = listingClient.getListingById(bearerToken, listingId);
-            if (response == null || response.getData() == null || response.getData().getHostId() == null) {
-                return null;
+            ListingResponse listing = response != null ? response.getData() : null;
+            if (listing == null) {
+                return new ListingNotificationContext(null, null);
             }
-            return UUID.fromString(response.getData().getHostId());
+            UUID hostId = listing.getHostId() != null ? UUID.fromString(listing.getHostId()) : null;
+            return new ListingNotificationContext(hostId, listing.getTitle());
         } catch (RuntimeException ex) {
             log.warn("Failed to resolve host for listing notification listingId={}", listingId, ex);
-            return null;
+            return new ListingNotificationContext(null, null);
         }
+    }
+
+    private record ListingNotificationContext(UUID hostId, String listingName) {
     }
 
     private Map<String, Object> bookingPayload(Booking booking) {

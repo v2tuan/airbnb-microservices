@@ -80,3 +80,4 @@ coverage/
 
 ./message-service/node_modules
 docs/Git.md
+docs/*

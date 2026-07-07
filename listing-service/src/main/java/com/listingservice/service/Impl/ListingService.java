@@ -154,19 +154,14 @@ public class ListingService implements IListingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ListingResponse> getAdminListings(ListingStatus status, String keyword, Integer limit) {
-        int safeLimit = normalizeAdminListingLimit(limit);
+    public Page<ListingResponse> getAdminListings(ListingStatus status, String keyword, Pageable pageable) {
         String normalizedKeyword = normalizeFilter(keyword);
 
-        log.info("Getting admin listings status={}, keyword={}, limit={}", status, normalizedKeyword, safeLimit);
-
-        Pageable pageable = PageRequest.of(0, safeLimit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        log.info("Getting admin listings status={}, keyword={}, page={}, size={}",
+                status, normalizedKeyword, pageable.getPageNumber(), pageable.getPageSize());
 
         return listingRepository.findAll(adminListingSpecification(status, normalizedKeyword), pageable)
-                .getContent()
-                .stream()
-                .map(listingMapper::toResponse)
-                .toList();
+                .map(listingMapper::toResponse);
     }
 
     @Override
@@ -683,14 +678,6 @@ public class ListingService implements IListingService {
         }
 
         return Math.min(limit, 100);
-    }
-
-    private int normalizeAdminListingLimit(Integer limit) {
-        if (limit == null || limit < 1) {
-            return 200;
-        }
-
-        return Math.min(limit, 500);
     }
 
     private Specification<Listing> adminListingSpecification(ListingStatus status, String keyword) {

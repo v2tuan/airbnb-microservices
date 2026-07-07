@@ -3,6 +3,7 @@ package com.userservice.dto.response;
 import com.userservice.entity.StripeAccountStatus;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record AdminUserResponseDTO(
@@ -15,6 +16,7 @@ public record AdminUserResponseDTO(
     String gender,
     boolean host,
     Boolean superhost,
+    List<String> roles,
     String hostVerificationStatus,
     StripeAccountStatus stripeAccountStatus,
     LocalDateTime createdAt,

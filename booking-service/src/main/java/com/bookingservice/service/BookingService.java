@@ -1014,7 +1014,13 @@ public class BookingService {
                             .reason("Host cancellation threshold reached for listing penalties")
                             .build()
             );
-            publishListingEvent("LISTING_SUSPENDED", quote.getListingId(), quote.getHostId());
+            publishListingSuspendedNotification(
+                    quote.getListingId(),
+                    quote.getHostId(),
+                    null,
+                    "Host cancellation threshold reached for listing penalties",
+                    quote.getListingSuspendedUntil()
+            );
         } catch (RuntimeException exception) {
             log.warn("Failed to suspend listing {} after host penalty threshold", quote.getListingId(), exception);
         }
@@ -2543,12 +2549,27 @@ public class BookingService {
         );
     }
 
-    private void publishListingEvent(String eventType, UUID listingId, UUID hostId) {
-        Map<String, Object> payload = Map.of("listingId", listingId.toString());
+    private void publishListingSuspendedNotification(
+            UUID listingId,
+            UUID hostId,
+            String listingName,
+            String content,
+            LocalDateTime suspendedUntil
+    ) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("userId", hostId != null ? hostId.toString() : "");
+        payload.put("listingId", listingId.toString());
+        payload.put("listingName", listingName != null && !listingName.isBlank()
+                ? listingName
+                : "Listing " + listingId);
+        payload.put("suspendedAt", LocalDateTime.now());
+        payload.put("suspendedUntil", suspendedUntil);
+        payload.put("content", content != null ? content : "");
+
         if (hostId != null) {
-            notificationEventPublisher.publish(eventType, hostId, "HOST", payload);
+            notificationEventPublisher.publish("LISTING_SUSPENDED", hostId, "HOST", payload);
         }
-        notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
+        notificationEventPublisher.publishToRole("LISTING_SUSPENDED", "ADMIN", payload);
     }
 
     private Map<String, Object> bookingPayload(Booking booking) {
