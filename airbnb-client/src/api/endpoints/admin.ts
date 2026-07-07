@@ -172,6 +172,7 @@ export interface AdminUserRecord {
   gender?: string | null;
   host: boolean;
   superhost?: boolean | null;
+  enabled?: boolean | null;
   roles?: string[];
   hostVerificationStatus?: string | null;
   stripeAccountStatus?:
@@ -420,6 +421,32 @@ export async function listAdminUsers(
   return unwrap(
     await apiClient.get(
       `${prefix}/users/admin/users${params.toString() ? `?${params.toString()}` : ""}`,
+      authConfig(token),
+    ),
+  );
+}
+
+export async function blockAdminUser(
+  token: string | null,
+  keycloakUserId: string,
+): Promise<ApiResponse<void>> {
+  return unwrap(
+    await apiClient.put(
+      `${prefix}/users/admin/users/${keycloakUserId}/block`,
+      undefined,
+      authConfig(token),
+    ),
+  );
+}
+
+export async function unblockAdminUser(
+  token: string | null,
+  keycloakUserId: string,
+): Promise<ApiResponse<void>> {
+  return unwrap(
+    await apiClient.put(
+      `${prefix}/users/admin/users/${keycloakUserId}/unblock`,
+      undefined,
       authConfig(token),
     ),
   );

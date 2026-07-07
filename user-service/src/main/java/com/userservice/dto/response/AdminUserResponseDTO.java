@@ -16,6 +16,7 @@ public record AdminUserResponseDTO(
     String gender,
     boolean host,
     Boolean superhost,
+    Boolean enabled,
     List<String> roles,
     String hostVerificationStatus,
     StripeAccountStatus stripeAccountStatus,

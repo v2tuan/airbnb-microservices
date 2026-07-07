@@ -2,16 +2,20 @@
 
 import {
   BadgeCheck,
+  Ban,
   ChevronLeft,
   ChevronRight,
+  LockOpen,
   ShieldCheck,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type AdminUserRecord,
+  blockAdminUser,
   listAdminUsers,
   type PageResponse,
+  unblockAdminUser,
 } from "@/api/endpoints/admin";
 import { useAdminToken } from "@/components/admin/admin-shell";
 import {
@@ -89,6 +93,8 @@ export function UsersManagementModule() {
   const pageSize = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -101,6 +107,7 @@ export function UsersManagementModule() {
         const data = response.data;
         setPageData(data ?? null);
         setItems(data?.content ?? []);
+        setActionMessage(null);
       })
       .catch((err) => {
         if (!active) return;
@@ -140,6 +147,39 @@ export function UsersManagementModule() {
     ? Math.min((page + 1) * pageSize, pageData.totalElements)
     : items.length;
 
+  async function updateUserBlocked(item: AdminUserRecord, blocked: boolean) {
+    setUpdatingUserId(item.keycloakUserId);
+    setActionMessage(null);
+    try {
+      if (blocked) {
+        await blockAdminUser(token, item.keycloakUserId);
+      } else {
+        await unblockAdminUser(token, item.keycloakUserId);
+      }
+      setItems((current) =>
+        current.map((user) =>
+          user.keycloakUserId === item.keycloakUserId
+            ? { ...user, enabled: !blocked }
+            : user,
+        ),
+      );
+      setActionMessage(
+        blocked
+          ? `${item.fullName || "User"} has been blocked.`
+          : `${item.fullName || "User"} has been unblocked.`,
+      );
+    } catch (err) {
+      setActionMessage(
+        getAdminErrorMessage(
+          err,
+          blocked ? "Block user failed." : "Unblock user failed.",
+        ),
+      );
+    } finally {
+      setUpdatingUserId(null);
+    }
+  }
+
   return (
     <>
       <AdminPageHeader
@@ -168,7 +208,7 @@ export function UsersManagementModule() {
         <AdminCard className="p-0">
           <AdminSectionHeader
             title="User directory"
-            description="Read-only account overview. Account lock/unlock should be added when Keycloak admin controls are wired safely."
+            description="Review accounts, roles, payment onboarding and Keycloak account access."
           />
           <div className="overflow-x-auto p-5">
             <div className="mb-4 flex flex-wrap gap-2">
@@ -187,6 +227,11 @@ export function UsersManagementModule() {
                 </Button>
               ))}
             </div>
+            {actionMessage ? (
+              <p className="mb-4 text-sm leading-6 text-[#6a6a6a]">
+                {actionMessage}
+              </p>
+            ) : null}
             {loading ? <AdminLoadingRows rows={6} /> : null}
             {!loading && error ? <AdminErrorState description={error} /> : null}
             {!loading && !error && items.length === 0 ? (
@@ -196,13 +241,15 @@ export function UsersManagementModule() {
               />
             ) : null}
             {!loading && !error && items.length > 0 ? (
-              <Table className="min-w-[860px]">
+              <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>User</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead>Account</TableHead>
                     <TableHead>Stripe</TableHead>
                     <TableHead>Joined</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -239,12 +286,40 @@ export function UsersManagementModule() {
                       </TableCell>
                       <TableCell>
                         <TextStatusPill
+                          tone={item.enabled === false ? "danger" : "success"}
+                        >
+                          {item.enabled === false ? "BLOCKED" : "ACTIVE"}
+                        </TextStatusPill>
+                      </TableCell>
+                      <TableCell>
+                        <TextStatusPill
                           tone={stripeTone(item.stripeAccountStatus)}
                         >
                           {item.stripeAccountStatus || "NONE"}
                         </TextStatusPill>
                       </TableCell>
                       <TableCell>{formatAdminDate(item.createdAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant={
+                            item.enabled === false ? "outline" : "destructive"
+                          }
+                          size="sm"
+                          disabled={updatingUserId === item.keycloakUserId}
+                          onClick={() =>
+                            updateUserBlocked(item, item.enabled !== false)
+                          }
+                          className="gap-2"
+                        >
+                          {item.enabled === false ? (
+                            <LockOpen className="size-4" />
+                          ) : (
+                            <Ban className="size-4" />
+                          )}
+                          {item.enabled === false ? "Unblock" : "Block"}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -60,6 +60,27 @@ public interface IdentityClient {
     );
 
     @GetMapping(
+            "/admin/realms/airbnb/users/{userId}"
+    )
+    KeycloakUserResponse getUser(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("userId") String userId
+    );
+
+    @PutMapping(
+            value = "/admin/realms/airbnb/users/{userId}",
+            consumes = MediaType.APPLICATION_JSON_VALUE
+    )
+    void updateUser(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("userId") String userId,
+
+            @RequestBody KeycloakUserUpdateRequest request
+    );
+
+    @GetMapping(
             "/admin/realms/airbnb/roles/{roleName}/users"
     )
     List<KeycloakUserResponse> getUsersByRealmRole(

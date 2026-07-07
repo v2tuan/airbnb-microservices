@@ -9,4 +9,5 @@ public class KeycloakUserResponse {
     private String email;
     private String firstName;
     private String lastName;
+    private Boolean enabled;
 }
