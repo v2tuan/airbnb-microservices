@@ -26,11 +26,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -57,6 +60,7 @@ public class ListingDetailController {
 
     IListingService listingService;
     private final ListingDetailService listingDetailService;
+    private final JwtDecoder jwtDecoder;
 
     @PreAuthorize("hasAuthority('ROLE_HOST')")
     @PostMapping
@@ -107,12 +111,13 @@ public class ListingDetailController {
     @GetMapping("/{listingId}")
     public ResponseEntity<ApiResponse<ListingResponse>> getListingById(
             @PathVariable UUID listingId,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
         log.info("REST request to get listing ID: {}", listingId);
         ListingResponse response = listingService.getListingById(listingId);
         listingService.recordListingActivity(
                 listingId,
-                jwt != null ? jwt.getSubject() : null,
+                resolveKeycloakUserId(jwt, authorizationHeader),
                 ActivityEventType.VIEW);
         return ResponseEntity.ok(
                 ApiResponse.<ListingResponse>builder()
@@ -127,8 +132,12 @@ public class ListingDetailController {
     public ResponseEntity<ApiResponse<Void>> trackListingActivity(
             @PathVariable UUID listingId,
             @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
             @Valid @RequestBody ListingActivityRequest request) {
-        listingService.recordListingActivity(listingId, jwt != null ? jwt.getSubject() : null, request.eventType());
+        listingService.recordListingActivity(
+                listingId,
+                resolveKeycloakUserId(jwt, authorizationHeader),
+                request.eventType());
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
                         .code(1000)
@@ -307,10 +316,33 @@ public class ListingDetailController {
     @GetMapping("/sections")
     public ApiResponse<List<HomeSectionResponse>> getHomeSections(
             @RequestParam(required = false) Integer limit,
-            @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
         return ApiResponse.<List<HomeSectionResponse>>builder()
-                .data(listingService.getHomeSections(limit, jwt != null ? jwt.getSubject() : null))
+                .data(listingService.getHomeSections(limit, resolveKeycloakUserId(jwt, authorizationHeader)))
                 .build();
+    }
+
+    private String resolveKeycloakUserId(Jwt jwt, String authorizationHeader) {
+        if (jwt != null && jwt.getSubject() != null && !jwt.getSubject().isBlank()) {
+            return jwt.getSubject();
+        }
+
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            return null;
+        }
+
+        String token = authorizationHeader.substring(7).trim();
+        if (token.isEmpty()) {
+            return null;
+        }
+
+        try {
+            return jwtDecoder.decode(token).getSubject();
+        } catch (JwtException ex) {
+            log.debug("Unable to resolve keycloak user id from bearer token", ex);
+            return null;
+        }
     }
 
     @PreAuthorize("hasAnyAuthority('ROLE_HOST', 'ROLE_ADMIN')")
