@@ -115,6 +115,8 @@ public class NotificationService {
             return explicitTitle;
         }
 
+        String listingName = listingName(payload);
+
         return switch (eventType == null ? "" : eventType) {
             case "MESSAGE" -> "New message";
             case "BOOKING_REQUEST_CREATED" -> "Booking request created";
@@ -127,7 +129,10 @@ public class NotificationService {
             case "BOOKING_CANCELLED_BY_HOST" -> "Host cancelled booking";
             case "BOOKING_CANCELLED_BY_ADMIN" -> "Booking cancelled by admin";
             case "REFUND_CREATED" -> "Refund created";
-            case "LISTING_SUSPENDED" -> "Listing suspended";
+            case "LISTING_SUSPENDED" ->
+                    "Admin suspended: " + listingName;
+            case "LISTING_UNSUSPENDED" ->
+                    "Admin restored: " + listingName;
             default -> "Notification";
         };
     }
@@ -139,6 +144,7 @@ public class NotificationService {
 
         String bookingId = stringValue(payload.get("bookingId"));
         String listingId = stringValue(payload.get("listingId"));
+        String listingName = listingName(payload);
         String currency = stringValue(payload.get("currency"));
         String totalAmount = moneyValue(payload.get("totalAmount"));
         String refundAmount = moneyValue(payload.get("refundAmount"));
@@ -168,7 +174,20 @@ public class NotificationService {
             case "REFUND_CREATED" ->
                     "Refund " + (refundAmount != null ? refundAmount : "") + suffixCurrency(currency) + " was created.";
             case "LISTING_SUSPENDED" ->
-                    "Listing " + shortRef(listingId) + " was suspended.";
+                    "Admin suspended \"" + listingName + "\""
+                            + (stringValue(payload.get("suspendedUntil")) != null
+                            ? " until " + stringValue(payload.get("suspendedUntil"))
+                            : "")
+                            + (stringValue(payload.get("content")) != null
+                            && !stringValue(payload.get("content")).isBlank()
+                            ? ". Reason: " + stringValue(payload.get("content"))
+                            : ".");
+            case "LISTING_UNSUSPENDED" ->
+                    "Admin restored \"" + listingName + "\""
+                            + (stringValue(payload.get("content")) != null
+                            && !stringValue(payload.get("content")).isBlank()
+                            ? ". Note: " + stringValue(payload.get("content"))
+                            : ".");
             default -> {
                 if (bookingId != null || listingId != null) {
                     yield "Booking " + shortRef(bookingId) + " / listing " + shortRef(listingId) + " was updated.";
@@ -199,7 +218,8 @@ public class NotificationService {
             };
         }
 
-        if ("LISTING_SUSPENDED".equals(eventType) && "HOST".equalsIgnoreCase(recipientRole)) {
+        if (("LISTING_SUSPENDED".equals(eventType) || "LISTING_UNSUSPENDED".equals(eventType))
+                && "HOST".equalsIgnoreCase(recipientRole)) {
             return "/host/listings";
         }
 
@@ -215,6 +235,16 @@ public class NotificationService {
             return "n/a";
         }
         return value.length() <= 8 ? value : value.substring(0, 8).toUpperCase(Locale.ROOT);
+    }
+
+    private String listingName(Map<String, Object> payload) {
+        String listingName = stringValue(payload.get("listingName"));
+        if (listingName != null && !listingName.isBlank()) {
+            return listingName;
+        }
+
+        String listingId = stringValue(payload.get("listingId"));
+        return shortRef(listingId);
     }
 
     private String stringValue(Object value) {

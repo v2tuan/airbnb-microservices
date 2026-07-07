@@ -3,10 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
+import { MessageSquare } from "lucide-react";
 import { createOrGetConversation } from "@/api/message";
 import { selectCurrentUser } from "@/features/auth/authSelectors";
 
-export default function SendMessageButton({ otherUserId }: { otherUserId: string }) {
+export default function SendMessageButton({
+  otherUserId,
+  className = "",
+  label = "Send message",
+  compact = false,
+}: {
+  otherUserId: string;
+  className?: string;
+  label?: string;
+  compact?: boolean;
+}) {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const currentUser = useSelector(selectCurrentUser);
@@ -73,11 +84,14 @@ export default function SendMessageButton({ otherUserId }: { otherUserId: string
       type="button"
       onClick={handleClick}
       disabled={isLoading}
-      className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-semibold text-white transition ${
-        isLoading ? "bg-zinc-700/60 cursor-not-allowed" : "bg-[#ff385c] hover:bg-[#e61e4d]"
-      }`}
+      className={`inline-flex items-center justify-center gap-2 rounded-full text-sm font-semibold text-white transition ${
+        compact ? "px-4 py-2.5" : "w-full px-5 py-3.5"
+      } ${
+        isLoading ? "cursor-not-allowed bg-zinc-700/60" : "bg-[#ff385c] hover:bg-[#e61e4d]"
+      } ${className}`}
     >
-      {isLoading ? "Opening..." : "Send message"}
+      <MessageSquare className="h-4 w-4" />
+      {isLoading ? "Opening..." : label}
     </button>
   );
 }

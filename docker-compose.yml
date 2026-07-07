@@ -216,6 +216,7 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: booking-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      KAFKA_NOTIFICATION_TOPIC: ${KAFKA_NOTIFICATION_TOPIC:-notification.events}
       BOOKING_DB_URL: ${BOOKING_DB_URL:-jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/booking_db?sslmode=require}
       BOOKING_DB_USERNAME: ${BOOKING_DB_USERNAME:-neondb_owner}
       BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-npg_GnXE70sJUjmu}
@@ -288,7 +289,7 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: notification-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      NOTIFICATION_MONGODB_URI: ${NOTIFICATION_MONGODB_URI:-mongodb://host.docker.internal:27017/airbnb_db}
+      NOTIFICATION_MONGODB_URI: ${NOTIFICATION_MONGODB_URI:-mongodb://host.docker.internal:27017/airbnb}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-laptrinhh2208@gmail.com}
@@ -309,7 +310,7 @@ services:
       BUILD_MODE: production
       PORT: 8017
       MONGODB_URI: ${MONGODB_URI:-}
-      DATABASE_NAME: ${DATABASE_NAME:-airbnb_message}
+      DATABASE_NAME: ${DATABASE_NAME:-airbnb}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
       ALLOW_LEGACY_JWT: ${ALLOW_LEGACY_JWT:-false}
@@ -338,7 +339,6 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${API_GATEWAY_PORT:-8888}}
         NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
         NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8018}
-        NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:${API_GATEWAY_PORT:-8888}/api/v1}
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
         NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     image: airbnb/airbnb-client:local
@@ -350,7 +350,6 @@ services:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${API_GATEWAY_PORT:-8888}}
       NEXT_PUBLIC_PREFIX: ${NEXT_PUBLIC_PREFIX:-/api/v1}
       NEXT_PUBLIC_MESSAGE_SERVICE_URL: ${NEXT_PUBLIC_MESSAGE_SERVICE_URL:-http://localhost:8018}
-      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: ${NEXT_PUBLIC_NOTIFICATION_SERVICE_URL:-http://localhost:${API_GATEWAY_PORT:-8888}/api/v1}
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
     depends_on:

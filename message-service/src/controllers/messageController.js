@@ -1,8 +1,6 @@
 import { StatusCodes } from 'http-status-codes'
 import { messageService } from '~/services/messageService'
-import { emitNotification, isUserViewingConversation } from '~/sockets'
 import userModel from '~/models/users'
-import { publishNotificationEvent } from '~/services/notificationPublisher'
 
 const sendMessage = async (req, res, next) => {
   try {
@@ -18,58 +16,20 @@ const sendMessage = async (req, res, next) => {
       })
     }
 
+    const sender = await userModel.findOne({ keycloakUserId: senderId }).select('fullName userName avatarUrl').lean()
+    const senderName = sender?.fullName || sender?.userName || 'Someone'
+
     const { message, conversation } = await messageService.sendMessage({
       conversationId,
       senderId,
       text,
       files,
-      io
+      io,
+      senderName,
+      senderAvatarUrl: sender?.avatarUrl || ''
     })
 
-    const recipients = (conversation?.participants || []).filter(
-      (id) => String(id) !== String(senderId)
-    )
-
-    const sender = await userModel.findOne({ keycloakUserId: senderId }).select('fullName userName').lean()
-    const senderName = sender?.fullName || sender?.userName || 'Someone'
-
     res.status(StatusCodes.CREATED).json(message)
-
-    if (recipients.length > 0) {
-      void Promise.allSettled(
-        recipients.map((recipientId) => {
-          if (!isUserViewingConversation(recipientId, conversationId)) {
-            const notificationPayload = {
-              eventType: 'MESSAGE',
-              recipientId: String(recipientId),
-              title: 'New message',
-              message: `${senderName} sent you a message`,
-              meta: {
-                conversationId: message.conversationId,
-                messageId: message._id,
-                senderId: String(senderId),
-                href: `/guest/messages/${conversationId}`
-              },
-              locale: 'vi'
-            }
-
-            emitNotification(String(recipientId), {
-              _id: String(message._id),
-              type: 'MESSAGE',
-              title: notificationPayload.title,
-              message: notificationPayload.message,
-              meta: notificationPayload.meta,
-              read: false,
-              createdAt: new Date().toISOString()
-            })
-
-            return publishNotificationEvent(notificationPayload)
-          }
-
-          return Promise.resolve()
-        })
-      )
-    }
   } catch (error) {
     next(error)
   }

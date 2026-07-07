@@ -60,7 +60,7 @@ kafka:
     payment-completed: payment-completed
     payment-failed: payment-failed
     payout-completed: payout-completed
-    notifications: notifications
+    notifications: notification.events
 
 eureka:
   client:

@@ -132,17 +132,9 @@ public class BookingService {
         List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(listingId, checkIn, checkOut);
 
         for (Booking booking : conflictingBookings) {
-            LocalDate blockedFrom = booking.getCheckInDate().isAfter(checkIn)
-                    ? booking.getCheckInDate()
-                    : checkIn;
-            LocalDate blockedUntilExclusive = booking.getCheckOutDate().isBefore(checkOut)
-                    ? booking.getCheckOutDate()
-                    : checkOut;
-
-            LocalDate currentDate = blockedFrom;
-            while (currentDate.isBefore(blockedUntilExclusive)) {
-                unavailableDates.add(currentDate);
-                currentDate = currentDate.plusDays(1);
+            LocalDate blockedDate = booking.getCheckInDate();
+            if (!blockedDate.isBefore(checkIn) && blockedDate.isBefore(checkOut)) {
+                unavailableDates.add(blockedDate);
             }
         }
 

@@ -1,22 +1,7 @@
-import axios, { type AxiosResponse } from "axios";
-import { authStorage } from "@/lib/auth-storage";
+import type { AxiosResponse } from "axios";
+import apiClient from "../client";
 
-const notificationBaseURL =
-  process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL ||
-  `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8888"}/api/v1`;
-
-const notificationClient = axios.create({
-  baseURL: notificationBaseURL,
-  timeout: 15000,
-});
-
-notificationClient.interceptors.request.use((config) => {
-  const token = authStorage.getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
 
 export interface NotificationItem {
   id: string;
@@ -42,20 +27,20 @@ export const notificationAPI = {
     unreadOnly = false,
     limit = 20,
   ): Promise<AxiosResponse<NotificationListResponse>> => {
-    return notificationClient.get<NotificationListResponse>("/notifications/me", {
+    return apiClient.get<NotificationListResponse>(`${prefix}/notifications/me`, {
       params: { unreadOnly, limit },
     });
   },
 
   getUnreadCount: (): Promise<AxiosResponse<UnreadCountResponse>> => {
-    return notificationClient.get<UnreadCountResponse>("/notifications/me/unread-count");
+    return apiClient.get<UnreadCountResponse>(`${prefix}/notifications/me/unread-count`);
   },
 
   markAllRead: (): Promise<AxiosResponse<{ ok: boolean }>> => {
-    return notificationClient.patch<{ ok: boolean }>("/notifications/me/read-all");
+    return apiClient.patch<{ ok: boolean }>(`${prefix}/notifications/me/read-all`);
   },
 
   markRead: (id: string): Promise<AxiosResponse<{ ok: boolean }>> => {
-    return notificationClient.patch<{ ok: boolean }>(`/notifications/${id}/read`);
+    return apiClient.patch<{ ok: boolean }>(`${prefix}/notifications/${id}/read`);
   },
 };

@@ -222,6 +222,13 @@ export interface BookingCancellationPolicy {
   refundable: boolean;
 }
 
+export interface BookingAvailabilityCalendarResponse {
+  listingId: string;
+  checkIn: string;
+  checkOut: string;
+  unavailableDates: string[];
+}
+
 export interface GuestCancellationQuoteResponse {
   quoteId: string;
   bookingId: string;

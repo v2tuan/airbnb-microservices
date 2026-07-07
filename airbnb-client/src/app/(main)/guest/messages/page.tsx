@@ -470,19 +470,28 @@ function GuestMessagesPageContent() {
       const message = payload.message;
       const messageText = message?.text?.trim() ?? "";
       const senderId = normalizeSenderId(message?.senderId);
+      const currentUserId = user?.keycloakUserId ?? null;
 
       if (payload.conversationId !== activeConversation.conversationId || !message || !messageText) {
         return;
       }
 
+      if (currentUserId && senderId && String(senderId) === String(currentUserId)) {
+        return;
+      }
+
       setMessages((currentMessages) => [
         ...currentMessages,
-        {
-          id: message._id ?? String(Date.now()),
-          sender: resolveSenderRole(senderId),
-          text: messageText,
-          createdAt: formatMessageTime(message.createdAt),
-        },
+        ...(message._id && currentMessages.some((item) => item.id === message._id)
+          ? []
+          : [
+              {
+                id: message._id ?? String(Date.now()),
+                sender: resolveSenderRole(senderId),
+                text: messageText,
+                createdAt: formatMessageTime(message.createdAt),
+              },
+            ]),
       ]);
     };
 

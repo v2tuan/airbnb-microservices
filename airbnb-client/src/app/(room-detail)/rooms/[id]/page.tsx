@@ -17,6 +17,7 @@ import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { activityAPI } from "@/api/endpoints/activity";
+import { getListingUnavailableDates } from "@/api/endpoints/booking";
 import {
   type ListingResponse,
   listingAPI,
@@ -291,6 +292,7 @@ export default function RoomDetail() {
   const [listing, setListing] = useState<ListingResponse | null>(null);
   const [host, setHost] = useState<HostPreview | null>(null);
   const [unavailableDates, setUnavailableDates] = useState<Date[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [averageRating, setAverageRating] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -370,19 +372,28 @@ export default function RoomDetail() {
       try {
         const rangeStart = startOfMonth(new Date());
         const rangeEnd = endOfMonth(addMonths(rangeStart, 11));
-        const response = await listingAPI.getAvailability(listingId, {
-          startDate: format(rangeStart, "yyyy-MM-dd"),
-          endDate: format(rangeEnd, "yyyy-MM-dd"),
+        const token =
+          typeof window === "undefined"
+            ? null
+            : localStorage.getItem("access_token");
+        const response = await getListingUnavailableDates(token, listingId, {
+          checkIn: format(rangeStart, "yyyy-MM-dd"),
+          checkOut: format(rangeEnd, "yyyy-MM-dd"),
         });
 
         if (cancelled) return;
 
-        const rows = unwrapApiData(response.data) ?? [];
-        setUnavailableDates(
-          rows
-            .filter((day) => day && day.isAvailable === false && typeof day.date === "string")
-            .map((day) => parseISO(day.date)),
-        );
+        const rows = unwrapApiData(response.data)?.unavailableDates ?? [];
+        const parsedDates = rows
+          .filter((date): date is string => typeof date === "string" && date.length > 0)
+          .map((date) => parseISO(date))
+          .filter((date) => !Number.isNaN(date.getTime()))
+          .sort((left, right) => left.getTime() - right.getTime());
+
+        setUnavailableDates(parsedDates);
+        if (parsedDates.length > 0) {
+          setCalendarMonth(startOfMonth(parsedDates[0]));
+        }
       } catch (availabilityError) {
         console.error("Failed to fetch listing availability:", availabilityError);
         if (!cancelled) setUnavailableDates([]);
@@ -687,7 +698,8 @@ export default function RoomDetail() {
                 <div className="mt-5 overflow-hidden rounded-[20px] border border-[#ebebeb] bg-white p-3">
                   <Calendar
                     mode="range"
-                    defaultMonth={new Date()}
+                    month={calendarMonth}
+                    onMonthChange={setCalendarMonth}
                     numberOfMonths={2}
                     disabled={unavailableDates}
                   />
@@ -757,10 +769,7 @@ export default function RoomDetail() {
               </section>
 
               <section className="pb-2">
-                <ListingRatingPanel
-                  averageRating={averageRating}
-                  ratings={ratings}
-                />
+                <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
               </section>
             </div>
 

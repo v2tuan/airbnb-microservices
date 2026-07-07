@@ -87,9 +87,13 @@ function StarInput({
 export function ListingRatingForm({
   listingId,
   hostId,
+  bookingId,
+  showForm = false,
 }: {
   listingId: string;
   hostId?: string;
+  bookingId?: string;
+  showForm?: boolean;
 }) {
   const router = useRouter();
   const [overallRating, setOverallRating] = useState(5);
@@ -107,6 +111,10 @@ export function ListingRatingForm({
   });
 
   const canSubmit = useMemo(() => review.trim().length >= 10, [review]);
+
+  if (!showForm) {
+    return null;
+  }
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -127,11 +135,7 @@ export function ListingRatingForm({
     try {
       setLoading(true);
       await ratingAPI.createRating({
-        listingId,
-        userId: profile.keycloakUserId ?? profile.id,
-        hostId,
-        reviewerFullName: profile.fullName ?? undefined,
-        reviewerAvatarUrl: profile.avatarUrl ?? undefined,
+        bookingId: bookingId ?? listingId,
         overallRating,
         cleanliness: scores.cleanliness,
         accuracy: scores.accuracy,

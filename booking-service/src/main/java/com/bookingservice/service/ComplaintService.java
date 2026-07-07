@@ -275,7 +275,7 @@ public class ComplaintService {
                                 .build());
                 publishListingSuspendedNotification(
                         complaint.getListingId(),
-                        complaint.getHostId(),
+                        complaint.getHostId() != null ? complaint.getHostId().toString() : null,
                         null,
                         "Admin complaint decision: " + request.getAdminNote().trim(),
                         now.plusDays(7)
@@ -549,7 +549,7 @@ public class ComplaintService {
 
     private void publishListingSuspendedNotification(
             UUID listingId,
-            UUID hostId,
+            String hostId,
             String listingName,
             String reason,
             LocalDateTime suspendedUntil
@@ -560,13 +560,13 @@ public class ComplaintService {
     private void publishListingNotification(
             String eventType,
             UUID listingId,
-            UUID hostId,
+            String hostId,
             String listingName,
             String content,
             LocalDateTime suspendedUntil
     ) {
         Map<String, Object> payload = new java.util.LinkedHashMap<>();
-        payload.put("userId", hostId != null ? hostId.toString() : "");
+        payload.put("userId", hostId != null ? hostId : "");
         payload.put("listingId", listingId.toString());
         payload.put("listingName", listingName != null && !listingName.isBlank()
                 ? listingName
@@ -575,8 +575,29 @@ public class ComplaintService {
         payload.put("suspendedUntil", suspendedUntil);
         payload.put("content", content != null ? content : "");
 
+        String resolvedListingName = listingName != null && !listingName.isBlank()
+                ? listingName
+                : "Listing " + listingId;
+        String explicitTitle = "LISTING_SUSPENDED".equals(eventType)
+                ? "Admin suspended: " + resolvedListingName
+                : "Admin restored: " + resolvedListingName;
+        String explicitMessage = "LISTING_SUSPENDED".equals(eventType)
+                ? "Admin suspended \"" + resolvedListingName + "\""
+                        + (suspendedUntil != null ? " until " + suspendedUntil : "")
+                        + (content != null && !content.isBlank() ? ". Reason: " + content : ".")
+                : "Admin restored \"" + resolvedListingName + "\""
+                        + (content != null && !content.isBlank() ? ". Note: " + content : ".");
+
         if (hostId != null) {
-            notificationEventPublisher.publish(eventType, hostId, "HOST", payload);
+            notificationEventPublisher.publish(
+                    eventType,
+                    hostId,
+                    "HOST",
+                    explicitTitle,
+                    explicitMessage,
+                    Map.of("href", "/host/listings"),
+                    payload
+            );
         }
         notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
     }
@@ -588,7 +609,7 @@ public class ComplaintService {
             if (listing == null) {
                 return new ListingNotificationContext(null, null);
             }
-            UUID hostId = listing.getHostId() != null ? UUID.fromString(listing.getHostId()) : null;
+            String hostId = listing.getHostId() != null ? listing.getHostId().trim() : null;
             return new ListingNotificationContext(hostId, listing.getTitle());
         } catch (RuntimeException ex) {
             log.warn("Failed to resolve host for listing notification listingId={}", listingId, ex);
@@ -596,7 +617,7 @@ public class ComplaintService {
         }
     }
 
-    private record ListingNotificationContext(UUID hostId, String listingName) {
+    private record ListingNotificationContext(String hostId, String listingName) {
     }
 
     private Map<String, Object> bookingPayload(Booking booking) {

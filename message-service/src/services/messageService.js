@@ -25,7 +25,7 @@ const uploadBufferToCloudinary = (file, options = {}) => {
   })
 }
 
-const sendMessage = async ({ conversationId, senderId, text, files = [], io }) => {
+const sendMessage = async ({ conversationId, senderId, senderName, senderAvatarUrl, text, files = [], io }) => {
   try {
     const conversation = await conversationModel.findOne({
       _id: conversationId,
@@ -98,12 +98,14 @@ const sendMessage = async ({ conversationId, senderId, text, files = [], io }) =
           eventType: 'MESSAGE',
           channel: 'PUSH',
           recipientId: String(recipientId),
-          title: 'New message',
-          message: trimmedText || 'You have a new conversation update.',
+          title: senderName ? `${senderName} sent you a message` : 'New message',
+          message: trimmedText || (attachments.length > 0 ? 'Sent you an attachment.' : 'Sent a new message.'),
           meta: {
             conversationId,
             messageId: message._id,
-            senderId: String(senderId)
+            senderId: String(senderId),
+            senderName,
+            senderAvatarUrl
           },
           payload: {
             conversationId,

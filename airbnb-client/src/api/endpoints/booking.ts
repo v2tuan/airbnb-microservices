@@ -1,6 +1,7 @@
 import type { ApiResponse } from "@/types/api.type";
 import type {
   BookingDetailResponse,
+  BookingAvailabilityCalendarResponse,
   BookingFilterType,
   BookingStatus,
   BookingTripsResponse,
@@ -45,6 +46,25 @@ export async function getMyBookings(
     params: { type },
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  return res.data;
+}
+
+export async function getListingUnavailableDates(
+  token: string | null,
+  listingId: string,
+  params: {
+    checkIn: string;
+    checkOut: string;
+  },
+): Promise<ApiResponse<BookingAvailabilityCalendarResponse>> {
+  const res = await apiClient.get<ApiResponse<BookingAvailabilityCalendarResponse>>(
+    `${prefix}/bookings/availability/calendar`,
+    {
+      params: { listingId, ...params },
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   return res.data;
 }

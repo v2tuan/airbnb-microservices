@@ -3,6 +3,7 @@ package com.bookingservice.dto.response;
 import com.bookingservice.constant.ListingStatus;
 import com.bookingservice.constant.PropertyType;
 import com.bookingservice.constant.RoomType;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -17,6 +18,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ListingResponse {
     
     UUID listingId;
