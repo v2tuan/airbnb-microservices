@@ -9,6 +9,7 @@ x-java-env: &java-env
   KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
   KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
   KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+  APP_CORS_ALLOWED_ORIGIN_PATTERNS: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:5173,http://localhost:3000,http://localhost:3001}
 
 x-spring-service: &spring-service
   networks:
