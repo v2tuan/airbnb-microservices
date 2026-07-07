@@ -2,6 +2,7 @@ package com.paymentservice.service;
 
 import com.paymentservice.dto.response.AdminPaymentOverviewResponse;
 import com.paymentservice.dto.response.AdminRefundRecordResponse;
+import com.paymentservice.dto.response.AdminTransactionRecordResponse;
 import com.paymentservice.entity.Payment;
 import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
@@ -84,6 +85,74 @@ public class PaymentAdminService {
                             .updatedAt(refund.getCompletedAt())
                             .build();
                 })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminTransactionRecordResponse> getTransactions() {
+        List<AdminTransactionRecordResponse> paymentRecords = paymentRepository.findAll().stream()
+                .map(payment -> AdminTransactionRecordResponse.builder()
+                        .id(payment.getId())
+                        .type("PAYMENT")
+                        .bookingId(payment.getBookingId())
+                        .customerId(payment.getGuestId())
+                        .counterpartyId(payment.getHostId())
+                        .status(payment.getStatus().name())
+                        .amount(toMajorAmount(payment.getAmount()))
+                        .currency(normalizeCurrency(payment.getCurrency()))
+                        .paymentMethod("Stripe")
+                        .description("Booking #" + payment.getBookingId())
+                        .providerId(payment.getStripePaymentIntentId())
+                        .createdAt(firstPresent(payment.getSucceededAt(), payment.getUpdatedAt(), payment.getCreatedAt()))
+                        .build())
+                .toList();
+
+        List<AdminTransactionRecordResponse> payoutRecords = payoutRepository.findAll().stream()
+                .map(payout -> AdminTransactionRecordResponse.builder()
+                        .id(payout.getPayoutId())
+                        .type("PAYOUT")
+                        .bookingId(payout.getBookingId())
+                        .customerId(payout.getHostId())
+                        .counterpartyId(null)
+                        .status(payout.getStatus().name())
+                        .amount(payout.getHostEarnings())
+                        .currency(normalizeCurrency(payout.getCurrency()))
+                        .paymentMethod(payout.getPayoutMethod())
+                        .description("Payout for booking #" + payout.getBookingId())
+                        .providerId(payout.getStripeTransferId())
+                        .createdAt(firstPresent(payout.getProcessedAt(), payout.getScheduledAt(), payout.getCreatedAt()))
+                        .build())
+                .toList();
+
+        List<AdminTransactionRecordResponse> refundRecords = refundRepository.findAll().stream()
+                .map(refund -> {
+                    Transaction original = refund.getOriginalTransaction();
+                    return AdminTransactionRecordResponse.builder()
+                            .id(refund.getRefundId())
+                            .type("REFUND")
+                            .bookingId(original == null ? null : original.getBookingId())
+                            .customerId(original == null ? null : original.getPayerId())
+                            .counterpartyId(original == null ? null : original.getPayeeId())
+                            .status(refund.getStatus().name())
+                            .amount(refund.getRefundAmount())
+                            .currency(normalizeCurrency(original == null ? null : original.getCurrency()))
+                            .paymentMethod("Stripe")
+                            .description(original == null
+                                    ? "Refund #" + refund.getRefundId()
+                                    : "Refund for booking #" + original.getBookingId())
+                            .providerId(refund.getGatewayRefundId())
+                            .createdAt(firstPresent(refund.getCompletedAt(), refund.getInitiatedAt()))
+                            .build();
+                })
+                .toList();
+
+        return java.util.stream.Stream.of(paymentRecords, payoutRecords, refundRecords)
+                .flatMap(List::stream)
+                .sorted(Comparator.comparing(
+                        AdminTransactionRecordResponse::getCreatedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                ))
+                .limit(100)
                 .toList();
     }
 
@@ -297,6 +366,19 @@ public class PaymentAdminService {
 
     private BigDecimal toMajorAmount(Long amount) {
         return amount == null ? BigDecimal.ZERO : BigDecimal.valueOf(amount);
+    }
+
+    private LocalDateTime firstPresent(LocalDateTime... values) {
+        for (LocalDateTime value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeCurrency(String currency) {
+        return currency == null ? "USD" : currency.toUpperCase();
     }
 
     private static class FlowAccumulator {

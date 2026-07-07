@@ -100,7 +100,10 @@ export const userAPI = {
   getPublicHostByKeycloakUserId: (
     keycloakUserId: string,
   ): Promise<AxiosResponse<PublicHostResponseDTO>> => {
-    return apiClient.get<PublicHostResponseDTO>(`${prefix}/users/public/${keycloakUserId}`, publicRequest);
+    return apiClient.get<PublicHostResponseDTO>(
+      `${prefix}/users/public/${keycloakUserId}`,
+      publicRequest,
+    );
   },
 
   getPublicProfileById: (

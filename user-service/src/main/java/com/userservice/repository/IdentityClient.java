@@ -68,6 +68,17 @@ public interface IdentityClient {
             @PathVariable("userId") String userId
     );
 
+    @GetMapping(
+            "/admin/realms/airbnb/users"
+    )
+    List<KeycloakUserResponse> getUsers(
+            @RequestHeader("Authorization") String token,
+
+            @RequestParam("first") int first,
+
+            @RequestParam("max") int max
+    );
+
     @PutMapping(
             value = "/admin/realms/airbnb/users/{userId}",
             consumes = MediaType.APPLICATION_JSON_VALUE

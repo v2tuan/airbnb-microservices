@@ -380,7 +380,7 @@ export function AdminOverviewModule() {
       label: "Refund queue",
       value: payment.summary.refundCount.toLocaleString("en-US"),
       note: formatCurrency(payment.summary.refundedAmount, currency),
-      href: "/admin/refunds",
+      href: "/admin/transactions",
       icon: BadgeDollarSign,
       tone: "bg-rose-50 text-[#ff385c]",
     },

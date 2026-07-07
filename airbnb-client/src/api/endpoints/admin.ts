@@ -248,6 +248,21 @@ export interface AdminPaymentQueueItem {
   createdAt?: string | null;
 }
 
+export interface AdminTransactionRecord {
+  id: string;
+  type: "PAYMENT" | "PAYOUT" | "REFUND" | string;
+  bookingId?: string | null;
+  customerId?: string | null;
+  counterpartyId?: string | null;
+  status: string;
+  amount: number;
+  currency: string;
+  paymentMethod?: string | null;
+  description?: string | null;
+  providerId?: string | null;
+  createdAt?: string | null;
+}
+
 export interface AdminPaymentOverview {
   summary: AdminPaymentOverviewSummary;
   paymentFlow: AdminPaymentFlowPoint[];
@@ -333,6 +348,17 @@ export async function getAdminPaymentOverview(
 ): Promise<ApiResponse<AdminPaymentOverview>> {
   return unwrap(
     await apiClient.get(`${prefix}/payments/admin/overview`, authConfig(token)),
+  );
+}
+
+export async function listAdminTransactions(
+  token: string | null,
+): Promise<ApiResponse<AdminTransactionRecord[]>> {
+  return unwrap(
+    await apiClient.get(
+      `${prefix}/payments/admin/transactions`,
+      authConfig(token),
+    ),
   );
 }
 

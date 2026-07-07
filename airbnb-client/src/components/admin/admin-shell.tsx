@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  BadgeDollarSign,
   ChevronDown,
   ClipboardList,
   Home,
@@ -59,12 +58,6 @@ const navItems = [
     label: "Users",
     description: "Accounts and hosts",
     icon: User,
-  },
-  {
-    href: "/admin/refunds",
-    label: "Refunds",
-    description: "Refund operations",
-    icon: BadgeDollarSign,
   },
   {
     href: "/admin/listings",

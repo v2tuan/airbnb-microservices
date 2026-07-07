@@ -1,5 +1,5 @@
-import { RefundsManagementModule } from "@/components/admin/modules/refunds-management";
+import { redirect } from "next/navigation";
 
 export default function AdminRefundsPage() {
-  return <RefundsManagementModule />;
+  redirect("/admin/transactions");
 }
