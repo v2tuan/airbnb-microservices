@@ -17,6 +17,7 @@ import com.bookingservice.dto.response.BookingTripResponse;
 import com.bookingservice.dto.response.AdminReservationDetailResponse;
 import com.bookingservice.dto.response.AdminReservationSummaryResponse;
 import com.bookingservice.dto.response.BookingAvailabilityCalendarResponse;
+import com.bookingservice.dto.response.BookingReviewContextResponse;
 import com.bookingservice.dto.response.CreateBookingResponse;
 import com.bookingservice.dto.response.GuestCancellationQuoteResponse;
 import com.bookingservice.dto.response.HostCancellationQuoteResponse;
@@ -39,6 +40,7 @@ import com.bookingservice.repository.BookingRepository;
 import com.bookingservice.repository.HostCancellationQuoteRepository;
 import com.bookingservice.repository.client.ListingClient;
 import com.bookingservice.repository.client.PaymentClient;
+import com.bookingservice.repository.client.RatingClient;
 import com.bookingservice.repository.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -79,6 +81,7 @@ public class BookingService {
     private final HostCancellationQuoteRepository hostCancellationQuoteRepository;
     private final ListingClient listingClient;
     private final PaymentClient paymentClient;
+    private final RatingClient ratingClient;
     private final UserClient userClient;
     private final HostPenaltyService hostPenaltyService;
     private final NotificationEventPublisher notificationEventPublisher;
@@ -573,6 +576,29 @@ public class BookingService {
         return mapToDetailResponse(booking, listing, host);
     }
 
+    @Transactional(readOnly = true)
+    public BookingReviewContextResponse getMyBookingReviewContext(UUID bookingId) {
+        UUID guestId = UUID.fromString(currentJwt().getSubject());
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> BusinessException.notFound("Booking not found"));
+
+        if (!booking.getGuestId().equals(guestId)) {
+            throw BusinessException.notFound("Booking not found");
+        }
+
+        return BookingReviewContextResponse.builder()
+                .bookingId(booking.getBookingId())
+                .listingId(booking.getListingId())
+                .guestId(booking.getGuestId())
+                .hostId(booking.getHostId())
+                .status(booking.getStatus())
+                .checkInDate(booking.getCheckInDate())
+                .checkOutDate(booking.getCheckOutDate())
+                .completedAt(booking.getCompletedAt())
+                .canReview(booking.getStatus() == BookingStatus.COMPLETED)
+                .build();
+    }
+
     @Transactional
     public BookingResponse cancelMyBooking(UUID bookingId, CancelBookingRequest request) {
         UUID guestId = UUID.fromString(currentJwt().getSubject());
@@ -988,7 +1014,13 @@ public class BookingService {
                             .reason("Host cancellation threshold reached for listing penalties")
                             .build()
             );
-            publishListingEvent("LISTING_SUSPENDED", quote.getListingId(), quote.getHostId());
+            publishListingSuspendedNotification(
+                    quote.getListingId(),
+                    quote.getHostId(),
+                    null,
+                    "Host cancellation threshold reached for listing penalties",
+                    quote.getListingSuspendedUntil()
+            );
         } catch (RuntimeException exception) {
             log.warn("Failed to suspend listing {} after host penalty threshold", quote.getListingId(), exception);
         }
@@ -2199,14 +2231,50 @@ public class BookingService {
     }
 
     private BookingDetailResponse.ReviewSummary buildReviewSummary(Booking booking) {
-        int seed = Math.abs(booking.getListingId().hashCode());
-        BigDecimal averageRating = BigDecimal.valueOf(4.6 + (seed % 35) / 100.0)
-                .setScale(2, java.math.RoundingMode.HALF_UP);
+        try {
+            Map<String, Object> summary = ratingClient.getListingRatingSummary(booking.getListingId().toString());
+            BigDecimal averageRating = toSummaryBigDecimal(summary.get("overallRating"));
+            int reviewCount = toSummaryInt(summary.get("reviewCount"));
 
-        return BookingDetailResponse.ReviewSummary.builder()
-                .averageRating(averageRating)
-                .reviewCount(12 + seed % 140)
-                .build();
+            return BookingDetailResponse.ReviewSummary.builder()
+                    .averageRating(averageRating)
+                    .reviewCount(reviewCount)
+                    .build();
+        } catch (RuntimeException exception) {
+            log.warn("Failed to fetch rating summary listingId={}", booking.getListingId(), exception);
+            return BookingDetailResponse.ReviewSummary.builder()
+                    .averageRating(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
+                    .reviewCount(0)
+                    .build();
+        }
+    }
+
+    private BigDecimal toSummaryBigDecimal(Object value) {
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return new BigDecimal(text).setScale(2, RoundingMode.HALF_UP);
+            } catch (NumberFormatException ignored) {
+                return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
+        }
+        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private int toSummaryInt(Object value) {
+        long parsed = 0L;
+        if (value instanceof Number number) {
+            parsed = number.longValue();
+        } else if (value instanceof String text && !text.isBlank()) {
+            try {
+                parsed = Long.parseLong(text);
+            } catch (NumberFormatException ignored) {
+                parsed = 0L;
+            }
+        }
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE, parsed));
     }
 
     private BookingDetailResponse.AccessInfo buildAccessInfo(ListingResponse listing) {
@@ -2481,12 +2549,27 @@ public class BookingService {
         );
     }
 
-    private void publishListingEvent(String eventType, UUID listingId, UUID hostId) {
-        Map<String, Object> payload = Map.of("listingId", listingId.toString());
+    private void publishListingSuspendedNotification(
+            UUID listingId,
+            UUID hostId,
+            String listingName,
+            String content,
+            LocalDateTime suspendedUntil
+    ) {
+        Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("userId", hostId != null ? hostId.toString() : "");
+        payload.put("listingId", listingId.toString());
+        payload.put("listingName", listingName != null && !listingName.isBlank()
+                ? listingName
+                : "Listing " + listingId);
+        payload.put("suspendedAt", LocalDateTime.now());
+        payload.put("suspendedUntil", suspendedUntil);
+        payload.put("content", content != null ? content : "");
+
         if (hostId != null) {
-            notificationEventPublisher.publish(eventType, hostId, "HOST", payload);
+            notificationEventPublisher.publish("LISTING_SUSPENDED", hostId, "HOST", payload);
         }
-        notificationEventPublisher.publishToRole(eventType, "ADMIN", payload);
+        notificationEventPublisher.publishToRole("LISTING_SUSPENDED", "ADMIN", payload);
     }
 
     private Map<String, Object> bookingPayload(Booking booking) {

@@ -49,4 +49,58 @@ public interface IdentityClient {
 
             @RequestBody List<KeycloakRoleRequest> roles
     );
+
+    @GetMapping(
+            "/admin/realms/airbnb/users/{userId}/role-mappings/realm"
+    )
+    List<KeycloakRoleResponse> getRealmRoleMappings(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("userId") String userId
+    );
+
+    @GetMapping(
+            "/admin/realms/airbnb/users/{userId}"
+    )
+    KeycloakUserResponse getUser(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("userId") String userId
+    );
+
+    @GetMapping(
+            "/admin/realms/airbnb/users"
+    )
+    List<KeycloakUserResponse> getUsers(
+            @RequestHeader("Authorization") String token,
+
+            @RequestParam("first") int first,
+
+            @RequestParam("max") int max
+    );
+
+    @PutMapping(
+            value = "/admin/realms/airbnb/users/{userId}",
+            consumes = MediaType.APPLICATION_JSON_VALUE
+    )
+    void updateUser(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("userId") String userId,
+
+            @RequestBody KeycloakUserUpdateRequest request
+    );
+
+    @GetMapping(
+            "/admin/realms/airbnb/roles/{roleName}/users"
+    )
+    List<KeycloakUserResponse> getUsersByRealmRole(
+            @RequestHeader("Authorization") String token,
+
+            @PathVariable("roleName") String roleName,
+
+            @RequestParam("first") int first,
+
+            @RequestParam("max") int max
+    );
 }

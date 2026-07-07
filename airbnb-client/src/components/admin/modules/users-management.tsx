@@ -1,10 +1,21 @@
 "use client";
 
-import { BadgeCheck, UserRound, UsersRound } from "lucide-react";
+import {
+  BadgeCheck,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  LockOpen,
+  ShieldCheck,
+  UsersRound,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type AdminUserRecord,
+  blockAdminUser,
   listAdminUsers,
+  type PageResponse,
+  unblockAdminUser,
 } from "@/api/endpoints/admin";
 import { useAdminToken } from "@/components/admin/admin-shell";
 import {
@@ -20,6 +31,7 @@ import {
   TextStatusPill,
 } from "@/components/admin/admin-ui";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -41,7 +53,18 @@ function getInitials(name?: string | null) {
 }
 
 function roleTone(user: AdminUserRecord) {
-  return user.host ? "brand" : "neutral";
+  const roles = user.roles ?? [];
+  if (roles.includes("ADMIN")) return "danger";
+  if (roles.includes("HOST")) return "brand";
+  return "neutral";
+}
+
+function roleLabel(user: AdminUserRecord) {
+  const roles = user.roles ?? [];
+  if (roles.includes("ADMIN")) return "ADMIN";
+  if (roles.includes("HOST")) return "HOST";
+
+  return "USER";
 }
 
 function stripeTone(status?: string | null) {
@@ -51,25 +74,45 @@ function stripeTone(status?: string | null) {
   return "neutral";
 }
 
+type RoleFilter = "ALL" | "HOST" | "ADMIN" | "USER";
+
+const roleFilters: Array<{ label: string; value: RoleFilter }> = [
+  { label: "All", value: "ALL" },
+  { label: "Host", value: "HOST" },
+  { label: "Admin", value: "ADMIN" },
+  { label: "User", value: "USER" },
+];
+
 export function UsersManagementModule() {
   const { token } = useAdminToken();
   const [items, setItems] = useState<AdminUserRecord[]>([]);
+  const [pageData, setPageData] =
+    useState<PageResponse<AdminUserRecord> | null>(null);
+  const [page, setPage] = useState(0);
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
+  const pageSize = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
 
-    listAdminUsers(token)
+    listAdminUsers(token, { page, size: pageSize, role: roleFilter })
       .then((response) => {
         if (!active) return;
-        setItems(response.data ?? []);
+        const data = response.data;
+        setPageData(data ?? null);
+        setItems(data?.content ?? []);
+        setActionMessage(null);
       })
       .catch((err) => {
         if (!active) return;
         setItems([]);
+        setPageData(null);
         setError(
           getAdminErrorMessage(
             err,
@@ -84,17 +127,58 @@ export function UsersManagementModule() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, page, roleFilter]);
 
   const metrics = useMemo(
     () => ({
-      total: items.length,
-      hosts: items.filter((item) => item.host).length,
-      stripeActive: items.filter((item) => item.stripeAccountStatus === "ACTIVE")
-        .length,
+      total: pageData?.totalElements ?? items.length,
+      stripeActive: items.filter(
+        (item) => item.stripeAccountStatus === "ACTIVE",
+      ).length,
     }),
-    [items],
+    [items, pageData?.totalElements],
   );
+
+  const totalPages = Math.max(pageData?.totalPages ?? 1, 1);
+  const displayPage = Math.min(page + 1, totalPages);
+  const firstItem =
+    pageData && pageData.totalElements > 0 ? page * pageSize + 1 : 0;
+  const lastItem = pageData
+    ? Math.min((page + 1) * pageSize, pageData.totalElements)
+    : items.length;
+
+  async function updateUserBlocked(item: AdminUserRecord, blocked: boolean) {
+    setUpdatingUserId(item.keycloakUserId);
+    setActionMessage(null);
+    try {
+      if (blocked) {
+        await blockAdminUser(token, item.keycloakUserId);
+      } else {
+        await unblockAdminUser(token, item.keycloakUserId);
+      }
+      setItems((current) =>
+        current.map((user) =>
+          user.keycloakUserId === item.keycloakUserId
+            ? { ...user, enabled: !blocked }
+            : user,
+        ),
+      );
+      setActionMessage(
+        blocked
+          ? `${item.fullName || "User"} has been blocked.`
+          : `${item.fullName || "User"} has been unblocked.`,
+      );
+    } catch (err) {
+      setActionMessage(
+        getAdminErrorMessage(
+          err,
+          blocked ? "Block user failed." : "Unblock user failed.",
+        ),
+      );
+    } finally {
+      setUpdatingUserId(null);
+    }
+  }
 
   return (
     <>
@@ -104,7 +188,7 @@ export function UsersManagementModule() {
         description="Review registered users, host accounts and payment onboarding status from user-service."
       />
       <div className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <AdminMetricCard
             label="Users"
             value={metrics.total}
@@ -113,16 +197,9 @@ export function UsersManagementModule() {
             icon={UsersRound}
           />
           <AdminMetricCard
-            label="Hosts"
-            value={metrics.hosts}
-            note="Accounts with host profile."
-            accent="success"
-            icon={UserRound}
-          />
-          <AdminMetricCard
-            label="Stripe active"
+            label="Stripe active on page"
             value={metrics.stripeActive}
-            note="Hosts ready for payouts."
+            note="Current page only."
             accent="warning"
             icon={BadgeCheck}
           />
@@ -131,9 +208,30 @@ export function UsersManagementModule() {
         <AdminCard className="p-0">
           <AdminSectionHeader
             title="User directory"
-            description="Read-only account overview. Account lock/unlock should be added when Keycloak admin controls are wired safely."
+            description="Review accounts, roles, payment onboarding and Keycloak account access."
           />
           <div className="overflow-x-auto p-5">
+            <div className="mb-4 flex flex-wrap gap-2">
+              {roleFilters.map((filter) => (
+                <Button
+                  key={filter.value}
+                  type="button"
+                  variant={roleFilter === filter.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setRoleFilter(filter.value);
+                    setPage(0);
+                  }}
+                >
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
+            {actionMessage ? (
+              <p className="mb-4 text-sm leading-6 text-[#6a6a6a]">
+                {actionMessage}
+              </p>
+            ) : null}
             {loading ? <AdminLoadingRows rows={6} /> : null}
             {!loading && error ? <AdminErrorState description={error} /> : null}
             {!loading && !error && items.length === 0 ? (
@@ -143,14 +241,15 @@ export function UsersManagementModule() {
               />
             ) : null}
             {!loading && !error && items.length > 0 ? (
-              <Table className="min-w-[860px]">
+              <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>User</TableHead>
                     <TableHead>Role</TableHead>
-                    <TableHead>Host status</TableHead>
+                    <TableHead>Account</TableHead>
                     <TableHead>Stripe</TableHead>
                     <TableHead>Joined</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -179,26 +278,90 @@ export function UsersManagementModule() {
                       </TableCell>
                       <TableCell>
                         <TextStatusPill tone={roleTone(item)}>
-                          {item.host ? "Host" : "User"}
+                          <span className="inline-flex items-center gap-1">
+                            <ShieldCheck className="size-3.5" />
+                            {roleLabel(item)}
+                          </span>
                         </TextStatusPill>
                       </TableCell>
                       <TableCell>
-                        {item.host ? (
-                          item.hostVerificationStatus || "PENDING"
-                        ) : (
-                          <span className="text-[#6a6a6a]">Not host</span>
-                        )}
+                        <TextStatusPill
+                          tone={item.enabled === false ? "danger" : "success"}
+                        >
+                          {item.enabled === false ? "BLOCKED" : "ACTIVE"}
+                        </TextStatusPill>
                       </TableCell>
                       <TableCell>
-                        <TextStatusPill tone={stripeTone(item.stripeAccountStatus)}>
+                        <TextStatusPill
+                          tone={stripeTone(item.stripeAccountStatus)}
+                        >
                           {item.stripeAccountStatus || "NONE"}
                         </TextStatusPill>
                       </TableCell>
                       <TableCell>{formatAdminDate(item.createdAt)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant={
+                            item.enabled === false ? "outline" : "destructive"
+                          }
+                          size="sm"
+                          disabled={updatingUserId === item.keycloakUserId}
+                          onClick={() =>
+                            updateUserBlocked(item, item.enabled !== false)
+                          }
+                          className="gap-2"
+                        >
+                          {item.enabled === false ? (
+                            <LockOpen className="size-4" />
+                          ) : (
+                            <Ban className="size-4" />
+                          )}
+                          {item.enabled === false ? "Unblock" : "Block"}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            ) : null}
+            {!loading && !error && pageData && pageData.totalElements > 0 ? (
+              <div className="mt-4 flex flex-col gap-3 border-t border-[#eeeeee] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-[#6a6a6a]">
+                  Showing {firstItem}-{lastItem} of {pageData.totalElements}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={page <= 0 || loading}
+                    aria-label="Previous users page"
+                    onClick={() =>
+                      setPage((current) => Math.max(0, current - 1))
+                    }
+                  >
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <span className="min-w-20 text-center text-sm font-medium text-[#222222]">
+                    {displayPage} / {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={page >= totalPages - 1 || loading}
+                    aria-label="Next users page"
+                    onClick={() =>
+                      setPage((current) =>
+                        Math.min(totalPages - 1, current + 1),
+                      )
+                    }
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
             ) : null}
           </div>
         </AdminCard>

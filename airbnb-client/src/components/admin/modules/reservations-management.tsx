@@ -1,12 +1,11 @@
 "use client";
 
-import { Ban, CalendarDays, ExternalLink, ShieldAlert, TicketCheck } from "lucide-react";
+import { Ban, CalendarDays, ExternalLink, TicketCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   type AdminReservationDetail,
   type AdminReservationSummary,
-  forceCancelAdminBooking,
   getAdminReservationDetail,
   listAdminReservations,
 } from "@/api/endpoints/admin";
@@ -20,7 +19,6 @@ import {
   AdminPageHeader,
   AdminSectionHeader,
   BookingStatusPill,
-  canForceCancelStatus,
   FieldLabel,
   formatAdminDate,
   getAdminErrorMessage,
@@ -50,7 +48,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/utils";
 import type { BookingStatus } from "@/types/booking.type";
 
@@ -157,12 +154,6 @@ export function ReservationsManagementModule() {
   const [filters, setFilters] = useState<ReservationFilters>(initialFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [bookingId, setBookingId] = useState("");
-  const [reason, setReason] = useState("OPERATIONAL");
-  const [adminNote, setAdminNote] = useState("");
-  const [refundAmount, setRefundAmount] = useState("");
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState<AdminReservationSummary | null>(
     null,
@@ -197,7 +188,7 @@ export function ReservationsManagementModule() {
         setError(
           getAdminErrorMessage(
             err,
-            "GET /bookings/admin/reservations is not available yet. Manual force-cancel and detail placeholders remain visible.",
+            "GET /bookings/admin/reservations is not available yet. Detail placeholders remain visible.",
           ),
         );
       })
@@ -211,24 +202,15 @@ export function ReservationsManagementModule() {
   }, [token, filters]);
 
   const metrics = useMemo(() => {
-    const forceCancelable = items.filter((item) =>
-      canForceCancelStatus(item.status),
-    ).length;
     return {
       total: items.length,
-      forceCancelable,
       adminCancelled: items.filter(
         (item) => item.status === "CANCELLED_BY_ADMIN",
       ).length,
     };
   }, [items]);
 
-  const canSubmit = bookingId.trim() && reason.trim() && adminNote.trim();
   const timeline = getDetailTimeline(detail, selected);
-  const selectedActionReservation = useMemo(
-    () => items.find((item) => item.bookingId === bookingId) ?? null,
-    [bookingId, items],
-  );
 
   function updateFilter<K extends keyof ReservationFilters>(
     key: K,
@@ -263,27 +245,6 @@ export function ReservationsManagementModule() {
       .finally(() => setDetailLoading(false));
   }
 
-  async function submitForceCancel() {
-    if (!canSubmit) return;
-
-    setSubmitting(true);
-    setActionMessage(null);
-    try {
-      await forceCancelAdminBooking(token, bookingId.trim(), {
-        reason: reason.trim(),
-        adminNote: adminNote.trim(),
-        refundAmount: refundAmount ? Number(refundAmount) : undefined,
-      });
-      setActionMessage("Force cancellation submitted successfully.");
-      setBookingId("");
-      setRefundAmount("");
-    } catch (err) {
-      setActionMessage(getAdminErrorMessage(err, "Force cancellation failed."));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
     <>
       <AdminPageHeader
@@ -292,20 +253,13 @@ export function ReservationsManagementModule() {
         description="Review reservations, filter operational queues and inspect booking detail before admin action."
       />
       <div className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <AdminMetricCard
             label="Loaded"
             value={metrics.total}
             note="Admin list response rows."
             accent="brand"
             icon={TicketCheck}
-          />
-          <AdminMetricCard
-            label="Force cancellable"
-            value={metrics.forceCancelable}
-            note="CONFIRMED or CHECKED_IN only."
-            accent="warning"
-            icon={ShieldAlert}
           />
           <AdminMetricCard
             label="Admin cancelled"
@@ -416,153 +370,72 @@ export function ReservationsManagementModule() {
           </div>
         </AdminCard>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-          <AdminCard className="p-0">
-            <AdminSectionHeader
-              title="Reservation queue"
-              description="Open detail to review booking info, parties, payment, refunds and timeline."
-            />
-            <div className="p-5">
-              {loading ? <AdminLoadingRows /> : null}
-              {!loading && error ? (
-                <AdminErrorState description={error} />
-              ) : null}
-              {!loading && !error && items.length === 0 ? (
-                <AdminEmptyState
-                  title="No reservations returned"
-                  description="No rows matched the current filters, or the backend returned an empty admin reservation list."
-                />
-              ) : null}
-              {!loading && !error && items.length > 0 ? (
-                <Table className="min-w-[980px]">
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Booking</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Stay</TableHead>
-                      <TableHead>Guest</TableHead>
-                      <TableHead>Host</TableHead>
-                      <TableHead>Total</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+        <AdminCard className="p-0">
+          <AdminSectionHeader
+            title="Reservation queue"
+            description="Open detail to review booking info, parties, payment, refunds and timeline."
+          />
+          <div className="p-5">
+            {loading ? <AdminLoadingRows /> : null}
+            {!loading && error ? <AdminErrorState description={error} /> : null}
+            {!loading && !error && items.length === 0 ? (
+              <AdminEmptyState
+                title="No reservations returned"
+                description="No rows matched the current filters, or the backend returned an empty admin reservation list."
+              />
+            ) : null}
+            {!loading && !error && items.length > 0 ? (
+              <Table className="min-w-[980px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Booking</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Stay</TableHead>
+                    <TableHead>Guest</TableHead>
+                    <TableHead>Host</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.bookingId} className="border-[#eeeeee]">
+                      <TableCell>
+                        <p className="font-semibold text-[#222222]">
+                          {getSummaryCode(item)}
+                        </p>
+                        <p className="text-xs text-[#6a6a6a]">
+                          {getListingLabel(item)}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <BookingStatusPill status={item.status} />
+                      </TableCell>
+                      <TableCell className="max-w-[220px] whitespace-normal text-[#6a6a6a]">
+                        {formatAdminDate(item.checkInDate)} -{" "}
+                        {formatAdminDate(item.checkOutDate)}
+                      </TableCell>
+                      <TableCell>{getGuestLabel(item)}</TableCell>
+                      <TableCell>{getHostLabel(item)}</TableCell>
+                      <TableCell>
+                        {formatCurrency(item.totalAmount, item.currency)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          className="h-9 rounded-[8px]"
+                          onClick={() => openDetail(item)}
+                        >
+                          Detail
+                        </Button>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {items.map((item) => (
-                      <TableRow
-                        key={item.bookingId}
-                        className="border-[#eeeeee]"
-                      >
-                        <TableCell>
-                          <p className="font-semibold text-[#222222]">
-                            {getSummaryCode(item)}
-                          </p>
-                          <p className="text-xs text-[#6a6a6a]">
-                            {getListingLabel(item)}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <BookingStatusPill status={item.status} />
-                        </TableCell>
-                        <TableCell className="max-w-[220px] whitespace-normal text-[#6a6a6a]">
-                          {formatAdminDate(item.checkInDate)} -{" "}
-                          {formatAdminDate(item.checkOutDate)}
-                        </TableCell>
-                        <TableCell>{getGuestLabel(item)}</TableCell>
-                        <TableCell>{getHostLabel(item)}</TableCell>
-                        <TableCell>
-                          {formatCurrency(item.totalAmount, item.currency)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              className="h-9 rounded-[8px]"
-                              onClick={() => openDetail(item)}
-                            >
-                              Detail
-                            </Button>
-                            <Button
-                              variant="outline"
-                              className="h-9 rounded-[8px]"
-                              disabled={!canForceCancelStatus(item.status)}
-                              onClick={() => setBookingId(item.bookingId)}
-                            >
-                              Select
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : null}
-            </div>
-          </AdminCard>
-
-          <AdminCard className="h-fit">
-            <div className="rounded-[14px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
-              <p className="text-sm font-semibold text-[#222222]">
-                Force cancellation
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[#6a6a6a]">
-                Available for eligible bookings. Backend remains the source of
-                truth for final validation and refund cap.
-              </p>
-            </div>
-            <div className="mt-5 space-y-4">
-              <FieldLabel label="Selected reservation">
-                <Input
-                  value={
-                    selectedActionReservation
-                      ? `${getSummaryCode(selectedActionReservation)} - ${getListingLabel(selectedActionReservation)}`
-                      : ""
-                  }
-                  onChange={() => undefined}
-                  placeholder="Select a reservation from the queue"
-                  className="h-14 rounded-[8px]"
-                  readOnly
-                />
-              </FieldLabel>
-              <FieldLabel label="Reason">
-                <Input
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="SAFETY, FRAUD, OPERATIONAL"
-                  className="h-14 rounded-[8px]"
-                />
-              </FieldLabel>
-              <FieldLabel label="Refund amount">
-                <Input
-                  value={refundAmount}
-                  onChange={(event) => setRefundAmount(event.target.value)}
-                  inputMode="decimal"
-                  placeholder="Optional capped amount"
-                  className="h-14 rounded-[8px]"
-                />
-              </FieldLabel>
-              <FieldLabel label="Admin note">
-                <Textarea
-                  value={adminNote}
-                  onChange={(event) => setAdminNote(event.target.value)}
-                  placeholder="Required audit note"
-                  className="min-h-28 rounded-[8px]"
-                />
-              </FieldLabel>
-              <Button
-                onClick={submitForceCancel}
-                disabled={!canSubmit || submitting}
-                className="h-12 w-full rounded-[8px] bg-[#ff385c] text-white hover:bg-[#e00b41]"
-              >
-                {submitting ? "Submitting..." : "Force cancel booking"}
-              </Button>
-              {actionMessage ? (
-                <p className="text-sm leading-6 text-[#6a6a6a]">
-                  {actionMessage}
-                </p>
-              ) : null}
-            </div>
-          </AdminCard>
-        </div>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : null}
+          </div>
+        </AdminCard>
       </div>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -590,22 +463,11 @@ export function ReservationsManagementModule() {
                   />
                   <div className="flex flex-wrap gap-2">
                     <Button
-                      type="button"
-                      variant="outline"
-                      className="h-10 rounded-[8px]"
-                      disabled={!canForceCancelStatus(selected.status)}
-                      onClick={() => setBookingId(selected.bookingId)}
-                    >
-                      Force cancel
-                    </Button>
-                    <Button
                       asChild
                       variant="outline"
                       className="h-10 rounded-[8px]"
                     >
-                      <Link
-                        href={`/admin/refunds?bookingId=${selected.bookingId}`}
-                      >
+                      <Link href="/admin/transactions">
                         View refund records
                         <ExternalLink className="ml-2 size-3.5" />
                       </Link>
@@ -677,7 +539,9 @@ export function ReservationsManagementModule() {
                     <div className="mt-3 space-y-3">
                       <DetailLine
                         label="Title"
-                        value={detail?.listing.title ?? getListingLabel(selected)}
+                        value={
+                          detail?.listing.title ?? getListingLabel(selected)
+                        }
                       />
                     </div>
                   </div>

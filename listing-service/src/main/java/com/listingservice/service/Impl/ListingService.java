@@ -17,14 +17,14 @@ import com.listingservice.exception.AppException;
 import com.listingservice.exception.ErrorCode;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
+import com.listingservice.search.ListingSearchCriteria;
+import com.listingservice.search.ListingSearchSort;
 import com.listingservice.service.ActivityClient;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.IListingService;
 import com.listingservice.service.RecommendationClient;
 import com.listingservice.service.RatingClient;
 import com.listingservice.service.RecentlyViewedClient;
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -154,19 +154,14 @@ public class ListingService implements IListingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ListingResponse> getAdminListings(ListingStatus status, String keyword, Integer limit) {
-        int safeLimit = normalizeAdminListingLimit(limit);
+    public Page<ListingResponse> getAdminListings(ListingStatus status, String keyword, Pageable pageable) {
         String normalizedKeyword = normalizeFilter(keyword);
 
-        log.info("Getting admin listings status={}, keyword={}, limit={}", status, normalizedKeyword, safeLimit);
-
-        Pageable pageable = PageRequest.of(0, safeLimit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        log.info("Getting admin listings status={}, keyword={}, page={}, size={}",
+                status, normalizedKeyword, pageable.getPageNumber(), pageable.getPageSize());
 
         return listingRepository.findAll(adminListingSpecification(status, normalizedKeyword), pageable)
-                .getContent()
-                .stream()
-                .map(listingMapper::toResponse)
-                .toList();
+                .map(listingMapper::toResponse);
     }
 
     @Override
@@ -240,7 +235,15 @@ public class ListingService implements IListingService {
             return List.of();
         }
 
-        List<Listing> candidates = listingRepository.findAll(advancedSearchSpecification(safeRequest));
+        int limit = normalizeSearchLimit(safeRequest.getLimit());
+        ListingSearchCriteria searchCriteria = ListingSearchCriteria.from(safeRequest, limit);
+        List<UUID> candidateIds = listingRepository.findCandidateIds(searchCriteria);
+
+        if (candidateIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Listing> candidates = findListingsByIdsPreservingOrder(candidateIds);
 
         // Availability belongs to booking-service in this architecture. Listing-service
         // owns listing attributes, then asks booking-service which candidates are free
@@ -263,8 +266,27 @@ public class ListingService implements IListingService {
         )
                 .stream()
                 .sorted(advancedSearchComparator(safeRequest.getSortBy()))
-                .limit(normalizeSearchLimit(safeRequest.getLimit()))
+                .limit(limit)
                 .map(listingMapper::toResponse)
+                .toList();
+    }
+
+    private List<Listing> findListingsByIdsPreservingOrder(List<UUID> listingIds) {
+        if (listingIds == null || listingIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<UUID, Listing> listingsById = listingRepository.findByListingIdIn(listingIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        Listing::getListingId,
+                        listing -> listing,
+                        (left, right) -> left
+                ));
+
+        return listingIds.stream()
+                .map(listingsById::get)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
@@ -537,87 +559,6 @@ public class ListingService implements IListingService {
         item.setReviewCount(safeRatingSummary.getReviewCount());
     }
 
-    private Specification<Listing> advancedSearchSpecification(ListingFilterRequest request) {
-        return (root, query, criteriaBuilder) -> {
-            if (query != null) {
-                query.distinct(true);
-            }
-
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(criteriaBuilder.equal(root.get("status"), ListingStatus.ACTIVE));
-
-            String keyword = normalizeFilter(request.getKeyword());
-            if (keyword != null) {
-                String pattern = "%" + keyword.toLowerCase(Locale.ROOT) + "%";
-                predicates.add(criteriaBuilder.or(
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("description")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("address")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("city")), pattern),
-                        criteriaBuilder.like(criteriaBuilder.lower(root.get("country")), pattern)
-                ));
-            }
-
-            addEqualIgnoreCasePredicate(predicates, criteriaBuilder, root.get("city"), request.getCity());
-            addEqualIgnoreCasePredicate(predicates, criteriaBuilder, root.get("state"), request.getState());
-            addEqualIgnoreCasePredicate(predicates, criteriaBuilder, root.get("country"), request.getCountry());
-
-            if (request.getGuests() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("maxGuests"), request.getGuests()));
-            }
-
-            if (request.getMinBedrooms() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("numBedrooms"), request.getMinBedrooms()));
-            }
-
-            if (request.getMinBeds() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("numBeds"), request.getMinBeds()));
-            }
-
-            if (request.getMinBathrooms() != null) {
-                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("numBathrooms"), request.getMinBathrooms()));
-            }
-
-            if (hasValues(request.getPropertyTypes())) {
-                predicates.add(root.get("propertyType").in(request.getPropertyTypes()));
-            }
-
-            if (hasValues(request.getRoomTypes())) {
-                predicates.add(root.get("roomType").in(request.getRoomTypes()));
-            }
-
-            if (request.getInstantBook() != null) {
-                predicates.add(criteriaBuilder.equal(root.get("instantBook"), request.getInstantBook()));
-            }
-
-            if (request.getMinPrice() != null || request.getMaxPrice() != null) {
-                Join<Object, Object> pricing = root.join("pricing", JoinType.INNER);
-
-                if (request.getMinPrice() != null) {
-                    predicates.add(criteriaBuilder.greaterThanOrEqualTo(pricing.get("basePrice"), request.getMinPrice()));
-                }
-
-                if (request.getMaxPrice() != null) {
-                    predicates.add(criteriaBuilder.lessThanOrEqualTo(pricing.get("basePrice"), request.getMaxPrice()));
-                }
-            }
-
-            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
-        };
-    }
-
-    private void addEqualIgnoreCasePredicate(
-            List<Predicate> predicates,
-            jakarta.persistence.criteria.CriteriaBuilder criteriaBuilder,
-            jakarta.persistence.criteria.Path<String> path,
-            String value
-    ) {
-        String normalizedValue = normalizeFilter(value);
-        if (normalizedValue != null) {
-            predicates.add(criteriaBuilder.equal(criteriaBuilder.lower(path), normalizedValue.toLowerCase(Locale.ROOT)));
-        }
-    }
-
     private List<Listing> filterByAmenities(
             List<Listing> listings,
             List<UUID> amenityIds,
@@ -711,17 +652,16 @@ public class ListingService implements IListingService {
     }
 
     private Comparator<Listing> advancedSearchComparator(String sortBy) {
-        String normalizedSort = normalizeFilter(sortBy);
-        String sort = normalizedSort != null ? normalizedSort.toUpperCase(Locale.ROOT) : "RELEVANCE";
+        ListingSearchSort sort = ListingSearchSort.from(sortBy);
 
         return switch (sort) {
-            case "PRICE_ASC", "LOWEST_PRICE" -> Comparator.comparing(this::basePriceOrMax);
-            case "PRICE_DESC", "HIGHEST_PRICE" -> Comparator.comparing(this::basePriceOrMin).reversed();
-            case "CREATED_ASC", "OLDEST" -> Comparator.comparing(this::createdAtOrMin);
-            case "CREATED_DESC", "NEWEST" -> Comparator.comparing(this::createdAtOrMin).reversed();
-            case "GUESTS_DESC" -> Comparator.comparing(this::maxGuestsOrZero).reversed()
+            case PRICE_ASC -> Comparator.comparing(this::basePriceOrMax);
+            case PRICE_DESC -> Comparator.comparing(this::basePriceOrMin).reversed();
+            case CREATED_ASC -> Comparator.comparing(this::createdAtOrMin);
+            case CREATED_DESC -> Comparator.comparing(this::createdAtOrMin).reversed();
+            case GUESTS_DESC -> Comparator.comparing(this::maxGuestsOrZero).reversed()
                     .thenComparing(this::createdAtOrMin, Comparator.reverseOrder());
-            default -> Comparator.comparing(this::instantBookRank)
+            case RELEVANCE -> Comparator.comparing(this::instantBookRank)
                     .thenComparing(this::createdAtOrMin, Comparator.reverseOrder());
         };
     }
@@ -732,24 +672,12 @@ public class ListingService implements IListingService {
                 && request.getMinPrice().compareTo(request.getMaxPrice()) > 0;
     }
 
-    private boolean hasValues(List<?> values) {
-        return values != null && values.stream().anyMatch(Objects::nonNull);
-    }
-
     private int normalizeSearchLimit(Integer limit) {
         if (limit == null || limit < 1) {
             return 50;
         }
 
         return Math.min(limit, 100);
-    }
-
-    private int normalizeAdminListingLimit(Integer limit) {
-        if (limit == null || limit < 1) {
-            return 200;
-        }
-
-        return Math.min(limit, 500);
     }
 
     private Specification<Listing> adminListingSpecification(ListingStatus status, String keyword) {

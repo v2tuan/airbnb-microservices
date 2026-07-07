@@ -20,7 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpecificationExecutor<Listing> {
+public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpecificationExecutor<Listing>, ListingSearchRepository {
 
     @Override
     @EntityGraph(attributePaths = {"photos", "pricing", "houseRules", "listingAmenities", "listingAmenities.amenity", "accessInfo", "accessInfo.checkInGuide"})

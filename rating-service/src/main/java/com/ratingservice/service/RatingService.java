@@ -10,6 +10,7 @@ import java.util.Map;
 public interface RatingService {
   RatingDTO createRating(RatingDTO ratingDTO);
   RatingDTO getRating(String id);
+  RatingDTO getRatingByBooking(String bookingId);
   List<RatingDTO> getRatingsByListing(String listingId);
   Double getAverageRating(String listingId);
   RatingDTO updateRating(String id, RatingDTO ratingDTO);

@@ -17,7 +17,14 @@ public class SecurityConfig {
         .csrf(csrf -> csrf.disable())
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-            .anyRequest().permitAll());
+            .requestMatchers(HttpMethod.POST, "/ratings/listings/summary").permitAll()
+            .requestMatchers(HttpMethod.GET, "/ratings/bookings/**").authenticated()
+            .requestMatchers(HttpMethod.GET, "/ratings/**").permitAll()
+            .requestMatchers(HttpMethod.POST, "/ratings").authenticated()
+            .requestMatchers(HttpMethod.PUT, "/ratings/**").authenticated()
+            .requestMatchers(HttpMethod.DELETE, "/ratings/**").authenticated()
+            .anyRequest().authenticated())
+        .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
 
     return http.build();
   }

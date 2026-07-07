@@ -6,6 +6,37 @@ let ioInstance = null
 
 const activeConversations = new Map()
 
+const splitCsv = (value = '') =>
+  value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const originPatternToRegex = (pattern) =>
+  new RegExp(`^${escapeRegex(pattern).replaceAll('\\*', '.*')}$`)
+
+const allowedOriginPatterns = () =>
+  Array.from(
+    new Set([
+      ...splitCsv(env.APP_CORS_ALLOWED_ORIGIN_PATTERNS),
+      env.WEBSITE_DOMAIN_DEVELOPMENT,
+      env.FRONTEND_URL,
+      env.FRONTEND_PROD_URL
+    ].filter(Boolean))
+  )
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true
+
+  return allowedOriginPatterns().some((pattern) => {
+    if (pattern === '*') return true
+    if (pattern === origin) return true
+    return originPatternToRegex(pattern).test(origin)
+  })
+}
+
 export const isUserViewingConversation = (userId, conversationId) => {
   const viewers = activeConversations.get(String(conversationId))
   return viewers ? viewers.has(String(userId)) : false
@@ -125,7 +156,13 @@ const registerChatEvents = (io) => {
 export const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin: env.WEBSITE_DOMAIN_DEVELOPMENT || 'http://localhost:3000',
+      origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+          return callback(null, true)
+        }
+
+        return callback(new Error(`CORS origin not allowed: ${origin}`))
+      },
       credentials: true
     }
   })

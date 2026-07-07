@@ -172,10 +172,42 @@ export interface AdminUserRecord {
   gender?: string | null;
   host: boolean;
   superhost?: boolean | null;
+  enabled?: boolean | null;
+  roles?: string[];
   hostVerificationStatus?: string | null;
-  stripeAccountStatus?: "NONE" | "PENDING" | "ACTIVE" | "RESTRICTED" | string | null;
+  stripeAccountStatus?:
+    | "NONE"
+    | "PENDING"
+    | "ACTIVE"
+    | "RESTRICTED"
+    | string
+    | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface AdminUsersQuery {
+  page?: number;
+  size?: number;
+  role?: "ALL" | "HOST" | "ADMIN" | "USER";
+}
+
+export interface AdminListingsQuery {
+  page?: number;
+  size?: number;
+  status?: string;
+  keyword?: string;
+}
+
+export interface PageResponse<T> {
+  content: T[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first?: boolean;
+  last?: boolean;
+  empty?: boolean;
 }
 
 export interface AdminPaymentOverviewSummary {
@@ -213,6 +245,21 @@ export interface AdminPaymentQueueItem {
   amount: number;
   currency: string;
   owner: string;
+  createdAt?: string | null;
+}
+
+export interface AdminTransactionRecord {
+  id: string;
+  type: "PAYMENT" | "PAYOUT" | "REFUND" | string;
+  bookingId?: string | null;
+  customerId?: string | null;
+  counterpartyId?: string | null;
+  status: string;
+  amount: number;
+  currency: string;
+  paymentMethod?: string | null;
+  description?: string | null;
+  providerId?: string | null;
   createdAt?: string | null;
 }
 
@@ -304,6 +351,17 @@ export async function getAdminPaymentOverview(
   );
 }
 
+export async function listAdminTransactions(
+  token: string | null,
+): Promise<ApiResponse<AdminTransactionRecord[]>> {
+  return unwrap(
+    await apiClient.get(
+      `${prefix}/payments/admin/transactions`,
+      authConfig(token),
+    ),
+  );
+}
+
 export async function listAdminComplaints(
   token: string | null,
   status?: ComplaintStatus,
@@ -361,11 +419,17 @@ export async function waiveAdminHostPenalty(
 
 export async function listAdminListings(
   token: string | null,
-  limit = 200,
-): Promise<ApiResponse<ListingResponse[]>> {
+  query: AdminListingsQuery = {},
+): Promise<ApiResponse<PageResponse<ListingResponse>>> {
+  const params = new URLSearchParams();
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.size !== undefined) params.set("size", String(query.size));
+  if (query.status) params.set("status", query.status);
+  if (query.keyword?.trim()) params.set("keyword", query.keyword.trim());
+
   return unwrap(
     await apiClient.get(
-      `${prefix}/listings/admin?limit=${limit}`,
+      `${prefix}/listings/admin${params.toString() ? `?${params.toString()}` : ""}`,
       authConfig(token),
     ),
   );
@@ -373,9 +437,44 @@ export async function listAdminListings(
 
 export async function listAdminUsers(
   token: string | null,
-): Promise<ApiResponse<AdminUserRecord[]>> {
+  query: AdminUsersQuery = {},
+): Promise<ApiResponse<PageResponse<AdminUserRecord>>> {
+  const params = new URLSearchParams();
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.size !== undefined) params.set("size", String(query.size));
+  if (query.role) params.set("role", query.role);
+
   return unwrap(
-    await apiClient.get(`${prefix}/users/admin/users`, authConfig(token)),
+    await apiClient.get(
+      `${prefix}/users/admin/users${params.toString() ? `?${params.toString()}` : ""}`,
+      authConfig(token),
+    ),
+  );
+}
+
+export async function blockAdminUser(
+  token: string | null,
+  keycloakUserId: string,
+): Promise<ApiResponse<void>> {
+  return unwrap(
+    await apiClient.put(
+      `${prefix}/users/admin/users/${keycloakUserId}/block`,
+      undefined,
+      authConfig(token),
+    ),
+  );
+}
+
+export async function unblockAdminUser(
+  token: string | null,
+  keycloakUserId: string,
+): Promise<ApiResponse<void>> {
+  return unwrap(
+    await apiClient.put(
+      `${prefix}/users/admin/users/${keycloakUserId}/unblock`,
+      undefined,
+      authConfig(token),
+    ),
   );
 }
 

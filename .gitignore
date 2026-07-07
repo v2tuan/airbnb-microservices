@@ -49,6 +49,7 @@ pnpm-debug.log*
 
 # Package managers
 package-lock.json
+!message-service/package-lock.json
 yarn.lock
 .pnpm-store/
 
@@ -79,3 +80,4 @@ coverage/
 
 ./message-service/node_modules
 docs/Git.md
+docs/*

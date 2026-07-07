@@ -252,7 +252,9 @@ function buildTopBookedListings(
     counts.set(reservation.listingId, {
       listingId: reservation.listingId,
       title:
-        listing?.title ?? reservation.listingTitle ?? "Listing title unavailable",
+        listing?.title ??
+        reservation.listingTitle ??
+        "Listing title unavailable",
       city: listing?.city,
       country: listing?.country,
       coverImageUrl: listing ? getListingCover(listing) : undefined,
@@ -283,7 +285,7 @@ export function AdminOverviewModule() {
     Promise.allSettled([
       getAdminPaymentOverview(token),
       listAdminReservations(token, { page: 0, size: 80 }),
-      listAdminListings(token, 60),
+      listAdminListings(token, { page: 0, size: 60 }),
     ]).then((results) => {
       if (!active) return;
 
@@ -315,7 +317,7 @@ export function AdminOverviewModule() {
       }
 
       if (listingsResult.status === "fulfilled") {
-        setListings(listingsResult.value.data ?? []);
+        setListings(listingsResult.value.data?.content ?? []);
       } else {
         setListings([]);
         nextErrors.push(
@@ -378,7 +380,7 @@ export function AdminOverviewModule() {
       label: "Refund queue",
       value: payment.summary.refundCount.toLocaleString("en-US"),
       note: formatCurrency(payment.summary.refundedAmount, currency),
-      href: "/admin/refunds",
+      href: "/admin/transactions",
       icon: BadgeDollarSign,
       tone: "bg-rose-50 text-[#ff385c]",
     },
@@ -476,10 +478,7 @@ export function AdminOverviewModule() {
               {revenueFlow.length ? (
                 <ChartContainer config={revenueConfig} className="h-[350px]">
                   <AreaChart data={revenueFlow}>
-                    <CartesianGrid
-                      vertical={false}
-                      stroke="#eeeeee"
-                    />
+                    <CartesianGrid vertical={false} stroke="#eeeeee" />
                     <XAxis dataKey="day" tickLine={false} axisLine={false} />
                     <YAxis hide />
                     <ChartTooltip content={<ChartTooltipContent />} />
@@ -579,10 +578,7 @@ export function AdminOverviewModule() {
                     className="h-[260px]"
                   >
                     <BarChart data={reservationStatusRows} layout="vertical">
-                      <CartesianGrid
-                        horizontal={false}
-                        stroke="#eeeeee"
-                      />
+                      <CartesianGrid horizontal={false} stroke="#eeeeee" />
                       <XAxis type="number" hide />
                       <YAxis
                         dataKey="status"
@@ -715,9 +711,7 @@ export function AdminOverviewModule() {
                       <TableCell>{displayGuest(item)}</TableCell>
                       <TableCell>
                         <div className="min-w-0">
-                          <p className="font-medium text-[#222222]">
-                            Booking
-                          </p>
+                          <p className="font-medium text-[#222222]">Booking</p>
                           <p className="max-w-[280px] truncate text-xs text-[#6a6a6a]">
                             {displayListing(item)}
                           </p>

@@ -22,11 +22,11 @@ public class UploadController {
     public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadImage(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "folder", defaultValue = "airbnb/listings/photos") String folder) {
-        String url = cloudinaryService.uploadImage(file, folder);
+        ImageUploadResponse uploadedImage = cloudinaryService.uploadImage(file, folder);
         return ResponseEntity.ok(ApiResponse.<ImageUploadResponse>builder()
                 .success(true)
                 .message("Image uploaded")
-                .data(new ImageUploadResponse(url))
+                .data(uploadedImage)
                 .build());
     }
 }

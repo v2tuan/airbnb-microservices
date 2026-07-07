@@ -3,6 +3,7 @@ package com.paymentservice.controller;
 import com.paymentservice.dto.ApiResponse;
 import com.paymentservice.dto.response.AdminPaymentOverviewResponse;
 import com.paymentservice.dto.response.AdminRefundRecordResponse;
+import com.paymentservice.dto.response.AdminTransactionRecordResponse;
 import com.paymentservice.exception.BusinessException;
 import com.paymentservice.service.PaymentAdminService;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,16 @@ public class PaymentAdminController {
                 .success(true)
                 .message("Get admin refunds success")
                 .data(paymentAdminService.getRefunds())
+                .build());
+    }
+
+    @GetMapping("/transactions")
+    public ResponseEntity<ApiResponse<List<AdminTransactionRecordResponse>>> transactions() {
+        requireAdmin();
+        return ResponseEntity.ok(ApiResponse.<List<AdminTransactionRecordResponse>>builder()
+                .success(true)
+                .message("Get admin transactions success")
+                .data(paymentAdminService.getTransactions())
                 .build());
     }
 

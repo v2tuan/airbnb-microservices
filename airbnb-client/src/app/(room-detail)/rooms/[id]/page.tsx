@@ -1,8 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
+import { useMemo } from "react";
 import { addMonths, endOfMonth, format, parseISO, startOfMonth } from "date-fns";
 import {
   BedDouble,
@@ -14,15 +12,22 @@ import {
   Star,
   Users,
 } from "lucide-react";
+import Link from "next/link";
+import { notFound, useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { activityAPI } from "@/api/endpoints/activity";
-import { listingAPI, unwrapApiData, type ListingResponse } from "@/api/endpoints/listing";
+import {
+  type ListingResponse,
+  listingAPI,
+  unwrapApiData,
+} from "@/api/endpoints/listing";
 import { ratingAPI } from "@/api/endpoints/rating";
+import { type PublicUserProfile } from "@/api/endpoints/user";
 import { userAPI, type PublicHostResponseDTO } from "@/api/endpoints/user";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
-import { ListingRatingForm } from "@/components/listing/ListingRatingForm";
 import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -30,6 +35,7 @@ import { Calendar } from "@/components/ui/calendar";
 
 type RatingRecord = {
   id?: string;
+  bookingId?: string;
   userId?: string;
   hostId?: string;
   overallRating?: number;
@@ -43,6 +49,11 @@ type RatingRecord = {
   createdAt?: string;
   reviewerFullName?: string;
   reviewerAvatarUrl?: string;
+  photos?: Array<{
+    id?: string;
+    imageUrl?: string;
+    sortOrder?: number;
+  }>;
 };
 
 type HostPreview = {
@@ -101,7 +112,10 @@ const firstDefinedString = (...values: Array<unknown>) => {
 const getAverageFromRatings = (ratings: RatingRecord[]) => {
   const values = ratings
     .map((rating) => rating.overallRating)
-    .filter((value): value is number => typeof value === "number" && !Number.isNaN(value));
+    .filter(
+      (value): value is number =>
+        typeof value === "number" && !Number.isNaN(value),
+    );
 
   if (values.length === 0) {
     return 0;
@@ -121,7 +135,9 @@ const buildMapEmbedUrl = (listing: ListingResponse) => {
     return `https://www.google.com/maps?q=${listing.latitude},${listing.longitude}&z=14&output=embed`;
   }
 
-  const query = encodeURIComponent(`${listing.address}, ${listing.city}, ${listing.country}`);
+  const query = encodeURIComponent(
+    `${listing.address}, ${listing.city}, ${listing.country}`,
+  );
   return `https://www.google.com/maps?q=${query}&z=14&output=embed`;
 };
 
@@ -145,7 +161,10 @@ const toRatingsArray = (payload: unknown): unknown[] => {
 
 const normalizeRating = (raw: unknown): RatingRecord => {
   const record = raw as Record<string, unknown>;
-  const reviewer = (record?.reviewer ?? record?.user ?? record?.profile ?? null) as Record<string, unknown> | null;
+  const reviewer = (record?.reviewer ??
+    record?.user ??
+    record?.profile ??
+    null) as Record<string, unknown> | null;
 
   return {
     id: typeof record?.id === "string" ? record.id : undefined,
@@ -159,16 +178,42 @@ const normalizeRating = (raw: unknown): RatingRecord => {
             : typeof reviewer?.id === "string"
               ? reviewer.id
               : undefined,
-    hostId: typeof record?.hostId === "string" ? record.hostId : typeof record?.host_id === "string" ? record.host_id : undefined,
-    overallRating: typeof record?.overallRating === "number" ? record.overallRating : typeof record?.overall_rating === "number" ? record.overall_rating : undefined,
-    cleanliness: typeof record?.cleanliness === "number" ? record.cleanliness : undefined,
-    accuracy: typeof record?.accuracy === "number" ? record.accuracy : undefined,
-    checkIn: typeof record?.checkIn === "number" ? record.checkIn : typeof record?.check_in === "number" ? record.check_in : undefined,
-    communication: typeof record?.communication === "number" ? record.communication : undefined,
-    location: typeof record?.location === "number" ? record.location : undefined,
+    hostId:
+      typeof record?.hostId === "string"
+        ? record.hostId
+        : typeof record?.host_id === "string"
+          ? record.host_id
+          : undefined,
+    overallRating:
+      typeof record?.overallRating === "number"
+        ? record.overallRating
+        : typeof record?.overall_rating === "number"
+          ? record.overall_rating
+          : undefined,
+    cleanliness:
+      typeof record?.cleanliness === "number" ? record.cleanliness : undefined,
+    accuracy:
+      typeof record?.accuracy === "number" ? record.accuracy : undefined,
+    checkIn:
+      typeof record?.checkIn === "number"
+        ? record.checkIn
+        : typeof record?.check_in === "number"
+          ? record.check_in
+          : undefined,
+    communication:
+      typeof record?.communication === "number"
+        ? record.communication
+        : undefined,
+    location:
+      typeof record?.location === "number" ? record.location : undefined,
     value: typeof record?.value === "number" ? record.value : undefined,
     review: typeof record?.review === "string" ? record.review : undefined,
-    createdAt: typeof record?.createdAt === "string" ? record.createdAt : typeof record?.created_at === "string" ? record.created_at : undefined,
+    createdAt:
+      typeof record?.createdAt === "string"
+        ? record.createdAt
+        : typeof record?.created_at === "string"
+          ? record.created_at
+          : undefined,
     reviewerFullName: firstDefinedString(
       record?.reviewerFullName,
       record?.reviewer_full_name,
@@ -232,7 +277,9 @@ function SectionHeading({
       <h3 className="text-[22px] font-semibold tracking-tight text-[#222222]">
         {title}
       </h3>
-      {subtitle ? <p className="text-sm leading-6 text-zinc-500">{subtitle}</p> : null}
+      {subtitle ? (
+        <p className="text-sm leading-6 text-zinc-500">{subtitle}</p>
+      ) : null}
     </div>
   );
 }
@@ -262,11 +309,15 @@ export default function RoomDetail() {
         if (cancelled) return;
 
         const rawRatingsPayload =
-          ratingsResponse.status === "fulfilled" ? ratingsResponse.value.data : [];
+          ratingsResponse.status === "fulfilled"
+            ? ratingsResponse.value.data
+            : [];
 
         setRatings(toRatingsArray(rawRatingsPayload).map(normalizeRating));
         setAverageRating(
-          averageResponse.status === "fulfilled" ? averageResponse.value.data : 0,
+          averageResponse.status === "fulfilled"
+            ? averageResponse.value.data
+            : 0,
         );
       } catch (ratingError) {
         console.error("Failed to fetch listing ratings:", ratingError);
@@ -376,18 +427,20 @@ export default function RoomDetail() {
     const token = localStorage.getItem("access_token");
     if (!token) return;
 
-    void activityAPI.recordActivity(token, listing.listingId, { eventType: "VIEW" });
+    void activityAPI.recordActivity(token, listing.listingId, {
+      eventType: "VIEW",
+    });
   }, [listing?.listingId]);
 
-  const hostProfileId = host?.keycloakUserId ?? host?.userId ?? listing?.hostId;
+  // const hostProfileId = host?.keycloakUserId ?? host?.userId ?? listing?.hostId;
   const hostDisplayName = host?.fullName?.trim() || "Host";
-  const reviewCount = ratings.length;
-  const effectiveAverageRating = averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
-  const totalGuests = listing?.maxGuests ?? 0;
-  const bedSummary = `${listing?.numBeds ?? 0} beds`;
-  const amenities = (listing?.amenities ?? []).filter(Boolean);
-  const sleepCount = Math.max(1, Math.min(listing?.numBedrooms || 1, 3));
-  const bedsPerRoom = Math.max(1, Math.round((listing?.numBeds || sleepCount) / sleepCount));
+  // const reviewCount = ratings.length;
+  // const effectiveAverageRating = averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
+  // const totalGuests = listing?.maxGuests ?? 0;
+  // const bedSummary = `${listing?.numBeds ?? 0} beds`;
+  // const amenities = (listing?.amenities ?? []).filter(Boolean);
+  // const sleepCount = Math.max(1, Math.min(listing?.numBedrooms || 1, 3));
+  // const bedsPerRoom = Math.max(1, Math.round((listing?.numBeds || sleepCount) / sleepCount));
   const hostInitials = useMemo(() => {
     const source = hostDisplayName;
     return source
@@ -399,7 +452,11 @@ export default function RoomDetail() {
   }, [host?.fullName, host?.keycloakUserId]);
 
   if (loading) {
-    return <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">Loading...</div>;
+    return (
+      <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">
+        Loading...
+      </div>
+    );
   }
 
   if (error || !listing) {
@@ -409,6 +466,19 @@ export default function RoomDetail() {
       </div>
     );
   }
+
+  const hostProfileId = host?.keycloakUserId ?? host?.userId ?? listing.hostId;
+  const reviewCount = ratings.length;
+  const effectiveAverageRating =
+    averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
+  const totalGuests = listing.maxGuests;
+  const bedSummary = `${listing.numBeds} beds`;
+  const amenities = (listing.amenities ?? []).filter(Boolean);
+  const sleepCount = Math.max(1, Math.min(listing.numBedrooms || 1, 3));
+  const bedsPerRoom = Math.max(
+    1,
+    Math.round((listing.numBeds || sleepCount) / sleepCount),
+  );
 
   return (
     <main className="min-h-screen bg-white">
@@ -452,7 +522,11 @@ export default function RoomDetail() {
               <DetailMeta
                 icon={Star}
                 label="Rating"
-                value={reviewCount > 0 ? `${effectiveAverageRating.toFixed(1)} from ${reviewCount}` : "No reviews yet"}
+                value={
+                  reviewCount > 0
+                    ? `${effectiveAverageRating.toFixed(1)} from ${reviewCount}`
+                    : "No reviews yet"
+                }
               />
               <DetailMeta
                 icon={Sparkles}
@@ -463,7 +537,10 @@ export default function RoomDetail() {
           </div>
 
           <div className="mt-6">
-            <ListingGallery photos={listing.photos ?? []} title={listing.title} />
+            <ListingGallery
+              photos={listing.photos ?? []}
+              title={listing.title}
+            />
           </div>
 
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -505,18 +582,24 @@ export default function RoomDetail() {
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[16px] bg-[#f7f7f7] p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Status</p>
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
+                      Status
+                    </p>
                     <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#222222]">
                       <CheckCircle2 className="h-4 w-4 text-[#ff385c]" />
                       {host?.superHost ? "Superhost" : "Member host"}
                     </p>
                   </div>
                   <div className="rounded-[16px] bg-[#f7f7f7] p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">Joined</p>
+                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
+                      Joined
+                    </p>
                     <p className="mt-2 text-sm font-medium text-[#222222]">
                       {host?.joinedAt ? formatHostSince(host.joinedAt) : "Joined recently"}
                     </p>
-                    <p className="mt-1 text-xs text-zinc-500">Public host profile</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Public host profile
+                    </p>
                   </div>
                 </div>
               </section>
@@ -536,16 +619,24 @@ export default function RoomDetail() {
                     subtitle="The layout is kept simple so guests can scan the sleeping setup at a glance."
                   />
                   <p className="text-sm text-zinc-500">
-                    {listing.numBedrooms} bedroom{listing.numBedrooms === 1 ? "" : "s"} · {listing.numBeds} beds
+                    {listing.numBedrooms} bedroom
+                    {listing.numBedrooms === 1 ? "" : "s"} · {listing.numBeds}{" "}
+                    beds
                   </p>
                 </div>
 
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {Array.from({ length: sleepCount }).map((_, index) => (
-                    <div key={index} className="rounded-[18px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+                  {Array.from({ length: sleepCount }, (_, index) => ({
+                    key: `sleeping-space-${index + 1}`,
+                    position: index,
+                  })).map((sleepingSpace) => (
+                    <div
+                      key={sleepingSpace.key}
+                      className="rounded-[18px] border border-[#ebebeb] bg-[#f7f7f7] p-5"
+                    >
                       <BedDouble className="h-6 w-6 text-[#222222]" />
                       <p className="mt-4 text-sm font-semibold text-[#222222]">
-                        Bedroom {index + 1}
+                        Bedroom {sleepingSpace.position + 1}
                       </p>
                       <p className="mt-1 text-sm text-zinc-500">
                         {bedsPerRoom} bed{bedsPerRoom === 1 ? "" : "s"}
@@ -666,12 +757,11 @@ export default function RoomDetail() {
               </section>
 
               <section className="pb-2">
-                <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
-
-                <div className="mt-10">
-                <ListingRatingForm listingId={listing.listingId} hostId={listing.hostId} />
-              </div>
-            </section>
+                <ListingRatingPanel
+                  averageRating={averageRating}
+                  ratings={ratings}
+                />
+              </section>
             </div>
 
             <div className="lg:pt-2">

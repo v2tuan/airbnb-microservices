@@ -6,17 +6,19 @@ import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.entity.Listing;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
+import com.listingservice.search.ListingSearchCriteria;
 import com.listingservice.service.AvailabilityClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Map;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -98,6 +100,34 @@ class ListingServiceSearchV2Test {
 
         assertThat(results).extracting(ListingResponse::getListingId).containsExactly(available.getListingId());
         verify(availabilityClient).getAvailability(List.of(available.getListingId(), unavailable.getListingId()), checkIn, checkOut);
+    }
+
+    @Test
+    void searchListingsWithFiltersUsesIdOnlySearchAndPreservesCandidateOrder() {
+        Listing first = listing("Hanoi", "Vietnam", 2);
+        Listing second = listing("Hanoi", "Vietnam", 4);
+        ListingFilterRequest request = ListingFilterRequest.builder()
+                .city("Hanoi")
+                .limit(6)
+                .build();
+
+        List<UUID> candidateIds = List.of(second.getListingId(), first.getListingId());
+        when(listingRepository.findCandidateIds(any())).thenReturn(candidateIds);
+        when(listingRepository.findByListingIdIn(candidateIds)).thenReturn(List.of(first, second));
+        when(listingMapper.toResponse(any())).thenAnswer(invocation -> response(invocation.getArgument(0)));
+
+        List<ListingResponse> results = listingService.searchListingsWithFilters(request);
+
+        assertThat(results)
+                .extracting(ListingResponse::getListingId)
+                .containsExactly(second.getListingId(), first.getListingId());
+
+        ArgumentCaptor<ListingSearchCriteria> criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
+        verify(listingRepository).findCandidateIds(criteriaCaptor.capture());
+        assertThat(criteriaCaptor.getValue().city()).isEqualTo("Hanoi");
+        assertThat(criteriaCaptor.getValue().limit()).isEqualTo(6);
+        verify(listingRepository).findByListingIdIn(candidateIds);
+        verify(listingRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
     private Listing listing(String city, String country, int maxGuests) {

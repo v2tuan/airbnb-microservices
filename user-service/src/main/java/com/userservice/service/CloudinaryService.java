@@ -2,6 +2,7 @@ package com.userservice.service;
 
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
+import com.userservice.dto.response.ImageUploadResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
@@ -9,12 +10,15 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class CloudinaryService {
+    private static final long MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+    private static final List<String> ALLOWED_IMAGE_TYPES = List.of("image/jpeg", "image/png", "image/webp");
 
     private final Cloudinary cloudinary;
     private final Environment environment;
@@ -23,6 +27,7 @@ public class CloudinaryService {
         if (file == null || file.isEmpty()) {
             throw new RuntimeException("Avatar file is required");
         }
+        validateImageFile(file);
         validateCloudinaryConfiguration();
 
         try {
@@ -47,10 +52,11 @@ public class CloudinaryService {
         }
     }
 
-    public String uploadImage(MultipartFile file, String folder) {
+    public ImageUploadResponse uploadImage(MultipartFile file, String folder) {
         if (file == null || file.isEmpty()) {
             throw new RuntimeException("Image file is required");
         }
+        validateImageFile(file);
         validateCloudinaryConfiguration();
 
         try {
@@ -67,10 +73,22 @@ public class CloudinaryService {
             if (secureUrl == null) {
                 throw new RuntimeException("Cloudinary upload did not return secure_url");
             }
+            Object publicId = uploadResult.get("public_id");
 
-            return secureUrl.toString();
+            return new ImageUploadResponse(secureUrl.toString(), publicId != null ? publicId.toString() : null);
         } catch (IOException exception) {
             throw new RuntimeException("Failed to upload image to Cloudinary", exception);
+        }
+    }
+
+    private void validateImageFile(MultipartFile file) {
+        if (file.getSize() > MAX_IMAGE_SIZE_BYTES) {
+            throw new RuntimeException("Image file must be no larger than 5MB");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType.toLowerCase())) {
+            throw new RuntimeException("Only JPG, PNG, and WebP images are supported");
         }
     }
 
