@@ -582,11 +582,9 @@ public class ComplaintService {
                 ? "Admin suspended: " + resolvedListingName
                 : "Admin restored: " + resolvedListingName;
         String explicitMessage = "LISTING_SUSPENDED".equals(eventType)
-                ? "Admin suspended \"" + resolvedListingName + "\""
-                        + (suspendedUntil != null ? " until " + suspendedUntil : "")
+                ? (suspendedUntil != null ? " until " + suspendedUntil : "")
                         + (content != null && !content.isBlank() ? ". Reason: " + content : ".")
-                : "Admin restored \"" + resolvedListingName + "\""
-                        + (content != null && !content.isBlank() ? ". Note: " + content : ".");
+                : (content != null && !content.isBlank() ? ". Note: " + content : ".");
 
         if (hostId != null) {
             notificationEventPublisher.publish(

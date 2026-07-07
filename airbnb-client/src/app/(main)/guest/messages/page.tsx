@@ -626,16 +626,15 @@ function GuestMessagesPageContent() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-130px)] bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_32%),linear-gradient(180deg,#fff_0%,#fff_55%,#f8fafc_100%)] px-3 pb-6 pt-4 sm:px-6 lg:px-10">
-      <section className="mx-auto w-full max-w-7xl">
+    <main className="h-[calc(100dvh-130px)] overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(255,56,92,0.06),transparent_32%),linear-gradient(180deg,#fff_0%,#fff_55%,#f8fafc_100%)] px-3 pb-6 pt-4 sm:px-6 lg:px-10">
+      <section className="mx-auto flex h-full w-full max-w-7xl flex-col">
         <div className="mb-4 animate-in fade-in slide-in-from-top-2 duration-500 sm:mb-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-zinc-500">Guest inbox</p>
           <h1 className="mt-1 text-2xl font-semibold text-zinc-900 sm:mt-2 sm:text-4xl">Messages</h1>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-600">Stay in touch with hosts and keep trip details in one place.</p>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_12px_45px_rgba(15,23,42,0.08)] sm:rounded-3xl">
-          <div className="grid h-[calc(100dvh-170px)] min-h-[72vh] grid-cols-1 lg:grid-cols-[340px_1fr]">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_12px_45px_rgba(15,23,42,0.08)] sm:rounded-3xl">
+          <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[340px_1fr]">
             <aside className={`min-h-0 border-b border-zinc-200 lg:border-b-0 lg:border-r ${isMobileConversationOpen ? "hidden lg:block" : "block"}`}>
               <div className="space-y-4 border-b border-zinc-200 p-4 sm:p-5">
                 <div className="relative">
@@ -660,7 +659,7 @@ function GuestMessagesPageContent() {
                 </div>
               </div>
 
-              <div className="h-[calc(100dvh-320px)] min-h-0 overflow-y-auto lg:h-[calc(100dvh-304px)]">
+              <div className="min-h-0 overflow-y-auto lg:h-full">
                 <div className="min-h-0">
                   {conversations.length > 0 ? (
                     conversations.map((conversation) => {
@@ -842,12 +841,12 @@ function GuestMessagesPageContent() {
                           );
                         })
                       ) : (
-                        <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
+                        <div className="flex min-h-60 items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
                           No messages in this conversation yet.
                         </div>
                       )
                     ) : (
-                      <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
+                      <div className="flex min-h-60 items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
                         Select a conversation to open its thread.
                       </div>
                     )}

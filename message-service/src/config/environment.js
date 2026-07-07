@@ -10,6 +10,7 @@ export const env = {
   WEBSITE_DOMAIN_DEVELOPMENT: process.env.WEBSITE_DOMAIN_DEVELOPMENT || 'http://localhost:3000',
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
   FRONTEND_PROD_URL: process.env.FRONTEND_PROD_URL || 'https://your-production-domain.com',
+  USER_SERVICE_BASE_URL: process.env.USER_SERVICE_BASE_URL || 'http://user-service:8082/users',
   APP_CORS_ALLOWED_ORIGIN_PATTERNS: process.env.APP_CORS_ALLOWED_ORIGIN_PATTERNS || '',
   KEYCLOAK_ISSUER_URI: process.env.KEYCLOAK_ISSUER_URI,
   KEYCLOAK_JWK_SET_URI: process.env.KEYCLOAK_JWK_SET_URI,

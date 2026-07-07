@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { Bell, CheckCheck, ChevronRight, MessageSquare, RefreshCw } from "lucide-react";
+import { Bell, CheckCheck, ChevronRight, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 
+import { createOrGetConversation } from "@/api/message";
 import { notificationAPI, type NotificationItem } from "@/api/endpoints/notification";
 import { userAPI } from "@/api/endpoints/user";
 import { selectIsAuthenticated } from "@/features/auth/authSelectors";
@@ -35,11 +36,10 @@ function formatRelativeTime(value?: string) {
 
 function resolveNotificationHref(notification: NotificationItem) {
   const meta = notification.meta ?? {};
-  const explicitHref = typeof meta.href === "string" ? meta.href : null;
+  const explicitHref = normalizeStringValue(meta.href) || null;
   if (explicitHref) return explicitHref;
 
-  const conversationId =
-    typeof meta.conversationId === "string" ? meta.conversationId : null;
+  const conversationId = normalizeStringValue(meta.conversationId) || null;
 
   if (notification.type === "MESSAGE" && conversationId) {
     return `/guest/messages/${conversationId}`;
@@ -58,11 +58,14 @@ function resolveNotificationHref(notification: NotificationItem) {
 function buildPreviewTitle(notification: NotificationItem) {
   const title = notification.title?.trim() ?? "";
   if (notification.type === "MESSAGE") {
-    const senderName = typeof notification.meta?.senderName === "string" ? notification.meta.senderName.trim() : "";
+    const senderName = normalizeStringValue(notification.meta?.senderName);
+    if (senderName) {
+      return `${senderName} sent you a message`;
+    }
     if (title && !/^new message$/i.test(title) && !/^someone sent you a message$/i.test(title)) {
       return title;
     }
-    return senderName ? `${senderName} sent you a message` : "New message";
+    return "New message";
   }
 
   return title || "Notification";
@@ -82,14 +85,36 @@ function normalizeSenderId(value: unknown) {
   return String(value);
 }
 
+function normalizeStringValue(value: unknown) {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const direct = record._id ?? record.id ?? record.value;
+    if (typeof direct === "string") return direct.trim();
+    if (typeof direct === "number" || typeof direct === "boolean") return String(direct);
+  }
+  return String(value).trim();
+}
+
+function getInitials(name?: string) {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 function buildNotificationKey(notification: Partial<NotificationItem> & { _id?: string; occurredAt?: string }) {
   const meta = notification.meta ?? {};
-  const messageId = typeof meta.messageId === "string" ? meta.messageId : "";
-  const conversationId = typeof meta.conversationId === "string" ? meta.conversationId : "";
-  const senderId = typeof meta.senderId === "string" ? meta.senderId : "";
-  const bookingId = typeof meta.bookingId === "string" ? meta.bookingId : "";
-  const listingId = typeof meta.listingId === "string" ? meta.listingId : "";
-  const href = typeof meta.href === "string" ? meta.href : "";
+  const messageId = normalizeStringValue(meta.messageId);
+  const conversationId = normalizeStringValue(meta.conversationId);
+  const senderId = normalizeStringValue(meta.senderId);
+  const bookingId = normalizeStringValue(meta.bookingId);
+  const listingId = normalizeStringValue(meta.listingId);
+  const href = normalizeStringValue(meta.href);
   const message = typeof notification.message === "string" ? notification.message : "";
   const title = typeof notification.title === "string" ? notification.title : "";
 
@@ -138,7 +163,7 @@ export default function NotificationBell() {
     if (cached) return cached;
 
     try {
-      const response = await userAPI.getPublicProfileById(normalized);
+      const response = await userAPI.getPublicHostByKeycloakUserId(normalized);
       const profile = {
         fullName: response.data?.fullName,
         avatarUrl: response.data?.avatarUrl,
@@ -146,7 +171,17 @@ export default function NotificationBell() {
       senderProfileCacheRef.current.set(normalized, profile);
       return profile;
     } catch {
-      return null;
+      try {
+        const response = await userAPI.getPublicProfileById(normalized);
+        const profile = {
+          fullName: response.data?.fullName,
+          avatarUrl: response.data?.avatarUrl,
+        };
+        senderProfileCacheRef.current.set(normalized, profile);
+        return profile;
+      } catch {
+        return null;
+      }
     }
   }, []);
 
@@ -160,14 +195,18 @@ export default function NotificationBell() {
 
           const senderId = normalizeSenderId(notification.meta?.senderId);
           const senderProfile = await resolveSenderProfile(senderId);
+          const senderName =
+            senderProfile?.fullName ||
+            normalizeStringValue(notification.meta?.senderName) ||
+            "Someone";
 
           return {
             ...notification,
             meta: {
               ...(notification.meta ?? {}),
               senderId,
-              senderName: senderProfile?.fullName ?? notification.meta?.senderName,
-              senderAvatarUrl: senderProfile?.avatarUrl ?? notification.meta?.senderAvatarUrl,
+              senderName,
+              senderAvatarUrl: senderProfile?.avatarUrl ?? normalizeStringValue(notification.meta?.senderAvatarUrl),
             },
           };
         }),
@@ -225,6 +264,10 @@ export default function NotificationBell() {
       const bodyText = (payload.payload?.text || payload.message || "").trim();
       const senderId = normalizeSenderId(payload.meta?.senderId);
       const senderProfile = payload.type === "MESSAGE" ? await resolveSenderProfile(senderId) : null;
+      const senderName =
+        senderProfile?.fullName ||
+        normalizeStringValue(payload.meta?.senderName) ||
+        "Someone";
 
       const nextNotification: NotificationItem = {
         id: buildNotificationId(payload) || `${payload.type}:${payload.createdAt ?? Date.now()}:${payload.message ?? ""}`,
@@ -234,24 +277,14 @@ export default function NotificationBell() {
           if (payload.type !== "MESSAGE") {
             return baseTitle || "Notification";
           }
-
-          if (baseTitle && !/^new message$/i.test(baseTitle) && !/^someone sent you a message$/i.test(baseTitle)) {
-            return baseTitle;
-          }
-
-          const senderName =
-            senderProfile?.fullName ||
-            (typeof payload.meta?.senderName === "string" ? payload.meta.senderName : "") ||
-            "Someone";
-
           return `${senderName} sent you a message`;
         })(),
         message: bodyText,
         meta: {
           ...(payload.meta ?? {}),
           senderId,
-          senderName: senderProfile?.fullName ?? payload.meta?.senderName,
-          senderAvatarUrl: senderProfile?.avatarUrl ?? payload.meta?.senderAvatarUrl,
+          senderName,
+          senderAvatarUrl: senderProfile?.avatarUrl ?? normalizeStringValue(payload.meta?.senderAvatarUrl),
         },
         read: Boolean(payload.read),
         createdAt: payload.createdAt || payload.occurredAt,
@@ -323,34 +356,53 @@ export default function NotificationBell() {
   const handleMarkAllRead = async () => {
     if (unreadCount <= 0) return;
 
+    setUnreadCount(0);
+    setItems((current) => current.map((item) => ({ ...item, read: true })));
+
     try {
       await notificationAPI.markAllRead();
-      setUnreadCount(0);
-      setItems((current) => current.map((item) => ({ ...item, read: true })));
-      await refreshNotifications();
     } catch {
-      // ignore read state sync failures
+      await refreshNotifications();
     }
   };
 
   const handleNotificationClick = async (notification: NotificationItem) => {
-    const href = resolveNotificationHref(notification);
-    if (href) {
-      router.push(href);
+    let href = resolveNotificationHref(notification);
+    const senderId = normalizeSenderId(notification.meta?.senderId);
+
+    if (!href && notification.type === "MESSAGE" && senderId) {
+      try {
+        const response = await createOrGetConversation(senderId);
+        const data = response.data ?? response;
+        const conversationId =
+          data?._id ||
+          data?.id ||
+          data?.conversationId ||
+          data?.conversation?._id ||
+          data?.data?._id ||
+          data?.data?.conversation?._id ||
+          null;
+
+        if (conversationId) {
+          href = `/guest/messages/${conversationId}`;
+        }
+      } catch {
+        // fall back to read-state update only
+      }
     }
 
-    try {
-      if (!notification.read) {
-        await notificationAPI.markRead(notification.id);
-        setItems((current) =>
-          current.map((item) =>
-            item.id === notification.id ? { ...item, read: true } : item,
-          ),
-        );
-        await refreshNotifications();
-      }
-    } catch {
-      // ignore
+    if (!notification.read) {
+      setUnreadCount((current) => Math.max(0, current - 1));
+      setItems((current) =>
+        current.map((item) => (item.id === notification.id ? { ...item, read: true } : item)),
+      );
+      void notificationAPI.markRead(notification.id).catch(() => {
+        void refreshNotifications();
+      });
+    }
+
+    if (href) {
+      router.push(href);
     }
 
     setOpen(false);
@@ -453,7 +505,9 @@ export default function NotificationBell() {
                             className="h-full w-full object-cover"
                           />
                         ) : notification.type === "MESSAGE" ? (
-                          <MessageSquare className="h-4 w-4" />
+                          <span className="text-[11px] font-semibold">
+                            {getInitials(normalizeStringValue(notification.meta?.senderName))}
+                          </span>
                         ) : (
                           <Bell className="h-4 w-4" />
                         )}

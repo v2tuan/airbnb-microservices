@@ -1,6 +1,30 @@
 import { StatusCodes } from 'http-status-codes'
 import { messageService } from '~/services/messageService'
-import userModel from '~/models/users'
+import { env } from '~/config/environment'
+
+const USER_SERVICE_BASE_URL = env.USER_SERVICE_BASE_URL || 'http://user-service:8082/users'
+
+const resolveSenderProfile = async (senderId) => {
+  if (!senderId) return { senderName: 'Someone', senderAvatarUrl: '' }
+
+  try {
+    const response = await fetch(`${USER_SERVICE_BASE_URL}/public/${encodeURIComponent(senderId)}`, {
+      headers: { Accept: 'application/json' }
+    })
+
+    if (!response.ok) {
+      return { senderName: 'Someone', senderAvatarUrl: '' }
+    }
+
+    const profile = await response.json()
+    return {
+      senderName: profile?.fullName || profile?.userName || 'Someone',
+      senderAvatarUrl: profile?.avatarUrl || ''
+    }
+  } catch {
+    return { senderName: 'Someone', senderAvatarUrl: '' }
+  }
+}
 
 const sendMessage = async (req, res, next) => {
   try {
@@ -16,8 +40,7 @@ const sendMessage = async (req, res, next) => {
       })
     }
 
-    const sender = await userModel.findOne({ keycloakUserId: senderId }).select('fullName userName avatarUrl').lean()
-    const senderName = sender?.fullName || sender?.userName || 'Someone'
+    const { senderName, senderAvatarUrl } = await resolveSenderProfile(senderId)
 
     const { message, conversation } = await messageService.sendMessage({
       conversationId,
@@ -26,7 +49,7 @@ const sendMessage = async (req, res, next) => {
       files,
       io,
       senderName,
-      senderAvatarUrl: sender?.avatarUrl || ''
+      senderAvatarUrl
     })
 
     res.status(StatusCodes.CREATED).json(message)
