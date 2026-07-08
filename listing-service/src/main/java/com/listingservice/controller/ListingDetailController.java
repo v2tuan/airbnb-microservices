@@ -196,6 +196,29 @@ public class ListingDetailController {
                         .build());
     }
 
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/admin/items")
+    public ResponseEntity<ApiResponse<Page<ListingItemResponse>>> getAdminListingItems(
+            @RequestParam(required = false) ListingStatus status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+        log.info("REST request to get compact admin listings status={}, keyword={}, page={}, size={}",
+                status, keyword, pageable.getPageNumber(), pageable.getPageSize());
+        Page<ListingItemResponse> response = listingService.getAdminListingItems(status, keyword, pageable);
+        return ResponseEntity.ok(
+                ApiResponse.<Page<ListingItemResponse>>builder()
+                        .code(1000)
+                        .message("Compact admin listings retrieved successfully")
+                        .data(response)
+                        .build());
+    }
+
     @GetMapping("/host/{hostId}")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> getListingsByHost(@PathVariable String hostId) {
         log.info("REST request to get listings by host ID: {}", hostId);
@@ -254,6 +277,7 @@ public class ListingDetailController {
         } catch (IllegalArgumentException ex) {
             return Sort.Direction.DESC;
         }
+    }
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListings(

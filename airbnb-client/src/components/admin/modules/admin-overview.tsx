@@ -24,17 +24,18 @@ import {
   YAxis,
 } from "recharts";
 import {
+  type AdminListingItemRecord,
   type AdminPaymentOverview,
   type AdminReservationSummary,
   getAdminPaymentOverview,
-  listAdminListings,
+  listAdminListingItems,
   listAdminReservations,
 } from "@/api/endpoints/admin";
-import type { ListingResponse } from "@/api/endpoints/listing";
 import { useAdminToken } from "@/components/admin/admin-shell";
 import {
   AdminEmptyState,
   AdminErrorState,
+  AdminLoadingRows,
   AdminPageHeader,
   getAdminErrorMessage,
   TextStatusPill,
@@ -96,6 +97,7 @@ const reservationStatusConfig = {
 } satisfies ChartConfig;
 
 const pieColors = ["#050507", "#5b5d68", "#a6a7ad", "#d7d8de"];
+type LoadStatus = "loading" | "success" | "error";
 
 function formatDay(value: string) {
   const date = new Date(value);
@@ -146,14 +148,14 @@ function displayGuest(item: AdminReservationSummary) {
   return item.guestName?.trim() || "Guest name unavailable";
 }
 
-function displayListing(item: AdminReservationSummary) {
-  return item.listingTitle?.trim() || "Listing title unavailable";
-}
-
-function getListingCover(item: ListingResponse) {
+function displayListingWithFallback(
+  item: AdminReservationSummary,
+  listingMap: Map<string, AdminListingItemRecord>,
+) {
   return (
-    item.photos?.find((photo) => photo.isCover)?.photoUrl ??
-    item.photos?.[0]?.photoUrl
+    item.listingTitle?.trim() ||
+    listingMap.get(item.listingId)?.title?.trim() ||
+    "Listing title unavailable"
   );
 }
 
@@ -223,13 +225,10 @@ function buildReservationStatusRows(reservations: AdminReservationSummary[]) {
     .sort((a, b) => b.count - a.count);
 }
 
-function buildTopBookedListings(
+function buildTopBookedListingsWithListings(
   reservations: AdminReservationSummary[],
-  listings: ListingResponse[],
+  listingMap: Map<string, AdminListingItemRecord>,
 ) {
-  const listingMap = new Map(
-    listings.map((listing) => [listing.listingId, listing]),
-  );
   const counts = new Map<
     string,
     {
@@ -246,19 +245,19 @@ function buildTopBookedListings(
   >();
 
   reservations.forEach((reservation) => {
-    const listing = listingMap.get(reservation.listingId);
     const current = counts.get(reservation.listingId);
+    const listing = listingMap.get(reservation.listingId);
 
     counts.set(reservation.listingId, {
       listingId: reservation.listingId,
       title:
-        listing?.title ??
         reservation.listingTitle ??
+        listing?.title ??
         "Listing title unavailable",
       city: listing?.city,
       country: listing?.country,
-      coverImageUrl: listing ? getListingCover(listing) : undefined,
-      status: listing?.status,
+      coverImageUrl: listing?.thumbnailUrl ?? undefined,
+      status: listing?.status ?? undefined,
       bookingCount: (current?.bookingCount ?? 0) + 1,
       revenue: (current?.revenue ?? 0) + reservation.totalAmount,
       currency: reservation.currency,
@@ -276,60 +275,77 @@ export function AdminOverviewModule() {
   const [reservations, setReservations] = useState<AdminReservationSummary[]>(
     [],
   );
-  const [listings, setListings] = useState<ListingResponse[]>([]);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [listings, setListings] = useState<AdminListingItemRecord[]>([]);
+  const [paymentStatus, setPaymentStatus] = useState<LoadStatus>("loading");
+  const [reservationsStatus, setReservationsStatus] =
+    useState<LoadStatus>("loading");
+  const [errors, setErrors] = useState<
+    Partial<Record<"payment" | "reservations" | "listings", string>>
+  >({});
 
   useEffect(() => {
     let active = true;
+    setPayment(emptyPayment);
+    setReservations([]);
+    setListings([]);
+    setPaymentStatus("loading");
+    setReservationsStatus("loading");
+    setErrors({});
 
-    Promise.allSettled([
-      getAdminPaymentOverview(token),
-      listAdminReservations(token, { page: 0, size: 80 }),
-      listAdminListings(token, { page: 0, size: 60 }),
-    ]).then((results) => {
-      if (!active) return;
-
-      const nextErrors: string[] = [];
-      const [paymentResult, reservationsResult, listingsResult] = results;
-
-      if (paymentResult.status === "fulfilled") {
-        setPayment(paymentResult.value.data ?? emptyPayment);
-      } else {
+    getAdminPaymentOverview(token)
+      .then((response) => {
+        if (!active) return;
+        setPayment(response.data ?? emptyPayment);
+        setPaymentStatus("success");
+      })
+      .catch((err) => {
+        if (!active) return;
         setPayment(emptyPayment);
-        nextErrors.push(
-          getAdminErrorMessage(
-            paymentResult.reason,
+        setPaymentStatus("error");
+        setErrors((current) => ({
+          ...current,
+          payment: getAdminErrorMessage(
+            err,
             "Payment overview API is not available.",
           ),
-        );
-      }
+        }));
+      });
 
-      if (reservationsResult.status === "fulfilled") {
-        setReservations(reservationsResult.value.data ?? []);
-      } else {
+    listAdminReservations(token, { page: 0, size: 40 })
+      .then((response) => {
+        if (!active) return;
+        setReservations(response.data ?? []);
+        setReservationsStatus("success");
+      })
+      .catch((err) => {
+        if (!active) return;
         setReservations([]);
-        nextErrors.push(
-          getAdminErrorMessage(
-            reservationsResult.reason,
+        setReservationsStatus("error");
+        setErrors((current) => ({
+          ...current,
+          reservations: getAdminErrorMessage(
+            err,
             "Reservation admin API is not available.",
           ),
-        );
-      }
+        }));
+      });
 
-      if (listingsResult.status === "fulfilled") {
-        setListings(listingsResult.value.data?.content ?? []);
-      } else {
+    listAdminListingItems(token, { page: 0, size: 20 })
+      .then((response) => {
+        if (!active) return;
+        setListings(response.data?.content ?? []);
+      })
+      .catch((err) => {
+        if (!active) return;
         setListings([]);
-        nextErrors.push(
-          getAdminErrorMessage(
-            listingsResult.reason,
-            "Listing admin API is not available.",
+        setErrors((current) => ({
+          ...current,
+          listings: getAdminErrorMessage(
+            err,
+            "Compact listing admin API is not available.",
           ),
-        );
-      }
-
-      setErrors(nextErrors);
-    });
+        }));
+      });
 
     return () => {
       active = false;
@@ -353,9 +369,13 @@ export function AdminOverviewModule() {
     () => buildTransactionTypes(payment, reservations),
     [payment, reservations],
   );
+  const listingMap = useMemo(
+    () => new Map(listings.map((listing) => [listing.id, listing])),
+    [listings],
+  );
   const topBookedListings = useMemo(
-    () => buildTopBookedListings(reservations, listings),
-    [reservations, listings],
+    () => buildTopBookedListingsWithListings(reservations, listingMap),
+    [listingMap, reservations],
   );
   const completedReservations = reservations.filter(
     (item) => item.status === "COMPLETED",
@@ -366,28 +386,45 @@ export function AdminOverviewModule() {
   const returningRate = reservations.length
     ? Math.round((completedReservations / reservations.length) * 100)
     : 0;
+  const errorMessages = Object.values(errors).filter(Boolean);
+  const paymentReady = paymentStatus === "success";
+  const reservationsReady = reservationsStatus === "success";
+  const transactionTypesReady =
+    paymentStatus !== "loading" || reservationsStatus !== "loading";
 
   const stats = [
     {
       label: "Captured revenue",
-      value: formatCurrency(payment.summary.capturedAmount, currency),
-      note: `${payment.summary.paymentCount} paid transactions`,
+      value: paymentReady
+        ? formatCurrency(payment.summary.capturedAmount, currency)
+        : "...",
+      note: paymentReady
+        ? `${payment.summary.paymentCount} paid transactions`
+        : "Loading",
       href: "/admin/transactions",
       icon: CreditCard,
       tone: "bg-emerald-50 text-emerald-700",
     },
     {
       label: "Refund queue",
-      value: payment.summary.refundCount.toLocaleString("en-US"),
-      note: formatCurrency(payment.summary.refundedAmount, currency),
+      value: paymentReady
+        ? payment.summary.refundCount.toLocaleString("en-US")
+        : "...",
+      note: paymentReady
+        ? formatCurrency(payment.summary.refundedAmount, currency)
+        : "Loading",
       href: "/admin/transactions",
       icon: BadgeDollarSign,
       tone: "bg-rose-50 text-[#ff385c]",
     },
     {
       label: "Open reservations",
-      value: openReservations.toLocaleString("en-US"),
-      note: `${reservations.length} total reservation rows`,
+      value: reservationsReady
+        ? openReservations.toLocaleString("en-US")
+        : "...",
+      note: reservationsReady
+        ? `${reservations.length} total reservation rows`
+        : "Loading",
       href: "/admin/reservations",
       icon: CalendarCheck,
       tone: "bg-blue-50 text-blue-700",
@@ -409,10 +446,10 @@ export function AdminOverviewModule() {
       />
 
       <main className="mx-auto max-w-[1440px] space-y-4 p-5 sm:p-8">
-        {errors.length ? (
+        {errorMessages.length ? (
           <AdminErrorState
             title="Some admin data could not be loaded"
-            description={errors.join(" ")}
+            description={errorMessages.join(" ")}
           />
         ) : null}
 
@@ -475,7 +512,11 @@ export function AdminOverviewModule() {
               </CardAction>
             </CardHeader>
             <CardContent>
-              {revenueFlow.length ? (
+              {paymentStatus === "loading" ? (
+                <AdminLoadingRows rows={4} />
+              ) : paymentStatus === "error" ? (
+                <AdminErrorState description="Payment overview API is not available." />
+              ) : revenueFlow.length ? (
                 <ChartContainer config={revenueConfig} className="h-[350px]">
                   <AreaChart data={revenueFlow}>
                     <CartesianGrid vertical={false} stroke="#eeeeee" />
@@ -519,40 +560,48 @@ export function AdminOverviewModule() {
               </CardAction>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <p className="text-4xl font-semibold text-[#222222]">
-                  {returningRate}%
-                </p>
-                <p className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                  <TrendingUp className="size-3" />
-                  completed stays
-                </p>
-              </div>
-              <div className="rounded-[14px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#6a6a6a]">
-                    Completion rate
-                  </span>
-                  <span className="text-sm font-semibold text-[#222222]">
-                    {returningRate}%
-                  </span>
-                </div>
-                <Progress value={returningRate} className="mt-3 h-2" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-[14px] border border-[#ebebeb] p-4">
-                  <p className="text-sm text-[#6a6a6a]">Open</p>
-                  <p className="mt-1 text-xl font-semibold text-[#222222]">
-                    {openReservations}
-                  </p>
-                </div>
-                <div className="rounded-[14px] border border-[#ebebeb] p-4">
-                  <p className="text-sm text-[#6a6a6a]">Completed</p>
-                  <p className="mt-1 text-xl font-semibold text-[#222222]">
-                    {completedReservations}
-                  </p>
-                </div>
-              </div>
+              {reservationsStatus === "loading" ? (
+                <AdminLoadingRows rows={3} />
+              ) : reservationsStatus === "error" ? (
+                <AdminErrorState description="Reservation admin API is not available." />
+              ) : (
+                <>
+                  <div>
+                    <p className="text-4xl font-semibold text-[#222222]">
+                      {returningRate}%
+                    </p>
+                    <p className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                      <TrendingUp className="size-3" />
+                      completed stays
+                    </p>
+                  </div>
+                  <div className="rounded-[14px] border border-[#ebebeb] bg-[#f7f7f7] p-5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-[#6a6a6a]">
+                        Completion rate
+                      </span>
+                      <span className="text-sm font-semibold text-[#222222]">
+                        {returningRate}%
+                      </span>
+                    </div>
+                    <Progress value={returningRate} className="mt-3 h-2" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-[14px] border border-[#ebebeb] p-4">
+                      <p className="text-sm text-[#6a6a6a]">Open</p>
+                      <p className="mt-1 text-xl font-semibold text-[#222222]">
+                        {openReservations}
+                      </p>
+                    </div>
+                    <div className="rounded-[14px] border border-[#ebebeb] p-4">
+                      <p className="text-sm text-[#6a6a6a]">Completed</p>
+                      <p className="mt-1 text-xl font-semibold text-[#222222]">
+                        {completedReservations}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -571,7 +620,11 @@ export function AdminOverviewModule() {
               </CardAction>
             </CardHeader>
             <CardContent>
-              {reservationStatusRows.length ? (
+              {reservationsStatus === "loading" ? (
+                <AdminLoadingRows rows={4} />
+              ) : reservationsStatus === "error" ? (
+                <AdminErrorState description="Reservation admin API is not available." />
+              ) : reservationStatusRows.length ? (
                 <>
                   <ChartContainer
                     config={reservationStatusConfig}
@@ -628,7 +681,9 @@ export function AdminOverviewModule() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {transactionTypes.length ? (
+              {!transactionTypesReady ? (
+                <AdminLoadingRows rows={3} />
+              ) : transactionTypes.length ? (
                 <>
                   <ChartContainer config={visitsConfig} className="h-[220px]">
                     <PieChart>
@@ -691,65 +746,75 @@ export function AdminOverviewModule() {
               </CardAction>
             </CardHeader>
             <CardContent className="overflow-x-auto">
-              <Table className="min-w-[760px]">
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Reservation</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-12" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reservations.slice(0, 8).map((item) => (
-                    <TableRow key={item.bookingId}>
-                      <TableCell className="font-semibold text-[#222222]">
-                        {displayReservationCode(item)}
-                      </TableCell>
-                      <TableCell>{displayGuest(item)}</TableCell>
-                      <TableCell>
-                        <div className="min-w-0">
-                          <p className="font-medium text-[#222222]">Booking</p>
-                          <p className="max-w-[280px] truncate text-xs text-[#6a6a6a]">
-                            {displayListing(item)}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {formatCurrency(item.totalAmount, item.currency)}
-                      </TableCell>
-                      <TableCell>
-                        <TextStatusPill tone={statusTone(item.status)}>
-                          {displayStatus(item.status)}
-                        </TextStatusPill>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 rounded-full"
-                        >
-                          <MoreHorizontal className="size-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!reservations.length ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-24 text-center">
-                        No reservations returned.
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-              <p className="mt-4 text-sm text-[#6a6a6a]">
-                Showing 1 to {Math.min(reservations.length, 8)} of{" "}
-                {reservations.length} entries
-              </p>
+              {reservationsStatus === "loading" ? (
+                <AdminLoadingRows rows={5} />
+              ) : reservationsStatus === "error" ? (
+                <AdminErrorState description="Reservation admin API is not available." />
+              ) : (
+                <>
+                  <Table className="min-w-[760px]">
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead>Reservation</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="w-12" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reservations.slice(0, 8).map((item) => (
+                        <TableRow key={item.bookingId}>
+                          <TableCell className="font-semibold text-[#222222]">
+                            {displayReservationCode(item)}
+                          </TableCell>
+                          <TableCell>{displayGuest(item)}</TableCell>
+                          <TableCell>
+                            <div className="min-w-0">
+                              <p className="font-medium text-[#222222]">
+                                Booking
+                              </p>
+                              <p className="max-w-[280px] truncate text-xs text-[#6a6a6a]">
+                                {displayListingWithFallback(item, listingMap)}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {formatCurrency(item.totalAmount, item.currency)}
+                          </TableCell>
+                          <TableCell>
+                            <TextStatusPill tone={statusTone(item.status)}>
+                              {displayStatus(item.status)}
+                            </TextStatusPill>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 rounded-full"
+                            >
+                              <MoreHorizontal className="size-4" />
+                              <span className="sr-only">Open menu</span>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {!reservations.length ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-24 text-center">
+                            No reservations returned.
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
+                  <p className="mt-4 text-sm text-[#6a6a6a]">
+                    Showing 1 to {Math.min(reservations.length, 8)} of{" "}
+                    {reservations.length} entries
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -768,7 +833,11 @@ export function AdminOverviewModule() {
               </CardAction>
             </CardHeader>
             <CardContent className="space-y-2">
-              {topBookedListings.length ? (
+              {reservationsStatus === "loading" ? (
+                <AdminLoadingRows rows={5} />
+              ) : reservationsStatus === "error" ? (
+                <AdminErrorState description="Reservation admin API is not available." />
+              ) : topBookedListings.length ? (
                 topBookedListings.map((item) => (
                   <div
                     key={item.listingId}

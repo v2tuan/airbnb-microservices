@@ -266,6 +266,108 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             Pageable pageable
     );
 
+    @Query(
+            value = """
+                    SELECT new com.listingservice.dto.response.ListingItemResponse(
+                        l.listingId,
+                        l.title,
+                        (
+                            SELECT p.photoUrl
+                            FROM ListingPhoto p
+                            WHERE p.listing = l
+                            ORDER BY
+                                CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                                p.displayOrder ASC
+                            LIMIT 1
+                        ),
+                        l.city,
+                        l.country,
+                        l.propertyType,
+                        l.status,
+                        l.createdAt,
+                        null,
+                        null,
+                        null
+                    )
+                    FROM Listing l
+                    """,
+            countQuery = "SELECT COUNT(l) FROM Listing l"
+    )
+    Page<ListingItemResponse> findAdminListingItems(Pageable pageable);
+
+    @Query(
+            value = """
+                    SELECT new com.listingservice.dto.response.ListingItemResponse(
+                        l.listingId,
+                        l.title,
+                        (
+                            SELECT p.photoUrl
+                            FROM ListingPhoto p
+                            WHERE p.listing = l
+                            ORDER BY
+                                CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                                p.displayOrder ASC
+                            LIMIT 1
+                        ),
+                        l.city,
+                        l.country,
+                        l.propertyType,
+                        l.status,
+                        l.createdAt,
+                        null,
+                        null,
+                        null
+                    )
+                    FROM Listing l
+                    WHERE l.status = :status
+                    """,
+            countQuery = "SELECT COUNT(l) FROM Listing l WHERE l.status = :status"
+    )
+    Page<ListingItemResponse> findAdminListingItemsByStatus(
+            @Param("status") ListingStatus status,
+            Pageable pageable
+    );
+
+    @Query(
+            value = """
+                    SELECT new com.listingservice.dto.response.ListingItemResponse(
+                        l.listingId,
+                        l.title,
+                        (
+                            SELECT p.photoUrl
+                            FROM ListingPhoto p
+                            WHERE p.listing = l
+                            ORDER BY
+                                CASE WHEN p.isCover = true THEN 0 ELSE 1 END,
+                                p.displayOrder ASC
+                            LIMIT 1
+                        ),
+                        l.city,
+                        l.country,
+                        l.propertyType,
+                        l.status,
+                        l.createdAt,
+                        null,
+                        null,
+                        null
+                    )
+                    FROM Listing l
+                    WHERE (:status IS NULL OR l.status = :status)
+                      AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
+                    """,
+            countQuery = """
+                    SELECT COUNT(l)
+                    FROM Listing l
+                    WHERE (:status IS NULL OR l.status = :status)
+                      AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
+                    """
+    )
+    Page<ListingItemResponse> findAdminListingItemsByKeyword(
+            @Param("status") ListingStatus status,
+            @Param("pattern") String pattern,
+            Pageable pageable
+    );
+
     @EntityGraph(attributePaths = {"photos", "pricing", "houseRules", "listingAmenities", "listingAmenities.amenity", "accessInfo", "accessInfo.checkInGuide"})
     List<Listing> findByListingIdIn(List<UUID> ids);
 }

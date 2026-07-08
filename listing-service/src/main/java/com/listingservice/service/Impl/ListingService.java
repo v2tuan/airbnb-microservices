@@ -165,6 +165,29 @@ public class ListingService implements IListingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Page<ListingItemResponse> getAdminListingItems(ListingStatus status, String keyword, Pageable pageable) {
+        String normalizedKeyword = normalizeFilter(keyword);
+
+        log.info("Getting compact admin listings status={}, keyword={}, page={}, size={}",
+                status, normalizedKeyword, pageable.getPageNumber(), pageable.getPageSize());
+
+        if (normalizedKeyword != null) {
+            return listingRepository.findAdminListingItemsByKeyword(
+                    status,
+                    "%" + normalizedKeyword.toLowerCase(Locale.ROOT) + "%",
+                    pageable
+            );
+        }
+
+        if (status != null) {
+            return listingRepository.findAdminListingItemsByStatus(status, pageable);
+        }
+
+        return listingRepository.findAdminListingItems(pageable);
+    }
+
+    @Override
     public List<ListingResponse> getListingsByHost(String hostId) {
         log.info("Getting listings by host ID: {}", hostId);
 

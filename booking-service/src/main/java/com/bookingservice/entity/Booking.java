@@ -35,6 +35,10 @@ import java.util.UUID;
                 @Index(
                         name = "idx_bookings_host_listing_status",
                         columnList = "host_id, listing_id, status"
+                ),
+                @Index(
+                        name = "idx_bookings_admin_dashboard",
+                        columnList = "status, check_in_date, created_at"
                 )
         }
 )

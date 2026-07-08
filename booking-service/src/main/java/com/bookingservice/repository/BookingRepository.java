@@ -2,6 +2,8 @@ package com.bookingservice.repository;
 
 import com.bookingservice.entity.Booking;
 import com.bookingservice.entity.BookingStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -178,5 +180,20 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             @Param("hasStatuses") boolean hasStatuses,
             @Param("dateFrom") LocalDate dateFrom,
             @Param("dateTo") LocalDate dateTo
+    );
+
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE (:hasStatuses = false OR b.status IN :statuses)
+            AND (:dateFrom IS NULL OR b.checkOutDate >= :dateFrom)
+            AND (:dateTo IS NULL OR b.checkInDate <= :dateTo)
+            ORDER BY b.checkInDate DESC, b.createdAt DESC
+            """)
+    Page<Booking> findAdminReservationsPage(
+            @Param("statuses") List<BookingStatus> statuses,
+            @Param("hasStatuses") boolean hasStatuses,
+            @Param("dateFrom") LocalDate dateFrom,
+            @Param("dateTo") LocalDate dateTo,
+            Pageable pageable
     );
 }

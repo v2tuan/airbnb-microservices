@@ -44,6 +44,7 @@ import com.bookingservice.repository.client.RatingClient;
 import com.bookingservice.repository.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -166,25 +167,38 @@ public class BookingService {
 
         boolean hasStatuses = statuses != null && !statuses.isEmpty();
         List<BookingStatus> queryStatuses = hasStatuses ? statuses : List.of(BookingStatus.PENDING_PAYMENT);
-        List<Booking> bookings = bookingRepository.findReservationsForDashboard(
-                null,
-                null,
-                false,
-                queryStatuses,
-                hasStatuses,
-                checkInFrom,
-                checkInTo
-        );
-
-        List<Booking> filtered = bookings.stream()
-                .filter(booking -> matchesAdminReservationFilters(booking, search, guest, host, listing, bookingCode))
-                .toList();
-
         int safeSize = Math.max(1, Math.min(size, 200));
         int safePage = Math.max(0, page);
-        int fromIndex = Math.min(safePage * safeSize, filtered.size());
-        int toIndex = Math.min(fromIndex + safeSize, filtered.size());
-        List<Booking> pageBookings = filtered.subList(fromIndex, toIndex);
+        List<Booking> pageBookings;
+
+        if (hasAdminTextFilters(search, guest, host, listing, bookingCode)) {
+            List<Booking> bookings = bookingRepository.findReservationsForDashboard(
+                    null,
+                    null,
+                    false,
+                    queryStatuses,
+                    hasStatuses,
+                    checkInFrom,
+                    checkInTo
+            );
+
+            List<Booking> filtered = bookings.stream()
+                    .filter(booking -> matchesAdminReservationFilters(booking, search, guest, host, listing, bookingCode))
+                    .toList();
+
+            int fromIndex = Math.min(safePage * safeSize, filtered.size());
+            int toIndex = Math.min(fromIndex + safeSize, filtered.size());
+            pageBookings = filtered.subList(fromIndex, toIndex);
+        } else {
+            pageBookings = bookingRepository.findAdminReservationsPage(
+                    queryStatuses,
+                    hasStatuses,
+                    checkInFrom,
+                    checkInTo,
+                    PageRequest.of(safePage, safeSize)
+            ).getContent();
+        }
+
         String bearerToken = "Bearer " + jwt.getTokenValue();
         Map<UUID, ListingResponse> listingMap = fetchListingsForBookings(bearerToken, pageBookings);
         Map<UUID, PublicUserResponse> userMap = fetchUsersForAdminReservations(pageBookings);
@@ -197,6 +211,18 @@ public class BookingService {
                         userMap.get(booking.getHostId())
                 ))
                 .toList();
+    }
+
+    private boolean hasAdminTextFilters(String search, String guest, String host, String listing, String bookingCode) {
+        return hasText(search)
+                || hasText(guest)
+                || hasText(host)
+                || hasText(listing)
+                || hasText(bookingCode);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     @Transactional(readOnly = true)
