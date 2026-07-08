@@ -82,13 +82,12 @@ public class SecurityConfig {
                         prefix + "/users/auth/**",
                         prefix + "/listings/**",
                         prefix + "/ratings/**",
-                        prefix + "/bookings/availability/**",
                         prefix + "/profile/**",
                         // Ensure literal API prefix route is also allowed in case
                         // the `prefix` value isn't available at runtime for any reason.
                         "/api/v1/profile/**",
-                        "/api/v1/bookings/availability/**",
-                        prefix + "/payments/webhook"
+                        prefix + "/payments/webhook",
+                        "/socket.io/**"
                 ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .cors(Customizer.withDefaults())
