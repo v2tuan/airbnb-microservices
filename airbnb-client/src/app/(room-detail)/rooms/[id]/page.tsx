@@ -1,7 +1,12 @@
 ﻿"use client";
 
-import { useMemo } from "react";
-import { addMonths, endOfMonth, format, parseISO, startOfMonth } from "date-fns";
+import {
+  addMonths,
+  endOfMonth,
+  format,
+  parseISO,
+  startOfMonth,
+} from "date-fns";
 import {
   BedDouble,
   CalendarDays,
@@ -14,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { activityAPI } from "@/api/endpoints/activity";
 import { getListingUnavailableDates } from "@/api/endpoints/booking";
@@ -24,8 +29,7 @@ import {
   unwrapApiData,
 } from "@/api/endpoints/listing";
 import { ratingAPI } from "@/api/endpoints/rating";
-import { type PublicUserProfile } from "@/api/endpoints/user";
-import { userAPI, type PublicHostResponseDTO } from "@/api/endpoints/user";
+import { type PublicHostResponseDTO, userAPI } from "@/api/endpoints/user";
 import { BookingCard } from "@/components/listing/BookingCard";
 import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
@@ -296,7 +300,7 @@ export default function RoomDetail() {
   const [ratings, setRatings] = useState<RatingRecord[]>([]);
   const [averageRating, setAverageRating] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,19 +334,26 @@ export default function RoomDetail() {
       if (!hostId) return;
 
       try {
-        const primaryResponse = await userAPI.getPublicHostByKeycloakUserId(hostId);
+        const primaryResponse =
+          await userAPI.getPublicHostByKeycloakUserId(hostId);
         if (cancelled) return;
 
-        const primaryProfile = primaryResponse.data as PublicHostResponseDTO | undefined;
+        const primaryProfile = primaryResponse.data as
+          | PublicHostResponseDTO
+          | undefined;
         const hasEnoughPrimaryData =
-          Boolean(primaryProfile?.fullName?.trim()) || Boolean(primaryProfile?.avatarUrl?.trim());
+          Boolean(primaryProfile?.fullName?.trim()) ||
+          Boolean(primaryProfile?.avatarUrl?.trim());
 
         if (hasEnoughPrimaryData) {
           setHost(normalizeHostPreview(primaryProfile, hostId));
           return;
         }
       } catch (primaryError) {
-        console.warn("Primary host lookup failed, falling back to profile endpoint:", primaryError);
+        console.warn(
+          "Primary host lookup failed, falling back to profile endpoint:",
+          primaryError,
+        );
       }
 
       try {
@@ -385,7 +396,10 @@ export default function RoomDetail() {
 
         const rows = unwrapApiData(response.data)?.unavailableDates ?? [];
         const parsedDates = rows
-          .filter((date): date is string => typeof date === "string" && date.length > 0)
+          .filter(
+            (date): date is string =>
+              typeof date === "string" && date.length > 0,
+          )
           .map((date) => parseISO(date))
           .filter((date) => !Number.isNaN(date.getTime()))
           .sort((left, right) => left.getTime() - right.getTime());
@@ -395,7 +409,10 @@ export default function RoomDetail() {
           setCalendarMonth(startOfMonth(parsedDates[0]));
         }
       } catch (availabilityError) {
-        console.error("Failed to fetch listing availability:", availabilityError);
+        console.error(
+          "Failed to fetch listing availability:",
+          availabilityError,
+        );
         if (!cancelled) setUnavailableDates([]);
       }
     };
@@ -410,8 +427,17 @@ export default function RoomDetail() {
           return;
         }
 
+        if (listingData.status !== "ACTIVE") {
+          if (!cancelled) {
+            setListing(null);
+            setErrorMessage("This listing is currently unavailable.");
+          }
+          return;
+        }
+
         if (cancelled) return;
         setListing(listingData);
+        setErrorMessage(null);
         setLoading(false);
 
         void fetchRatings();
@@ -419,7 +445,24 @@ export default function RoomDetail() {
         void fetchAvailability(listingData.listingId);
       } catch (fetchError) {
         console.error("Failed to fetch listing:", fetchError);
-        if (!cancelled) setError(true);
+        if (!cancelled) {
+          const response = (
+            fetchError as {
+              response?: { status?: number; data?: { message?: string } };
+            }
+          ).response;
+          const apiMessage = response?.data?.message?.toLowerCase() ?? "";
+          const isUnavailable =
+            response?.status === 404 ||
+            apiMessage.includes("unavailable") ||
+            apiMessage.includes("not found");
+
+          setErrorMessage(
+            isUnavailable
+              ? "This listing is currently unavailable."
+              : "Error loading room details. Please try again later.",
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -460,7 +503,7 @@ export default function RoomDetail() {
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())
       .join("");
-  }, [host?.fullName, host?.keycloakUserId]);
+  }, [hostDisplayName]);
 
   if (loading) {
     return (
@@ -470,10 +513,23 @@ export default function RoomDetail() {
     );
   }
 
-  if (error || !listing) {
+  if (errorMessage || !listing) {
     return (
-      <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">
-        Error loading room details. Please try again later.
+      <div className="flex min-h-screen items-center justify-center bg-white px-4 py-10 text-center">
+        <div className="max-w-md space-y-4">
+          <p className="text-2xl font-semibold text-[#222222]">
+            Listing unavailable
+          </p>
+          <p className="text-sm leading-6 text-zinc-500">
+            {errorMessage ?? "This listing is currently unavailable."}
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center rounded-full bg-[#ff385c] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#e61e4d]"
+          >
+            Back to home
+          </Link>
+        </div>
       </div>
     );
   }
@@ -528,8 +584,16 @@ export default function RoomDetail() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <DetailMeta icon={Users} label="Guests" value={`${listing.maxGuests} max`} />
-              <DetailMeta icon={CalendarDays} label="Beds" value={`${listing.numBeds} available`} />
+              <DetailMeta
+                icon={Users}
+                label="Guests"
+                value={`${listing.maxGuests} max`}
+              />
+              <DetailMeta
+                icon={CalendarDays}
+                label="Beds"
+                value={`${listing.numBeds} available`}
+              />
               <DetailMeta
                 icon={Star}
                 label="Rating"
@@ -560,7 +624,10 @@ export default function RoomDetail() {
                 <div className="flex items-center gap-4">
                   <div className="relative h-14 w-14 shrink-0">
                     <Avatar className="h-14 w-14">
-                      <AvatarImage src={host?.avatarUrl ?? undefined} alt={host?.fullName ?? "Host"} />
+                      <AvatarImage
+                        src={host?.avatarUrl ?? undefined}
+                        alt={host?.fullName ?? "Host"}
+                      />
                       <AvatarFallback>{hostInitials || "H"}</AvatarFallback>
                     </Avatar>
                     {host?.superHost ? (
@@ -586,7 +653,9 @@ export default function RoomDetail() {
                       </p>
                     )}
                     <p className="mt-1 text-sm text-zinc-500">
-                      {host?.joinedAt ? formatHostSince(host.joinedAt) : "Joined recently"}
+                      {host?.joinedAt
+                        ? formatHostSince(host.joinedAt)
+                        : "Joined recently"}
                     </p>
                   </div>
                 </div>
@@ -606,7 +675,9 @@ export default function RoomDetail() {
                       Joined
                     </p>
                     <p className="mt-2 text-sm font-medium text-[#222222]">
-                      {host?.joinedAt ? formatHostSince(host.joinedAt) : "Joined recently"}
+                      {host?.joinedAt
+                        ? formatHostSince(host.joinedAt)
+                        : "Joined recently"}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
                       Public host profile
@@ -616,10 +687,7 @@ export default function RoomDetail() {
               </section>
 
               <section className="border-b border-[#ebebeb] pb-8">
-                  <ListingInfo
-                  data={listing}
-                  hostName={hostDisplayName}
-                />
+                <ListingInfo data={listing} hostName={hostDisplayName} />
               </section>
 
               <section className="border-b border-[#ebebeb] pb-8">
@@ -769,7 +837,10 @@ export default function RoomDetail() {
               </section>
 
               <section className="pb-2">
-                <ListingRatingPanel averageRating={averageRating} ratings={ratings} />
+                <ListingRatingPanel
+                  averageRating={averageRating}
+                  ratings={ratings}
+                />
               </section>
             </div>
 
