@@ -1,12 +1,17 @@
 package com.paymentservice.controller;
 
 import com.paymentservice.dto.request.ProcessPaymentRequest;
+import com.paymentservice.dto.response.HostIncomeTransactionResponse;
 import com.paymentservice.dto.response.TransactionResponse;
+import com.paymentservice.exception.BusinessException;
+import com.paymentservice.service.PayoutService;
 import com.paymentservice.service.TransactionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,6 +23,7 @@ import java.util.UUID;
 public class TransactionController {
 
     private final TransactionService transactionService;
+    private final PayoutService payoutService;
 
     /**
      * Process payment
@@ -68,5 +74,21 @@ public class TransactionController {
     public ResponseEntity<List<TransactionResponse>> getUserPayoutTransactions(@PathVariable UUID userId) {
         List<TransactionResponse> transactions = transactionService.getUserPayoutTransactions(userId);
         return ResponseEntity.ok(transactions);
+    }
+
+    /**
+     * Get income payout records for the current host
+     * GET /payments/transactions/host/{hostId}/income
+     */
+    @GetMapping("/host/{hostId}/income")
+    public ResponseEntity<List<HostIncomeTransactionResponse>> getHostIncomeTransactions(
+            @PathVariable UUID hostId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        if (jwt == null || !hostId.toString().equals(jwt.getSubject())) {
+            throw BusinessException.forbidden("You can only view your own host income");
+        }
+
+        return ResponseEntity.ok(payoutService.getHostIncomeTransactions(hostId));
     }
 }
