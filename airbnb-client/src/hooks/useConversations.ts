@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchConversations } from "@/api/message";
 import { notificationAPI } from "@/api/endpoints/notification";
-import { userAPI } from "@/api/endpoints/user";
 import { useAuth } from "@/hooks/useAuth";
 import { useSocket } from "@/hooks/useSocket";
 
@@ -17,6 +16,18 @@ export type Conversation = {
   unread?: boolean;
 };
 
+type ConversationRecord = {
+  _id?: string;
+  participants?: unknown[];
+  lastMessage?: {
+    text?: string;
+    attachments?: unknown[];
+    messageType?: string;
+  };
+  participantProfiles?: Record<string, { fullName?: string; avatarUrl?: string }>;
+  updatedAt?: string;
+};
+
 const getParticipantId = (participant: any) => {
   if (!participant) return "";
   if (typeof participant === "string") return participant;
@@ -28,9 +39,7 @@ const normalizeUserId = (value: unknown) => {
   if (typeof value === "string") return value;
   if (typeof value === "object") {
     const record = value as Record<string, any>;
-    return String(
-      record._id ?? record.id ?? record.senderId ?? record.userId ?? "",
-    );
+    return String(record._id ?? record.id ?? record.senderId ?? record.userId ?? "");
   }
   return String(value);
 };
@@ -46,20 +55,17 @@ const formatConversationTime = (value?: string | Date) => {
 const truncatePreview = (value: string, maxLength = 56) => {
   const compact = value.replace(/\s+/g, " ").trim();
   if (compact.length <= maxLength) return compact;
-  return `${compact.slice(0, maxLength - 1).trimEnd()}…`;
+  return `${compact.slice(0, maxLength - 1).trimEnd()}...`;
 };
 
-const summarizeAttachmentPreview = (attachments: any[]) => {
+const summarizeAttachmentPreview = (attachments: unknown[]) => {
   if (!Array.isArray(attachments) || attachments.length === 0) return "";
 
-  const typeCounts = attachments.reduce<Record<string, number>>(
-    (counts, attachment) => {
-      const type = String(attachment?.type || "file");
-      counts[type] = (counts[type] || 0) + 1;
-      return counts;
-    },
-    {},
-  );
+  const typeCounts = attachments.reduce<Record<string, number>>((counts, attachment) => {
+    const type = String((attachment as Record<string, any>)?.type || "file");
+    counts[type] = (counts[type] || 0) + 1;
+    return counts;
+  }, {});
 
   const parts = Object.entries(typeCounts).map(([type, count]) => {
     const label =
@@ -81,18 +87,18 @@ const summarizeAttachmentPreview = (attachments: any[]) => {
   return `Sent ${parts.slice(0, 2).join(", ")}${parts.length > 2 ? ` +${parts.length - 2}` : ""}`;
 };
 
-const summarizeConversationPreview = (conv: any) => {
+const summarizeConversationPreview = (conv: ConversationRecord) => {
   const lastMessage = conv?.lastMessage ?? {};
-  const text =
-    typeof lastMessage.text === "string" ? lastMessage.text.trim() : "";
-  const attachments = Array.isArray(lastMessage.attachments)
-    ? lastMessage.attachments
-    : [];
+  const text = typeof lastMessage.text === "string" ? lastMessage.text.trim() : "";
+  const attachments = Array.isArray(lastMessage.attachments) ? lastMessage.attachments : [];
+  const messageType = typeof lastMessage.messageType === "string" ? lastMessage.messageType : "";
+
+  if (messageType === "media" && attachments.length === 0) {
+    return "Sent media";
+  }
 
   if (text && attachments.length > 0) {
-    return truncatePreview(
-      `${text} • ${summarizeAttachmentPreview(attachments)}`,
-    );
+    return truncatePreview(`${text} • ${summarizeAttachmentPreview(attachments)}`);
   }
 
   if (text) {
@@ -104,7 +110,7 @@ const summarizeConversationPreview = (conv: any) => {
     return attachmentSummary;
   }
 
-  return "No messages yet";
+  return messageType === "media" ? "Sent media" : "No messages yet";
 };
 
 type UseConversationsOptions = {
@@ -126,46 +132,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
 
   const currentUserId = currentUserIds.values().next().value ?? null;
   const keycloakUserId = currentUserId;
-  // Chat backend dùng `keycloakUserId` (JWT sub) để xác định participants,
-  // nên tránh fallback sang `id` để không match sai.
-
-  const mergeConversationProfiles = useCallback(
-    (
-      profiles: Array<{
-        keycloakUserId?: string;
-        fullName?: string;
-        avatarUrl?: string;
-      }>,
-    ) => {
-      const profileMap = new Map(
-        profiles
-          .filter((profile) => profile?.keycloakUserId)
-          .map((profile) => [
-            String(profile.keycloakUserId),
-            {
-              fullName: profile.fullName ?? "",
-              avatarUrl: profile.avatarUrl ?? "",
-            },
-          ]),
-      );
-
-      setConversations((current) =>
-        current.map((conversation) => {
-          if (!conversation.partnerId) return conversation;
-
-          const profile = profileMap.get(conversation.partnerId);
-          if (!profile) return conversation;
-
-          return {
-            ...conversation,
-            name: profile.fullName || conversation.name,
-            avatar: profile.avatarUrl || conversation.avatar,
-          };
-        }),
-      );
-    },
-    [],
-  );
+  const cacheKey = keycloakUserId ? `airbnb:messages:conversations:${keycloakUserId}` : null;
 
   const updateConversationLastMessage = useCallback(
     (
@@ -180,9 +147,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
       const time = formatConversationTime(createdAt);
 
       setConversations((current) => {
-        const index = current.findIndex(
-          (item) => item.conversationId === conversationId,
-        );
+        const index = current.findIndex((item) => item.conversationId === conversationId);
         if (index === -1) return current;
 
         const updated = {
@@ -223,23 +188,33 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
 
     let cancelled = false;
 
+    if (typeof window !== "undefined" && cacheKey) {
+      try {
+        const cachedRaw = window.sessionStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (Array.isArray(cached) && cached.length > 0) {
+            setConversations(cached);
+          }
+        }
+      } catch {
+        // ignore cache parse errors
+      }
+    }
+
     const loadConversations = async () => {
       try {
         setError(null);
         setLoading(true);
 
         const conversationsRequest = fetchConversations();
-        const unreadRequest = notificationAPI
-          .getMyNotifications(true, 100)
-          .catch(() => null);
+        const unreadRequest = notificationAPI.getMyNotifications(true, 100).catch(() => null);
 
         const response = await conversationsRequest;
         if (cancelled) return;
 
-        const normalized = (response.data || []).map((conv: any) => {
-          const participants = Array.isArray(conv.participants)
-            ? conv.participants
-            : [];
+        const normalized = (response.data || []).map((conv: ConversationRecord) => {
+          const participants = Array.isArray(conv.participants) ? conv.participants : [];
           const otherParticipant = participants.find((participant: any) => {
             const pid = getParticipantId(participant);
             return pid && !currentUserIds.has(String(pid));
@@ -250,19 +225,28 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
             otherParticipant && typeof otherParticipant === "object"
               ? (otherParticipant as Record<string, any>)
               : null;
+          const participantProfiles = (conv.participantProfiles ?? {}) as Record<
+            string,
+            { fullName?: string; avatarUrl?: string }
+          >;
+          const participantProfile = participantProfiles[partnerId];
 
           return {
-            id: conv._id,
-            conversationId: conv._id,
+            id: conv._id ?? partnerId,
+            conversationId: conv._id ?? partnerId,
             partnerId,
             name:
+              participantProfile?.fullName ||
               participantRecord?.fullName ||
               participantRecord?.userName ||
               participantRecord?.name ||
               "Unknown",
             avatar:
-              participantRecord?.avatar || participantRecord?.avatarUrl || "",
-            listing: "Listing", // TODO: get from booking/listing
+              participantProfile?.avatarUrl ||
+              participantRecord?.avatar ||
+              participantRecord?.avatarUrl ||
+              "",
+            listing: "Listing",
             time: formatConversationTime(conv.updatedAt),
             preview: summarizeConversationPreview(conv),
             unread: false,
@@ -270,41 +254,21 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
         });
 
         setConversations(normalized);
+        if (typeof window !== "undefined" && cacheKey) {
+          try {
+            window.sessionStorage.setItem(cacheKey, JSON.stringify(normalized));
+          } catch {
+            // ignore storage quota / serialization issues
+          }
+        }
         setLoading(false);
 
-        const allPartnerIds: Array<string | undefined> = normalized.map(
-          (conversation: Conversation) => conversation.partnerId,
-        );
-        const partnerIds = Array.from(
-          new Set(
-            allPartnerIds.filter(
-              (value: string | undefined): value is string =>
-                typeof value === "string" && Boolean(value),
-            ),
-          ),
-        );
-
-        void Promise.allSettled([
-          partnerIds.length > 0
-            ? userAPI.getPublicHostByKeycloakUserIds(partnerIds)
-            : Promise.resolve(null),
-          unreadRequest,
-        ]).then(([profilesResult, unreadResult]) => {
+        void unreadRequest.then((unreadResult) => {
           if (cancelled) return;
 
-          if (
-            profilesResult.status === "fulfilled" &&
-            profilesResult.value?.data
-          ) {
-            mergeConversationProfiles(profilesResult.value.data);
-          }
-
           const unreadConversationIds = new Set<string>();
-          const unreadResponse =
-            unreadResult.status === "fulfilled" ? unreadResult.value : null;
-
-          if (unreadResponse?.data) {
-            const unreadItems = unreadResponse.data.items ?? [];
+          if (unreadResult?.data) {
+            const unreadItems = unreadResult.data.items ?? [];
             unreadItems
               .filter((item: any) => {
                 const senderId = normalizeUserId(item.meta?.senderId);
@@ -312,9 +276,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
               })
               .map((item: any) => String(item.meta?.conversationId ?? ""))
               .filter(Boolean)
-              .forEach((conversationId: string) =>
-                unreadConversationIds.add(conversationId),
-              );
+              .forEach((conversationId: string) => unreadConversationIds.add(conversationId));
           }
 
           unreadConversationIdsRef.current = unreadConversationIds;
@@ -330,11 +292,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
       } catch (err) {
         if (!cancelled) {
           console.error("Failed to fetch conversations:", err);
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Failed to fetch conversations",
-          );
+          setError(err instanceof Error ? err.message : "Failed to fetch conversations");
         }
       } finally {
         if (!cancelled) {
@@ -348,7 +306,19 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
     return () => {
       cancelled = true;
     };
-  }, [keycloakUserId, currentUserIds]);
+  }, [keycloakUserId, currentUserIds, cacheKey]);
+
+  useEffect(() => {
+    if (!cacheKey || conversations.length === 0 || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(cacheKey, JSON.stringify(conversations));
+    } catch {
+      // ignore storage quota / serialization issues
+    }
+  }, [cacheKey, conversations]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -357,10 +327,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
 
     const syncReadState = async () => {
       try {
-        const unreadResponse = await notificationAPI.getMyNotifications(
-          true,
-          100,
-        );
+        const unreadResponse = await notificationAPI.getMyNotifications(true, 100);
         const unreadItems = unreadResponse.data.items ?? [];
         const matchingItems = unreadItems.filter(
           (item) =>
@@ -368,9 +335,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
             !currentUserIds.has(normalizeUserId(item.meta?.senderId)),
         );
 
-        await Promise.all(
-          matchingItems.map((item) => notificationAPI.markRead(item.id)),
-        );
+        await Promise.all(matchingItems.map((item) => notificationAPI.markRead(item.id)));
 
         if (!cancelled) {
           clearUnreadConversation(activeConversationId);
@@ -413,6 +378,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
     };
 
     socket.on("message:new", handleNewMessage);
+
     const handleNewNotification = (payload: {
       type?: string;
       message?: string;
@@ -445,12 +411,7 @@ export const useConversations = (options: UseConversationsOptions = {}) => {
       socket.off("message:new", handleNewMessage);
       socket.off("notification:new", handleNewNotification);
     };
-  }, [
-    activeConversationId,
-    currentUserIds,
-    socket,
-    updateConversationLastMessage,
-  ]);
+  }, [activeConversationId, currentUserIds, socket, updateConversationLastMessage]);
 
   return {
     conversations,

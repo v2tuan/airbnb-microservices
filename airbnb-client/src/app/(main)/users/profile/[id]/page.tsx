@@ -125,6 +125,19 @@ function ratingLabel(value?: number) {
   return value.toFixed(1);
 }
 
+function parseRating(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+}
+
 function getAboutText(profile: PublicProfilePageData, displayName: string) {
   if (profile.host?.isSuperhost) {
     return `${displayName} is an experienced host with a strong track record on Airbnb. Guests can expect consistent stays, clear communication, and a profile backed by verified activity.`;
@@ -135,6 +148,27 @@ function getAboutText(profile: PublicProfilePageData, displayName: string) {
 
 function getBadgeLabel(profile: PublicProfilePageData) {
   return profile.host?.isSuperhost ? "Superhost" : "Airbnb member";
+}
+
+function getHostAverageRating(profile: PublicProfilePageData) {
+  const fromStats = parseRating(profile.stats?.overallRating);
+  if (fromStats > 0) return fromStats;
+
+  const fromHost = parseRating(
+    (profile.host as Record<string, unknown> | undefined)?.overallRating ??
+      (profile.host as Record<string, unknown> | undefined)?.avgRating ??
+      (profile.host as Record<string, unknown> | undefined)?.rating,
+  );
+  if (fromHost > 0) return fromHost;
+
+  const reviewRatings = (profile.reviews?.items ?? [])
+    .map((review) => parseRating(review.rating))
+    .filter((value) => value > 0);
+  if (reviewRatings.length > 0) {
+    return reviewRatings.reduce((sum, value) => sum + value, 0) / reviewRatings.length;
+  }
+
+  return 0;
 }
 
 function renderStars(rating?: number) {
@@ -209,7 +243,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
     const aboutText = getAboutText(profile, displayName);
     const reviews = profile.reviews?.items ?? [];
     const listings = profile.listings?.items ?? [];
-    const rating = profile.stats?.overallRating;
+    const rating = getHostAverageRating(profile);
     const reviewsCount = profile.stats?.reviewsCount;
     const listingsCount = profile.stats?.activeListingsCount;
     const messageRecipientId = profile.host.keycloakUserId ?? profile.host.id ?? id;
@@ -274,8 +308,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
             </div>
           </section>
 
-          <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-8">
+          <div className="mt-8 space-y-8">
               <section className="border-b border-[#ebebeb] pb-8">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <ProfileStat
@@ -391,7 +424,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
                                 href={listingHref(review.listingId)}
                                 className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-[#222222] underline underline-offset-4 transition hover:text-[#ff385c]"
                               >
-                                View stay
+                                {review.listingTitle || "View listing"}
                                 <ChevronRight className="h-4 w-4" />
                               </Link>
                             ) : null}
@@ -454,7 +487,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
 
                             <div className="inline-flex items-center gap-1 rounded-full border border-[#ebebeb] px-3 py-1 text-xs font-medium text-[#222222]">
                               <Star className="h-3.5 w-3.5 fill-current text-[#ff385c]" />
-                              {ratingLabel(listing.avgRating)}
+                              {ratingLabel(parseRating(listing.avgRating))}
                             </div>
                           </div>
 
@@ -464,14 +497,14 @@ export default async function PublicProfilePage({ params }: PageProps) {
                           </p>
 
                           <div className="mt-4 flex items-center justify-between text-sm text-zinc-500">
-                            <span>{formatNumber(listing.reviewCount)} reviews</span>
-                            <Link
-                              href={`/rooms/${listing.id}`}
-                              className="inline-flex items-center gap-1 font-medium text-[#222222] underline-offset-4 transition hover:text-[#ff385c] hover:underline"
-                            >
-                              View listing
-                              <ChevronRight className="h-4 w-4" />
-                            </Link>
+                            <span>{formatNumber(parseRating(listing.reviewCount))} reviews</span>
+                              <Link
+                                href={`/rooms/${listing.id}`}
+                                className="inline-flex items-center gap-1 font-medium text-[#222222] underline-offset-4 transition hover:text-[#ff385c] hover:underline"
+                              >
+                                View listing
+                                <ChevronRight className="h-4 w-4" />
+                              </Link>
                           </div>
                         </div>
                       </article>
@@ -486,89 +519,6 @@ export default async function PublicProfilePage({ params }: PageProps) {
                   </div>
                 )}
               </section>
-            </div>
-
-            <aside className="lg:sticky lg:top-24 lg:self-start">
-              <div className="rounded-[20px] border border-[#ebebeb] bg-white p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-[18px] bg-[#f7f7f7]">
-                    {profile.host.avatarUrl ? (
-                      <Image
-                        src={profile.host.avatarUrl}
-                        alt={displayName}
-                        width={64}
-                        height={64}
-                        unoptimized
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-2xl font-semibold text-[#222222]">
-                        {initials(displayName)}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#ff385c]">
-                      Profile card
-                    </p>
-                    <h3 className="mt-1 truncate text-xl font-semibold tracking-tight text-[#222222]">
-                      {displayName}
-                    </h3>
-                    <p className="mt-1 text-sm text-zinc-500">{joinedText}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 space-y-3">
-                  <div className="flex items-center gap-3 rounded-[16px] bg-[#f7f7f7] px-4 py-3">
-                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    <span className="text-sm text-[#222222]">
-                      {profile.host.identityVerified !== false
-                        ? "Identity verified"
-                        : "Identity not verified"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-[16px] bg-[#f7f7f7] px-4 py-3">
-                    <BadgeCheck className="h-4 w-4 text-[#ff385c]" />
-                    <span className="text-sm text-[#222222]">
-                      {getBadgeLabel(profile)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 rounded-[16px] bg-[#f7f7f7] px-4 py-3">
-                    <MessageSquare className="h-4 w-4 text-zinc-600" />
-                    <span className="text-sm text-[#222222]">
-                      {ratingLabel(rating)} average rating
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  <div className="rounded-[16px] border border-[#ebebeb] bg-[#f7f7f7] p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
-                      Reviews
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[#222222]">
-                      {formatCompactNumber(reviewsCount)}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[16px] border border-[#ebebeb] bg-[#f7f7f7] p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
-                      Listings
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[#222222]">
-                      {formatCompactNumber(listingsCount)}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-center text-xs leading-6 text-zinc-500">
-                  This profile stays compact and consistent with the rest of the Airbnb-style UI.
-                </p>
-              </div>
-            </aside>
           </div>
         </div>
       </main>

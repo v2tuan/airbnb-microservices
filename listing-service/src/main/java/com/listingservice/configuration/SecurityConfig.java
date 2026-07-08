@@ -55,6 +55,8 @@ public class SecurityConfig {
                         (request.getMethod().equals(HttpMethod.GET.name())
                                 && request.getRequestURI().startsWith("/listings/"))
                                 || (request.getMethod().equals(HttpMethod.POST.name())
+                                && request.getRequestURI().equals("/listings/batch"))
+                                || (request.getMethod().equals(HttpMethod.POST.name())
                                 && request.getRequestURI().equals("/listings/search/filter"))
                 )
                 .csrf(AbstractHttpConfigurer::disable)

@@ -12,6 +12,14 @@ export const fetchConversations = () =>
 export const fetchMessages = (conversationId: string) =>
   apiClient.get(`${prefix}/messages/${conversationId}`);
 
+export const fetchConversationMedia = (
+  conversationId: string,
+  params?: { type?: string; page?: number; limit?: number },
+) =>
+  apiClient.get(`${prefix}/messages/${conversationId}/media`, {
+    params,
+  });
+
 export const createOrGetConversation = (otherUserId: string) =>
   apiClient.post(`${prefix}/conversations`, { otherUserId });
 

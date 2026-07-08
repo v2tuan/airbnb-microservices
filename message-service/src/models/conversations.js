@@ -22,6 +22,11 @@ const conversationSchema = new mongoose.Schema({
       type: Array,
       default: []
     },
+    messageType: {
+      type: String,
+      enum: ['text', 'media', 'mixed'],
+      default: 'text'
+    },
     senderId: {
       type: String,
       default: null

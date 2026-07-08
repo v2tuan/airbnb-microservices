@@ -5,8 +5,8 @@ import {
   type ListingResponse,
   unwrapApiData,
 } from "@/api/endpoints/listing";
-import { fetchMessages, sendMessage } from "@/api/message";
-import { userAPI } from "@/api/endpoints/user";
+import { fetchConversationMedia, fetchMessages, sendMessage } from "@/api/message";
+import { userAPI, type PublicProfilePageData } from "@/api/endpoints/user";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversations } from "@/hooks/useConversations";
 import { useSocket } from "@/hooks/useSocket";
@@ -17,6 +17,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -24,11 +25,15 @@ import {
 import {
   Archive,
   ChevronLeft,
+  ChevronRight,
   FileText,
+  FolderOpen,
+  Grid2x2,
   Link2,
   Paperclip,
   MapPin,
   Mic,
+  Loader2,
   Play,
   Search,
   Send,
@@ -59,6 +64,7 @@ type ChatMessage = {
   createdAt: string;
   attachments?: ChatAttachment[];
   messageType?: "text" | "media" | "mixed";
+  recalled?: boolean;
 };
 
 type ChatAttachment = {
@@ -85,6 +91,31 @@ type ListingPreview = {
   basePrice: number;
   currency: string;
   maxGuests: number;
+};
+
+type ConversationMediaType = "image" | "video" | "audio" | "file";
+
+type ConversationMediaItem = {
+  url: string;
+  type: ConversationMediaType;
+  filename?: string;
+  mimetype?: string;
+  size?: number;
+  createdAt?: string;
+  messageId?: string;
+  senderId?: string;
+};
+
+type HostRoomItem = {
+  listingId: string;
+  title: string;
+  thumbnailUrl?: string;
+  city?: string;
+  country?: string;
+  basePrice?: number;
+  currency?: string;
+  avgRating?: number;
+  reviewCount?: number;
 };
 
 function isImageUrl(value?: string) {
@@ -492,7 +523,7 @@ function GuestMessagesPageContent() {
     id: "empty",
     conversationId: "empty",
     partnerId: undefined,
-    name: conversationId ? "Conversation not found" : "Select a conversation",
+    name: conversationId ?? "",
     avatar: "",
     listing: "",
     time: "",
@@ -518,6 +549,21 @@ function GuestMessagesPageContent() {
   >([]);
   const [partnerAvatarUrl, setPartnerAvatarUrl] = useState("");
   const [partnerDisplayName, setPartnerDisplayName] = useState("");
+  const [partnerProfilePage, setPartnerProfilePage] =
+    useState<PublicProfilePageData | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"details" | "media" | "rooms">(
+    "details",
+  );
+  const [mediaType, setMediaType] =
+    useState<ConversationMediaType>("image");
+  const [mediaItems, setMediaItems] = useState<ConversationMediaItem[]>([]);
+  const [mediaPage, setMediaPage] = useState(1);
+  const [mediaTotalPages, setMediaTotalPages] = useState(1);
+  const [mediaLoading, setMediaLoading] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [selectedMedia, setSelectedMedia] =
+    useState<ConversationMediaItem | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -529,6 +575,35 @@ function GuestMessagesPageContent() {
     partnerDisplayName || activeConversation.name || "Conversation";
 
   const draftListingId = extractListingId(draftText);
+  const hostRooms = useMemo(() => {
+    const items = partnerProfilePage?.listings?.items ?? [];
+    return items
+      .map((item: any): HostRoomItem | null => {
+        const listingId = String(item?.id ?? item?.listingId ?? "");
+        if (!listingId) return null;
+
+        return {
+          listingId,
+          title: String(item?.title ?? "Listing"),
+          thumbnailUrl: item?.thumbnailUrl ?? item?.coverImageUrl,
+          city: item?.city,
+          country: item?.country,
+          basePrice:
+            typeof item?.basePrice === "number"
+              ? item.basePrice
+              : typeof item?.pricing?.basePrice === "number"
+                ? item.pricing.basePrice
+                : undefined,
+          currency:
+            item?.currency ?? item?.pricing?.currency ?? "USD",
+          avgRating:
+            typeof item?.avgRating === "number" ? item.avgRating : undefined,
+          reviewCount:
+            typeof item?.reviewCount === "number" ? item.reviewCount : undefined,
+        };
+      })
+      .filter(Boolean) as HostRoomItem[];
+  }, [partnerProfilePage?.listings?.items]);
 
   const formatMessageTime = (value?: string | Date) => {
     if (!value) return "";
@@ -735,6 +810,7 @@ function GuestMessagesPageContent() {
               createdAt: formatMessageTime(message.createdAt),
               attachments,
               messageType,
+              recalled: Boolean(message.recalled),
             };
           },
         );
@@ -764,6 +840,7 @@ function GuestMessagesPageContent() {
       if (!activeConversation.partnerId) {
         setPartnerAvatarUrl("");
         setPartnerDisplayName(activeConversation.name ?? "");
+        setPartnerProfilePage(null);
         return;
       }
 
@@ -778,10 +855,12 @@ function GuestMessagesPageContent() {
         setPartnerDisplayName(
           profile?.fullName ?? activeConversation.name ?? "",
         );
+        setPartnerProfilePage(null);
       } catch {
         if (cancelled) return;
         setPartnerAvatarUrl("");
         setPartnerDisplayName(activeConversation.name ?? "");
+        setPartnerProfilePage(null);
       }
     };
 
@@ -791,6 +870,95 @@ function GuestMessagesPageContent() {
       cancelled = true;
     };
   }, [activeConversation.name, activeConversation.partnerId]);
+
+  useEffect(() => {
+    if (sidebarTab !== "rooms" || !activeConversation.partnerId) {
+      return;
+    }
+
+    let cancelled = false;
+    const partnerId = activeConversation.partnerId;
+
+    const loadHostRooms = async () => {
+      try {
+        const response = await userAPI.getPublicProfilePageData(
+          partnerId,
+          { listingPage: 1 },
+        );
+
+        if (!cancelled) {
+          setPartnerProfilePage(response.data ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setPartnerProfilePage(null);
+        }
+      }
+    };
+
+    void loadHostRooms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversation.partnerId, sidebarTab]);
+
+  useEffect(() => {
+    if (sidebarTab !== "media" || !conversationId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadConversationMedia = async () => {
+      try {
+        setMediaLoading(true);
+        setMediaError(null);
+
+        const response = await fetchConversationMedia(conversationId, {
+          type: mediaType,
+          page: mediaPage,
+          limit: 12,
+        });
+
+        if (cancelled) return;
+
+        const items = Array.isArray(response.data?.items)
+          ? response.data.items
+          : [];
+
+        setMediaItems((current) =>
+          mediaPage === 1 ? items : [...current, ...items],
+        );
+        setMediaTotalPages(response.data?.pagination?.totalPages ?? 1);
+      } catch (error) {
+        if (!cancelled) {
+          setMediaError(
+            error instanceof Error ? error.message : "Failed to load media",
+          );
+          setMediaItems([]);
+          setMediaTotalPages(1);
+        }
+      } finally {
+        if (!cancelled) {
+          setMediaLoading(false);
+        }
+      }
+    };
+
+    void loadConversationMedia();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, mediaPage, mediaType, sidebarTab]);
+
+  useEffect(() => {
+    setMediaPage(1);
+    setMediaItems([]);
+    setMediaError(null);
+    setSelectedMedia(null);
+  }, [conversationId, mediaType, sidebarTab]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -830,6 +998,7 @@ function GuestMessagesPageContent() {
         senderId?: string;
         attachments?: unknown[];
         messageType?: "text" | "media" | "mixed";
+        recalled?: boolean;
       };
     }) => {
       const message = payload.message;
@@ -873,6 +1042,7 @@ function GuestMessagesPageContent() {
                       ? "mixed"
                       : "media"
                     : "text"),
+                recalled: Boolean(message.recalled),
               },
             ]),
       ]);
@@ -1103,7 +1273,7 @@ function GuestMessagesPageContent() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_12px_45px_rgba(15,23,42,0.08)] sm:rounded-3xl">
-          <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[340px_1fr]">
+          <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[340px_1fr] xl:grid-cols-[340px_1fr_auto]">
             <aside
               className={`min-h-0 border-b border-zinc-200 lg:border-b-0 lg:border-r ${isMobileConversationOpen ? "hidden lg:block" : "block"}`}
             >
@@ -1207,7 +1377,7 @@ function GuestMessagesPageContent() {
             </aside>
 
             <section
-              className={`flex min-h-0 flex-col ${isMobileConversationOpen ? "flex" : "hidden lg:flex"}`}
+              className={`flex min-h-0 flex-col ${isMobileConversationOpen ? "flex" : "hidden lg:flex"} xl:border-r xl:border-zinc-200`}
             >
               <header className="border-b border-zinc-200 px-4 py-3 sm:px-6 sm:py-4">
                 <div className="flex items-start justify-between gap-3">
@@ -1274,6 +1444,18 @@ function GuestMessagesPageContent() {
                     >
                       <Archive className="h-4 w-4" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarOpen((current) => !current)}
+                      className="rounded-full border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:text-zinc-900"
+                      aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+                    >
+                      {sidebarOpen ? (
+                        <ChevronRight className="h-4 w-4" />
+                      ) : (
+                        <ChevronLeft className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
               </header>
@@ -1296,6 +1478,7 @@ function GuestMessagesPageContent() {
                           const attachments = message.attachments ?? [];
                           const hasAttachments = attachments.length > 0;
                           const isGuestMessage = message.sender === "guest";
+                          const isRecalled = Boolean(message.recalled);
 
                           return (
                             <div
@@ -1310,13 +1493,20 @@ function GuestMessagesPageContent() {
                                 }`}
                               >
                                 <div className="space-y-3">
-                                  {message.text ? (
+                                  {isRecalled ? (
+                                    <p
+                                      className={`flex items-center gap-2 italic ${isGuestMessage ? "text-zinc-300" : "text-zinc-500"}`}
+                                    >
+                                      <span className="h-2 w-2 rounded-full bg-zinc-400" />
+                                      Message recalled
+                                    </p>
+                                  ) : message.text ? (
                                     <p className="whitespace-pre-wrap leading-6">
                                       {message.text}
                                     </p>
                                   ) : null}
 
-                                  {hasAttachments ? (
+                                  {!isRecalled && hasAttachments ? (
                                     <div className="space-y-3">
                                       {attachments.map((attachment, index) =>
                                         renderAttachment(
@@ -1328,7 +1518,7 @@ function GuestMessagesPageContent() {
                                     </div>
                                   ) : null}
 
-                                  {listingId ? (
+                                  {!isRecalled && listingId ? (
                                     <div className="space-y-3">
                                       <p
                                         className={`text-xs ${isGuestMessage ? "text-zinc-300" : "text-zinc-500"}`}
@@ -1523,7 +1713,426 @@ function GuestMessagesPageContent() {
                 ) : null}
               </footer>
             </section>
+
+            <aside
+              className={`hidden min-h-0 flex-col overflow-hidden transition-[width,opacity] duration-300 ease-out xl:flex ${
+                sidebarOpen ? "w-[340px] opacity-100" : "w-0 opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white/95 p-1 text-xs font-medium text-zinc-600 shadow-sm backdrop-blur">
+                  {(["details", "media", "rooms"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setSidebarTab(tab)}
+                      className={`flex-1 rounded-xl px-3 py-2 transition ${
+                        sidebarTab === tab
+                          ? "bg-zinc-900 text-white"
+                          : "hover:bg-zinc-100 hover:text-zinc-900"
+                      }`}
+                    >
+                      {tab === "details"
+                        ? "Details"
+                        : tab === "media"
+                          ? "Media"
+                          : "Rooms"}
+                    </button>
+                  ))}
+                </div>
+
+                {sidebarTab === "details" ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-900 text-sm font-semibold text-white">
+                          {activeAvatarUrl ? (
+                            <Image
+                              src={activeAvatarUrl}
+                              alt={activeAvatarLabel}
+                              width={48}
+                              height={48}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span>{getInitials(activeAvatarLabel)}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-zinc-900">
+                            {activeAvatarLabel}
+                          </p>
+                          <p className="truncate text-xs text-zinc-500">
+                            {activeConversation.listing || "Conversation details"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-xl bg-zinc-50 p-3">
+                          <p className="text-zinc-500">Messages</p>
+                          <p className="mt-1 text-sm font-semibold text-zinc-900">
+                            {messages.length}
+                          </p>
+                        </div>
+                        <div className="rounded-xl bg-zinc-50 p-3">
+                          <p className="text-zinc-500">Unread</p>
+                          <p className="mt-1 text-sm font-semibold text-zinc-900">
+                            {conversations.find(
+                              (item) =>
+                                item.conversationId === activeConversation.conversationId,
+                            )?.unread
+                              ? "Yes"
+                              : "No"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-900">
+                            Host rooms
+                          </p>
+                          <p className="mt-0.5 text-xs text-zinc-500">
+                            More rooms from this host
+                          </p>
+                        </div>
+                        <FolderOpen className="h-4 w-4 text-zinc-500" />
+                      </div>
+
+                      <div className="mt-3 space-y-3">
+                        {hostRooms.length > 0 ? (
+                          hostRooms.slice(0, 3).map((room) => (
+                            <Link
+                              key={room.listingId}
+                              href={`/rooms/${room.listingId}`}
+                              className="group flex gap-3 rounded-2xl border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:bg-zinc-50"
+                            >
+                              <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
+                                {room.thumbnailUrl ? (
+                                  <Image
+                                    src={room.thumbnailUrl}
+                                    alt={room.title}
+                                    fill
+                                    className="object-cover"
+                                    sizes="80px"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                                    <Grid2x2 className="h-4 w-4" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-zinc-900">
+                                  {room.title}
+                                </p>
+                                <p className="truncate text-xs text-zinc-500">
+                                  {room.city || "Room"}
+                                  {room.country ? `, ${room.country}` : ""}
+                                </p>
+                                <p className="mt-1 text-xs font-medium text-rose-600">
+                                  {formatCurrency(room.basePrice ?? 0, room.currency ?? "USD")}
+                                </p>
+                              </div>
+                            </Link>
+                          ))
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-zinc-200 px-3 py-6 text-center text-xs text-zinc-500">
+                            No host room data yet.
+                          </div>
+                        )}
+                      </div>
+
+                      <Link
+                        href={`/users/profile/${activeConversation.partnerId ?? ""}`}
+                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-zinc-900 underline-offset-2 hover:underline"
+                      >
+                        View all rooms
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
+
+                {sidebarTab === "media" ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-zinc-900">
+                        Media library
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        Browse attachments shared in this conversation
+                      </p>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                        {(
+                          [
+                            ["image", "Images"],
+                            ["video", "Videos"],
+                            ["audio", "Audio"],
+                            ["file", "Files"],
+                          ] as const
+                        ).map(([type, label]) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setMediaType(type)}
+                            className={`rounded-full px-3 py-1.5 transition ${
+                              mediaType === type
+                                ? "bg-zinc-900 text-white"
+                                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {mediaError ? (
+                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-4 text-xs text-rose-700">
+                        {mediaError}
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-3">
+                      {mediaType === "image" || mediaType === "video" ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          {mediaItems.length > 0 ? (
+                            mediaItems.map((item) => (
+                              <button
+                                key={`${item.messageId ?? item.url}-${item.url}`}
+                                type="button"
+                                onClick={() => setSelectedMedia(item)}
+                                className="group overflow-hidden rounded-2xl border border-zinc-200 bg-white text-left transition hover:border-zinc-900"
+                              >
+                                <div className="relative aspect-square w-full bg-zinc-100">
+                                  {item.type === "image" ? (
+                                    <Image
+                                      src={item.url}
+                                      alt={item.filename ?? "Image"}
+                                      fill
+                                      className="object-cover"
+                                      sizes="160px"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center bg-zinc-950 text-white">
+                                      <Play className="h-6 w-6" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="px-3 py-2">
+                                  <p className="truncate text-xs font-medium text-zinc-900">
+                                    {item.filename ?? "Attachment"}
+                                  </p>
+                                  <p className="truncate text-[11px] text-zinc-500">
+                                    {formatFileSize(item.size)}
+                                  </p>
+                                </div>
+                              </button>
+                            ))
+                          ) : mediaLoading ? (
+                            <div className="col-span-2 flex items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-xs text-zinc-500">
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Loading media...
+                            </div>
+                          ) : (
+                            <div className="col-span-2 rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-center text-xs text-zinc-500">
+                              No media found for this type.
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {mediaItems.length > 0 ? (
+                            mediaItems.map((item) => (
+                              <a
+                                key={`${item.messageId ?? item.url}-${item.url}`}
+                                href={item.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-3 transition hover:border-zinc-900"
+                              >
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100">
+                                  {item.type === "audio" ? (
+                                    <Mic className="h-4 w-4 text-zinc-600" />
+                                  ) : (
+                                    <FileText className="h-4 w-4 text-zinc-600" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-900">
+                                    {item.filename ?? "Attachment"}
+                                  </p>
+                                  <p className="truncate text-xs text-zinc-500">
+                                    {formatFileSize(item.size)}
+                                  </p>
+                                </div>
+                              </a>
+                            ))
+                          ) : mediaLoading ? (
+                            <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-center text-xs text-zinc-500">
+                              <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                              Loading media...
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-center text-xs text-zinc-500">
+                              No media found for this type.
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {mediaLoading && mediaPage > 1 ? (
+                        <div className="flex items-center justify-center rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-xs text-zinc-500">
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading more...
+                        </div>
+                      ) : null}
+
+                      {mediaPage < mediaTotalPages ? (
+                        <button
+                          type="button"
+                          onClick={() => setMediaPage((current) => current + 1)}
+                          className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900"
+                        >
+                          Load more
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {sidebarTab === "rooms" ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-zinc-900">
+                        Host discovery
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        Explore the host profile and other rooms
+                      </p>
+                    </div>
+
+                    {partnerProfilePage?.listings?.items?.length ? (
+                      <div className="grid gap-3">
+                        {partnerProfilePage.listings.items.map((item: any) => (
+                          <Link
+                            key={item.id ?? item.listingId}
+                            href={`/rooms/${item.id ?? item.listingId}`}
+                            className="group flex gap-3 rounded-2xl border border-zinc-200 bg-white p-2.5 transition hover:border-zinc-900"
+                          >
+                            <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
+                              {item.thumbnailUrl ? (
+                                <Image
+                                  src={item.thumbnailUrl}
+                                  alt={item.title ?? "Listing"}
+                                  fill
+                                  className="object-cover"
+                                  sizes="80px"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                                  <Grid2x2 className="h-4 w-4" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-zinc-900">
+                                {item.title ?? "Listing"}
+                              </p>
+                              <p className="truncate text-xs text-zinc-500">
+                                {item.city ?? "Unknown city"}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-rose-600">
+                                {formatCurrency(
+                                  typeof item.basePrice === "number"
+                                    ? item.basePrice
+                                    : typeof item.pricing?.basePrice === "number"
+                                      ? item.pricing.basePrice
+                                      : 0,
+                                  item.currency ?? item.pricing?.currency ?? "USD",
+                                )}
+                              </p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-center text-xs text-zinc-500">
+                        No rooms loaded yet.
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </aside>
           </div>
+
+          {selectedMedia ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/75 p-4">
+              <div className="w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-zinc-900">
+                      {selectedMedia.filename ?? "Attachment preview"}
+                    </p>
+                    <p className="truncate text-xs text-zinc-500">
+                      {selectedMedia.type.toUpperCase()}{" "}
+                      {selectedMedia.size ? `• ${formatFileSize(selectedMedia.size)}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMedia(null)}
+                    className="rounded-full border border-zinc-200 p-2 text-zinc-600 transition hover:border-zinc-900 hover:text-zinc-900"
+                    aria-label="Close preview"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="bg-zinc-950">
+                  {selectedMedia.type === "image" ? (
+                    <div className="relative aspect-video w-full">
+                      <Image
+                        src={selectedMedia.url}
+                        alt={selectedMedia.filename ?? "Attachment image"}
+                        fill
+                        className="object-contain"
+                        sizes="100vw"
+                      />
+                    </div>
+                  ) : selectedMedia.type === "video" ? (
+                    <video controls className="max-h-[80vh] w-full bg-black">
+                      <source src={selectedMedia.url} />
+                    </video>
+                  ) : selectedMedia.type === "audio" ? (
+                    <div className="flex items-center justify-center px-6 py-16">
+                      <audio controls className="w-full max-w-3xl">
+                        <source src={selectedMedia.url} />
+                      </audio>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center text-white">
+                      <FileText className="h-10 w-10 text-zinc-300" />
+                      <a
+                        href={selectedMedia.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-100"
+                      >
+                        Open file
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
     </main>
