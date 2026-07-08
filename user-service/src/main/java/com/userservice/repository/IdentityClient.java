@@ -51,15 +51,6 @@ public interface IdentityClient {
     );
 
     @GetMapping(
-            "/admin/realms/airbnb/users/{userId}/role-mappings/realm"
-    )
-    List<KeycloakRoleResponse> getRealmRoleMappings(
-            @RequestHeader("Authorization") String token,
-
-            @PathVariable("userId") String userId
-    );
-
-    @GetMapping(
             "/admin/realms/airbnb/users/{userId}"
     )
     KeycloakUserResponse getUser(

@@ -67,6 +67,23 @@ public class AdminUserController {
         .build());
   }
 
+  @PutMapping("/sync-keycloak")
+  public ResponseEntity<ApiResponse<Integer>> syncKeycloakUserCache(
+      @AuthenticationPrincipal Jwt jwt
+  ) {
+    if (!hasRealmRole(jwt, "ADMIN")) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin role required");
+    }
+
+    int updated = userService.syncAdminUserCacheFromKeycloak();
+
+    return ResponseEntity.ok(ApiResponse.<Integer>builder()
+        .success(true)
+        .message("Admin user cache synced")
+        .data(updated)
+        .build());
+  }
+
   @PutMapping("/{keycloakUserId}/unblock")
   public ResponseEntity<ApiResponse<Void>> unblockUser(
       @AuthenticationPrincipal Jwt jwt,

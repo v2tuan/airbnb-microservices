@@ -254,7 +254,6 @@ public class ListingDetailController {
         } catch (IllegalArgumentException ex) {
             return Sort.Direction.DESC;
         }
-    }
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListings(
