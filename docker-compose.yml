@@ -232,8 +232,6 @@ services:
       args:
         APP_PORT: 8090
     image: airbnb/chatbot-service:local
-    env_file:
-      - ./chatbot-service/.env
     expose:
       - "8090"
     environment:
