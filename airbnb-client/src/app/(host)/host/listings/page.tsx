@@ -168,8 +168,24 @@ function getStatusMeta(status?: ListingStatus) {
     };
   }
 
+  if (status === "SUSPENDED") {
+    return {
+      label: "Suspended",
+      dot: "bg-[#c13515]",
+      pill: "bg-white text-[#c13515]",
+    };
+  }
+
+  if (status === "DRAFT") {
+    return {
+      label: "Draft",
+      dot: "bg-[#717171]",
+      pill: "bg-white text-[#222222]",
+    };
+  }
+
   return {
-    label: "Deactive",
+    label: "Inactive",
     dot: "bg-[#e07912]",
     pill: "bg-white text-[#222222]",
   };
@@ -177,6 +193,15 @@ function getStatusMeta(status?: ListingStatus) {
 
 function isListingActive(item: HostListingItem) {
   return item.status === "ACTIVE";
+}
+
+function isListingSuspended(item: HostListingItem) {
+  return item.status === "SUSPENDED";
+}
+
+function getToggleStatusLabel(item: HostListingItem) {
+  if (isListingSuspended(item)) return "Suspended";
+  return isListingActive(item) ? "Deactivate" : "Activate";
 }
 
 function getActionErrorMessage(error: unknown, fallback: string) {
@@ -325,6 +350,12 @@ export default function HostListingsPage() {
 
   const handleToggleStatus = async (item: HostListingItem) => {
     if (!token) return;
+    if (isListingSuspended(item)) {
+      window.alert(
+        "This listing is suspended by admin and cannot be activated.",
+      );
+      return;
+    }
 
     const nextAction = isListingActive(item) ? "deactivate" : "activate";
     setSavingId(`${nextAction}-${item.id}`);
@@ -597,21 +628,29 @@ export default function HostListingsPage() {
                             type="button"
                             onClick={() => void handleToggleStatus(item)}
                             disabled={
+                              isListingSuspended(item) ||
                               savingId === `activate-${item.id}` ||
                               savingId === `deactivate-${item.id}`
                             }
-                            className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f2f2f2] px-3 text-xs font-semibold text-[#222222] hover:bg-[#ebebeb] disabled:opacity-60"
-                            aria-label={`${isListingActive(item) ? "Deactivate" : "Activate"} ${getListingTitle(item)}`}
+                            className="inline-flex h-9 items-center gap-2 rounded-full bg-[#f2f2f2] px-3 text-xs font-semibold text-[#222222] hover:bg-[#ebebeb] disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label={`${getToggleStatusLabel(item)} ${getListingTitle(item)}`}
+                            title={
+                              isListingSuspended(item)
+                                ? "Suspended listings can only be restored by admin"
+                                : getToggleStatusLabel(item)
+                            }
                           >
                             {savingId === `activate-${item.id}` ||
                             savingId === `deactivate-${item.id}` ? (
                               <Loader2 className="size-4 animate-spin" />
+                            ) : isListingSuspended(item) ? (
+                              <PowerOff className="size-4" />
                             ) : isListingActive(item) ? (
                               <PowerOff className="size-4" />
                             ) : (
                               <Power className="size-4" />
                             )}
-                            {isListingActive(item) ? "Deactive" : "Active"}
+                            {getToggleStatusLabel(item)}
                           </button>
                           <button
                             type="button"
@@ -676,20 +715,28 @@ export default function HostListingsPage() {
                     type="button"
                     onClick={() => void handleToggleStatus(item)}
                     disabled={
+                      isListingSuspended(item) ||
                       savingId === `activate-${item.id}` ||
                       savingId === `deactivate-${item.id}`
                     }
-                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#f2f2f2] px-2.5 text-[11px] font-semibold text-[#222222] hover:bg-[#ebebeb] disabled:opacity-60"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#f2f2f2] px-2.5 text-[11px] font-semibold text-[#222222] hover:bg-[#ebebeb] disabled:cursor-not-allowed disabled:opacity-60"
+                    title={
+                      isListingSuspended(item)
+                        ? "Suspended listings can only be restored by admin"
+                        : getToggleStatusLabel(item)
+                    }
                   >
                     {savingId === `activate-${item.id}` ||
                     savingId === `deactivate-${item.id}` ? (
                       <Loader2 className="size-3.5 animate-spin" />
+                    ) : isListingSuspended(item) ? (
+                      <PowerOff className="size-3.5" />
                     ) : isListingActive(item) ? (
                       <PowerOff className="size-3.5" />
                     ) : (
                       <Power className="size-3.5" />
                     )}
-                    {isListingActive(item) ? "Deactive" : "Active"}
+                    {getToggleStatusLabel(item)}
                   </button>
                   <button
                     type="button"
