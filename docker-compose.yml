@@ -229,13 +229,14 @@ services:
       args:
         APP_PORT: 8090
     image: airbnb/chatbot-service:local
+    env_file:
+      - ./chatbot-service/.env
     expose:
       - "8090"
     environment:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: chatbot-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       GEMINI_TEMPERATURE: ${GEMINI_TEMPERATURE:-0.3}
       GEMINI_MAX_OUTPUT_TOKENS: ${GEMINI_MAX_OUTPUT_TOKENS:-2048}

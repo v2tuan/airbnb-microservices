@@ -106,6 +106,16 @@ export const userAPI = {
     );
   },
 
+  getPublicHostByKeycloakUserIds: (
+    keycloakUserIds: string[],
+  ): Promise<AxiosResponse<PublicHostResponseDTO[]>> => {
+    return apiClient.post<PublicHostResponseDTO[]>(
+      `${prefix}/users/public/batch`,
+      { keycloakUserIds },
+      publicRequest,
+    );
+  },
+
   getPublicProfileById: (
     id: string,
     params?: { reviewPage?: number; listingPage?: number },

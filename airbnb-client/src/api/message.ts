@@ -1,14 +1,19 @@
-import apiClient from './client'
+import apiClient from "./client";
 
-const prefix = process.env.NEXT_PUBLIC_PREFIX ?? ''
+const prefix = process.env.NEXT_PUBLIC_PREFIX ?? "";
 
-export const sendMessage = (payload: any) => apiClient.post(`${prefix}/messages`, payload)
+export const sendMessage = (payload: FormData | Record<string, any>) =>
+  apiClient.post(`${prefix}/messages`, payload);
 
 // Backend lấy userId từ JWT token, không cần pass userId
-export const fetchConversations = () => apiClient.get(`${prefix}/conversations`)
+export const fetchConversations = () =>
+  apiClient.get(`${prefix}/conversations`);
 
-export const fetchMessages = (conversationId: string) => apiClient.get(`${prefix}/messages/${conversationId}`)
+export const fetchMessages = (conversationId: string) =>
+  apiClient.get(`${prefix}/messages/${conversationId}`);
 
-export const createOrGetConversation = (otherUserId: string) => apiClient.post(`${prefix}/conversations`, { otherUserId })
+export const createOrGetConversation = (otherUserId: string) =>
+  apiClient.post(`${prefix}/conversations`, { otherUserId });
 
-export const fetchConversationById = (conversationId: string) => apiClient.get(`${prefix}/conversations/${conversationId}`)
+export const fetchConversationById = (conversationId: string) =>
+  apiClient.get(`${prefix}/conversations/${conversationId}`);
