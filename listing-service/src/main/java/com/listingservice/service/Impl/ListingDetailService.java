@@ -1,5 +1,6 @@
 package com.listingservice.service.Impl;
 
+import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.response.CompositeListingResponse;
 import com.listingservice.dto.response.CompositeListingResponse.AvailabilityData;
 import com.listingservice.dto.response.CompositeListingResponse.BookingRequestData;
@@ -8,6 +9,8 @@ import com.listingservice.dto.response.CompositeListingResponse.RatingData;
 import com.listingservice.entity.Listing;
 import com.listingservice.entity.ListingPhoto;
 import com.listingservice.entity.ListingPricing;
+import com.listingservice.exception.AppException;
+import com.listingservice.exception.ErrorCode;
 import com.listingservice.repository.ListingRepository;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.HostProfileClient;
@@ -43,7 +46,11 @@ public class ListingDetailService implements IListingDetailService {
       Integer infants,
       Integer pets) {
     Listing listing = listingRepository.findById(listingId)
-        .orElseThrow(() -> new IllegalArgumentException("Listing not found"));
+        .orElseThrow(() -> new AppException(ErrorCode.LISTING_NOT_FOUND));
+
+    if (listing.getStatus() != ListingStatus.ACTIVE) {
+      throw new AppException(ErrorCode.LISTING_UNAVAILABLE);
+    }
 
     int nights = (int) Math.max(ChronoUnit.DAYS.between(checkIn, checkOut), 0);
     boolean available = availabilityClient.isAvailable(listingId, checkIn, checkOut);

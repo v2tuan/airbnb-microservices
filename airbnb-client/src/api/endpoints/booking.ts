@@ -1,13 +1,13 @@
 import type { ApiResponse } from "@/types/api.type";
 import type {
-  BookingDetailResponse,
+  AdminComplaintDecision,
   BookingAvailabilityCalendarResponse,
+  BookingDetailResponse,
   BookingFilterType,
   BookingStatus,
   BookingTripsResponse,
   CheckoutRequest,
   CheckoutResponse,
-  AdminComplaintDecision,
   ComplaintResponse,
   ComplaintStatus,
   ComplaintType,
@@ -23,6 +23,10 @@ import type {
 import apiClient from "../client";
 
 const prefix = process.env.NEXT_PUBLIC_PREFIX as string;
+const publicRequest = {
+  _skipAuth: true,
+  _skipAuthRefresh: true,
+};
 
 /**
  * 1 call -> tạo Booking + PaymentIntent.
@@ -32,9 +36,13 @@ export async function checkout(
   token: string | null,
   data: CheckoutRequest,
 ): Promise<CheckoutResponse> {
-  const res = await apiClient.post<CheckoutResponse>(`${prefix}/payments/checkout`, data, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await apiClient.post<CheckoutResponse>(
+    `${prefix}/payments/checkout`,
+    data,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
   return res.data;
 }
 
@@ -42,10 +50,13 @@ export async function getMyBookings(
   token: string | null,
   type: BookingFilterType = "ALL",
 ): Promise<ApiResponse<BookingTripsResponse[]>> {
-  const res = await apiClient.get<ApiResponse<BookingTripsResponse[]>>(`${prefix}/bookings/me`, {
-    params: { type },
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await apiClient.get<ApiResponse<BookingTripsResponse[]>>(
+    `${prefix}/bookings/me`,
+    {
+      params: { type },
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   return res.data;
 }
@@ -58,13 +69,14 @@ export async function getListingUnavailableDates(
     checkOut: string;
   },
 ): Promise<ApiResponse<BookingAvailabilityCalendarResponse>> {
-  const res = await apiClient.get<ApiResponse<BookingAvailabilityCalendarResponse>>(
-    `${prefix}/bookings/availability/calendar`,
-    {
-      params: { listingId, ...params },
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  const res = await apiClient.get<
+    ApiResponse<BookingAvailabilityCalendarResponse>
+  >(`${prefix}/bookings/availability/calendar`, {
+    params: { listingId, ...params },
+    ...(token
+      ? { headers: { Authorization: `Bearer ${token}` } }
+      : publicRequest),
+  });
 
   return res.data;
 }
@@ -73,9 +85,12 @@ export async function getBookingDetail(
   token: string | null,
   bookingId: string,
 ): Promise<ApiResponse<BookingDetailResponse>> {
-  const res = await apiClient.get<ApiResponse<BookingDetailResponse>>(`${prefix}/bookings/${bookingId}/detail`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await apiClient.get<ApiResponse<BookingDetailResponse>>(
+    `${prefix}/bookings/${bookingId}/detail`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   return res.data;
 }
@@ -143,9 +158,12 @@ export async function createComplaint(
 export async function getMyComplaints(
   token: string | null,
 ): Promise<ApiResponse<ComplaintResponse[]>> {
-  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(`${prefix}/bookings/me/complaints`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(
+    `${prefix}/bookings/me/complaints`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   return res.data;
 }
@@ -292,9 +310,12 @@ export async function confirmHostCancellationQuote(
 export async function getHostComplaints(
   token: string | null,
 ): Promise<ApiResponse<ComplaintResponse[]>> {
-  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(`${prefix}/bookings/host/complaints`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(
+    `${prefix}/bookings/host/complaints`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   return res.data;
 }
@@ -317,10 +338,13 @@ export async function getAdminComplaints(
   token: string | null,
   status?: ComplaintStatus,
 ): Promise<ApiResponse<ComplaintResponse[]>> {
-  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(`${prefix}/bookings/admin/complaints`, {
-    params: status ? { status } : undefined,
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await apiClient.get<ApiResponse<ComplaintResponse[]>>(
+    `${prefix}/bookings/admin/complaints`,
+    {
+      params: status ? { status } : undefined,
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   return res.data;
 }

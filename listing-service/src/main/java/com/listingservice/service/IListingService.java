@@ -26,6 +26,7 @@ public interface IListingService {
     List<ListingResponse> getListingsByIds(List<UUID> listingIds);
     List<ListingResponse> getAllListings();
     Page<ListingResponse> getAdminListings(ListingStatus status, String keyword, Pageable pageable);
+    Page<ListingItemResponse> getAdminListingItems(ListingStatus status, String keyword, Pageable pageable);
     List<ListingResponse> getListingsByHost(String hostId);
         List<ListingResponse> searchListings(
             String city,

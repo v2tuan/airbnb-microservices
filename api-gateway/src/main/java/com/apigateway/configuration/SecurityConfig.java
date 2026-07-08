@@ -81,6 +81,7 @@ public class SecurityConfig {
                 .securityMatcher(ServerWebExchangeMatchers.pathMatchers(
                         prefix + "/users/auth/**",
                         prefix + "/listings/**",
+                        prefix + "/bookings/availability/**",
                         prefix + "/ratings/**",
                         prefix + "/profile/**",
                         // Ensure literal API prefix route is also allowed in case

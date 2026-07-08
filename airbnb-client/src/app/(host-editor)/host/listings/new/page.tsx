@@ -260,8 +260,12 @@ export default function NewListingPage() {
   const [basePrice, setBasePrice] = useState(100);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
-  const [selectedAmenityNames, setSelectedAmenityNames] = useState<string[]>([]);
+  const [selectedAmenityNames, setSelectedAmenityNames] = useState<string[]>(
+    [],
+  );
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -379,21 +383,55 @@ export default function NewListingPage() {
   const handleUploadPhotos = async (files?: FileList | null) => {
     if (!files?.length || !token) return;
 
+    const selectedFiles = Array.from(files);
+    const uploadedBytes = new Array(selectedFiles.length).fill(0);
+    const totalBytes =
+      selectedFiles.reduce((sum, file) => sum + file.size, 0) || 1;
     setUploading(true);
+    setUploadProgress(1);
+    setUploadLabel(
+      selectedFiles.length === 1
+        ? `Uploading ${selectedFiles[0].name}`
+        : `Uploading ${selectedFiles.length} photos`,
+    );
     setError("");
     try {
-      const uploadedUrls: string[] = [];
-
-      for (const file of Array.from(files)) {
-        const response = await uploadAPI.uploadImage(token, file);
-        uploadedUrls.push(response.data.data.url);
-      }
+      const uploadedUrls = await Promise.all(
+        selectedFiles.map(async (file, index) => {
+          const response = await uploadAPI.uploadImage(
+            token,
+            file,
+            undefined,
+            (event) => {
+              uploadedBytes[index] = Math.min(event.loaded, file.size);
+              const totalUploaded = uploadedBytes.reduce(
+                (sum, loaded) => sum + loaded,
+                0,
+              );
+              setUploadProgress(
+                Math.min(99, Math.round((totalUploaded / totalBytes) * 100)),
+              );
+            },
+          );
+          uploadedBytes[index] = file.size;
+          const totalUploaded = uploadedBytes.reduce(
+            (sum, loaded) => sum + loaded,
+            0,
+          );
+          setUploadProgress(
+            Math.min(100, Math.round((totalUploaded / totalBytes) * 100)),
+          );
+          return response.data.data.url;
+        }),
+      );
 
       setPhotoUrls((current) => [...current, ...uploadedUrls]);
     } catch (error: any) {
       setError(error?.response?.data?.message ?? "Unable to upload images.");
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadLabel("");
     }
   };
 
@@ -705,7 +743,13 @@ export default function NewListingPage() {
                         photo.
                       </p>
                     </div>
-                    <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-neutral-950 px-5 text-sm font-semibold text-white">
+                    <label
+                      className={`inline-flex h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold text-white ${
+                        uploading
+                          ? "cursor-wait bg-neutral-500"
+                          : "cursor-pointer bg-neutral-950"
+                      }`}
+                    >
                       {uploading ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
@@ -716,6 +760,7 @@ export default function NewListingPage() {
                         type="file"
                         accept="image/*"
                         multiple
+                        disabled={uploading}
                         onChange={(event) =>
                           void handleUploadPhotos(event.target.files)
                         }
@@ -723,6 +768,21 @@ export default function NewListingPage() {
                       />
                     </label>
                   </div>
+
+                  {uploading ? (
+                    <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                      <div className="flex items-center justify-between gap-4 text-sm font-semibold text-neutral-950">
+                        <span>{uploadLabel || "Uploading photos"}</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-200">
+                        <div
+                          className="h-full rounded-full bg-neutral-950 transition-[width] duration-200"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
 
                   {photoUrls.length > 0 ? (
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -890,7 +950,8 @@ export default function NewListingPage() {
                   </p>
                   <div className="mt-5 grid gap-3">
                     {cancellationPolicyOptions.map((option) => {
-                      const active = form.cancellationPolicyCode === option.code;
+                      const active =
+                        form.cancellationPolicyCode === option.code;
 
                       return (
                         <button

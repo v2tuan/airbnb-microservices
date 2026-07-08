@@ -18,14 +18,6 @@ import UserMenu from "./user-menu";
 
 const navItems = [
   {
-    label: "Today",
-    href: "/host",
-  },
-  {
-    label: "Calendar",
-    href: "/host/calendar",
-  },
-  {
     label: "Listings",
     href: "/host/listings",
   },
@@ -33,6 +25,10 @@ const navItems = [
   {
     label: "Reservations",
     href: "/host/reservations",
+  },
+  {
+    label: "Transactions",
+    href: "/host/transactions",
   },
   {
     label: "Messages",

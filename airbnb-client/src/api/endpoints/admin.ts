@@ -199,6 +199,17 @@ export interface AdminListingsQuery {
   keyword?: string;
 }
 
+export interface AdminListingItemRecord {
+  id: string;
+  title: string;
+  thumbnailUrl?: string | null;
+  city?: string | null;
+  country?: string | null;
+  propertyType?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
+}
+
 export interface PageResponse<T> {
   content: T[];
   number: number;
@@ -430,6 +441,24 @@ export async function listAdminListings(
   return unwrap(
     await apiClient.get(
       `${prefix}/listings/admin${params.toString() ? `?${params.toString()}` : ""}`,
+      authConfig(token),
+    ),
+  );
+}
+
+export async function listAdminListingItems(
+  token: string | null,
+  query: AdminListingsQuery = {},
+): Promise<ApiResponse<PageResponse<AdminListingItemRecord>>> {
+  const params = new URLSearchParams();
+  if (query.page !== undefined) params.set("page", String(query.page));
+  if (query.size !== undefined) params.set("size", String(query.size));
+  if (query.status) params.set("status", query.status);
+  if (query.keyword?.trim()) params.set("keyword", query.keyword.trim());
+
+  return unwrap(
+    await apiClient.get(
+      `${prefix}/listings/admin/items${params.toString() ? `?${params.toString()}` : ""}`,
       authConfig(token),
     ),
   );

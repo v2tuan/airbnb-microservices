@@ -18,6 +18,7 @@ public enum ErrorCode {
     INVALID_LISTING_STATUS(2005, "Invalid listing status", HttpStatus.BAD_REQUEST),
     UNAUTHORIZED_LISTING_ACCESS(2006, "You do not have permission to access this listing", HttpStatus.FORBIDDEN),
     LISTING_HAS_ACTIVE_BOOKINGS(2007, "Cannot deactivate listing with active bookings", HttpStatus.CONFLICT),
+    LISTING_UNAVAILABLE(2008, "This listing is currently unavailable", HttpStatus.NOT_FOUND),
     
     // Amenity errors (2100-2199)
     AMENITY_NOT_FOUND(2101, "Amenity not found", HttpStatus.NOT_FOUND),

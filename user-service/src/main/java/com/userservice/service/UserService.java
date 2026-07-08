@@ -2,12 +2,14 @@ package com.userservice.service;
 
 import com.event.dto.NotificationEvent;
 import com.userservice.dto.identity.*;
+import com.userservice.dto.projection.AdminUserRow;
 import com.userservice.dto.request.RegistrationRequest;
 import com.userservice.dto.request.UserUpdateRequestDTO;
 import com.userservice.dto.response.AdminUserResponseDTO;
 import com.userservice.dto.response.UserProfileResponseDTO;
 import com.userservice.entity.HostProfile;
 import com.userservice.entity.User;
+import com.userservice.entity.UserRole;
 import com.userservice.mapper.UserMapper;
 import com.userservice.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -62,31 +64,98 @@ public class UserService {
   @Transactional(readOnly = true)
   public Page<AdminUserResponseDTO> getAdminUsers(int page, int size, String role) {
     String normalizedRole = normalizeAdminRoleFilter(role);
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-    String bearerToken = getClientBearerToken();
-    RoleMemberships roleMemberships = getRoleMemberships(bearerToken);
-    Page<User> users = switch (normalizedRole) {
-      case "ADMIN" -> roleMemberships.adminIds().isEmpty()
-          ? Page.empty(pageable)
-          : userRepository.findByKeycloakUserIdIn(new ArrayList<>(roleMemberships.adminIds()), pageable);
-      case "HOST" -> roleMemberships.hostIds().isEmpty()
-          ? Page.empty(pageable)
-          : userRepository.findByKeycloakUserIdIn(new ArrayList<>(roleMemberships.hostIds()), pageable);
-      case "USER" -> {
-        Set<String> elevatedIds = new HashSet<>(roleMemberships.adminIds());
-        elevatedIds.addAll(roleMemberships.hostIds());
-        yield elevatedIds.isEmpty()
-            ? userRepository.findAll(pageable)
-            : userRepository.findByKeycloakUserIdNotIn(new ArrayList<>(elevatedIds), pageable);
-      }
-      default -> userRepository.findAll(pageable);
+    Pageable pageable = PageRequest.of(page, size);
+    Page<AdminUserRow> users = switch (normalizedRole) {
+      case "ADMIN" -> userRepository.findAdminUserRowsByRole(UserRole.ADMIN, pageable);
+      case "HOST" -> userRepository.findAdminUserRowsByRole(UserRole.HOST, pageable);
+      case "USER" -> userRepository.findAdminUserRowsByRoleOrNull(UserRole.USER, pageable);
+      default -> userRepository.findAdminUserRows(pageable);
     };
 
-    return users.map(user -> toAdminUserResponse(
-        user,
-        roleMemberships.enabledById().get(user.getKeycloakUserId()),
-        getRolesFromMemberships(user.getKeycloakUserId(), roleMemberships)
-    ));
+    return users.map(this::toAdminUserResponse);
+  }
+
+  public int syncAdminUserCacheFromKeycloak() {
+    return syncKeycloakUserCacheFromKeycloak();
+  }
+
+  private int syncKeycloakUserCacheFromKeycloak() {
+    String bearerToken = getClientBearerToken();
+    RoleMemberships roleMemberships = getRoleMemberships(bearerToken);
+    List<User> users = userRepository.findAll();
+    List<User> changedUsers = new ArrayList<>();
+
+    for (User user : users) {
+      UserRole role = getCachedRoleFromMemberships(user.getKeycloakUserId(), roleMemberships);
+      Boolean enabled = roleMemberships.enabledById().getOrDefault(
+          user.getKeycloakUserId(),
+          user.getAccountEnabled() != null ? user.getAccountEnabled() : Boolean.TRUE
+      );
+
+      if (user.getAccountRole() != role || !Objects.equals(user.getAccountEnabled(), enabled)) {
+        user.setAccountRole(role);
+        user.setAccountEnabled(enabled);
+        changedUsers.add(user);
+      }
+    }
+
+    if (!changedUsers.isEmpty()) {
+      userRepository.saveAll(changedUsers);
+    }
+
+    return changedUsers.size();
+  }
+
+  private RoleMemberships getRoleMemberships(String bearerToken) {
+    return new RoleMemberships(
+        getKeycloakUserIdsByRole(bearerToken, "ADMIN"),
+        getKeycloakUserIdsByRole(bearerToken, "HOST"),
+        getKeycloakEnabledById(bearerToken)
+    );
+  }
+
+  private Set<String> getKeycloakUserIdsByRole(String bearerToken, String role) {
+    return identityClient.getUsersByRealmRole(bearerToken, role, 0, 10000)
+        .stream()
+        .map(KeycloakUserResponse::getId)
+        .filter(Objects::nonNull)
+        .filter(id -> !id.isBlank())
+        .collect(java.util.stream.Collectors.toSet());
+  }
+
+  private UserRole getCachedRoleFromMemberships(String keycloakUserId, RoleMemberships roleMemberships) {
+    if (keycloakUserId == null || keycloakUserId.isBlank()) {
+      return UserRole.USER;
+    }
+
+    if (roleMemberships.adminIds().contains(keycloakUserId)) {
+      return UserRole.ADMIN;
+    }
+    if (roleMemberships.hostIds().contains(keycloakUserId)) {
+      return UserRole.HOST;
+    }
+
+    return UserRole.USER;
+  }
+
+  private List<String> getRolesFromCachedRole(UserRole role) {
+    UserRole safeRole = role != null ? role : UserRole.USER;
+    return List.of(safeRole.name());
+  }
+
+  private Map<String, Boolean> getKeycloakEnabledById(String bearerToken) {
+    return identityClient.getUsers(bearerToken, 0, 10000)
+        .stream()
+        .filter(user -> user.getId() != null && !user.getId().isBlank())
+        .filter(user -> user.getEnabled() != null)
+        .collect(java.util.stream.Collectors.toMap(
+            KeycloakUserResponse::getId,
+            KeycloakUserResponse::getEnabled,
+            (first, ignored) -> first
+        ));
+  }
+
+  private record RoleMemberships(Set<String> adminIds, Set<String> hostIds, Map<String, Boolean> enabledById) {
   }
 
   public void setAdminUserBlocked(String keycloakUserId, boolean blocked, String adminKeycloakUserId) {
@@ -105,6 +174,11 @@ public class UserService {
             .enabled(!blocked)
             .build()
     );
+
+    userRepository.findByKeycloakUserId(keycloakUserId).ifPresent(user -> {
+      user.setAccountEnabled(!blocked);
+      userRepository.save(user);
+    });
   }
 
   private String normalizeAdminRoleFilter(String role) {
@@ -118,68 +192,6 @@ public class UserService {
     }
 
     return "ALL";
-  }
-
-  private RoleMemberships getRoleMemberships(String bearerToken) {
-    return new RoleMemberships(
-        getKeycloakUserIdsByRole(bearerToken, "ADMIN"),
-        getKeycloakUserIdsByRole(bearerToken, "HOST"),
-        getKeycloakEnabledById(bearerToken)
-    );
-  }
-
-  private Set<String> getKeycloakUserIdsByRole(String bearerToken, String role) {
-    try {
-      return identityClient.getUsersByRealmRole(bearerToken, role, 0, 10000)
-          .stream()
-          .map(KeycloakUserResponse::getId)
-          .filter(Objects::nonNull)
-          .filter(id -> !id.isBlank())
-          .collect(java.util.stream.Collectors.toSet());
-    } catch (Exception ex) {
-      log.warn("Could not read Keycloak users for role {}", role, ex);
-      return Set.of();
-    }
-  }
-
-  private List<String> getRolesFromMemberships(String keycloakUserId, RoleMemberships roleMemberships) {
-    if (keycloakUserId == null || keycloakUserId.isBlank()) {
-      return List.of();
-    }
-
-    List<String> roles = new ArrayList<>();
-    if (roleMemberships.adminIds().contains(keycloakUserId)) {
-      roles.add("ADMIN");
-    }
-    if (roleMemberships.hostIds().contains(keycloakUserId)) {
-      roles.add("HOST");
-    }
-
-    return roles;
-  }
-
-  private Map<String, Boolean> getKeycloakEnabledById(String bearerToken) {
-    try {
-      return identityClient.getUsers(bearerToken, 0, 10000)
-          .stream()
-          .filter(user -> user.getId() != null && !user.getId().isBlank())
-          .filter(user -> user.getEnabled() != null)
-          .collect(java.util.stream.Collectors.toMap(
-              KeycloakUserResponse::getId,
-              KeycloakUserResponse::getEnabled,
-              (first, ignored) -> first
-          ));
-    } catch (Exception ex) {
-      log.warn("Could not read Keycloak enabled statuses", ex);
-      return Map.of();
-    }
-  }
-
-  private record RoleMemberships(
-      Set<String> adminIds,
-      Set<String> hostIds,
-      Map<String, Boolean> enabledById
-  ) {
   }
 
   @Transactional
@@ -264,6 +276,30 @@ public class UserService {
     );
   }
 
+  private AdminUserResponseDTO toAdminUserResponse(AdminUserRow user) {
+    String fullName = ((user.getFirstName() != null ? user.getFirstName() : "")
+        + " "
+        + (user.getLastName() != null ? user.getLastName() : "")).trim();
+
+    return new AdminUserResponseDTO(
+        user.getUserId(),
+        user.getKeycloakUserId(),
+        fullName,
+        user.getFirstName(),
+        user.getLastName(),
+        user.getAvatarUrl(),
+        user.getGender(),
+        Boolean.TRUE.equals(user.getHost()),
+        user.getSuperhost(),
+        user.getAccountEnabled(),
+        getRolesFromCachedRole(user.getAccountRole()),
+        user.getHostVerificationStatus(),
+        user.getStripeAccountStatus(),
+        user.getCreatedAt(),
+        user.getUpdatedAt()
+    );
+  }
+
   private String getClientBearerToken() {
     ClientTokenExchangeResponse token = identityClient.exchangeClientToken(ClientTokenExchangeParam.builder()
         .grant_type("client_credentials")
@@ -272,44 +308,6 @@ public class UserService {
         .scope("openid")
         .build());
     return "Bearer " + token.getAccessToken();
-  }
-
-  private Map<String, List<String>> getKeycloakRoles(List<User> users) {
-    if (users.isEmpty()) {
-      return Map.of();
-    }
-
-    ClientTokenExchangeResponse token = identityClient.exchangeClientToken(ClientTokenExchangeParam.builder()
-        .grant_type("client_credentials")
-        .client_id(clientId)
-        .client_secret(clientSecret)
-        .scope("openid")
-        .build());
-    String bearerToken = "Bearer " + token.getAccessToken();
-    Map<String, List<String>> rolesByUserId = new HashMap<>();
-
-    for (User user : users) {
-      String keycloakUserId = user.getKeycloakUserId();
-      if (keycloakUserId == null || keycloakUserId.isBlank()) {
-        continue;
-      }
-
-      try {
-        List<String> roles = identityClient.getRealmRoleMappings(bearerToken, keycloakUserId)
-            .stream()
-            .map(KeycloakRoleResponse::getName)
-            .filter(Objects::nonNull)
-            .filter(role -> !role.isBlank())
-            .sorted()
-            .toList();
-        rolesByUserId.put(keycloakUserId, roles);
-      } catch (Exception ex) {
-        log.warn("Could not read Keycloak roles for user {}", keycloakUserId, ex);
-        rolesByUserId.put(keycloakUserId, List.of());
-      }
-    }
-
-    return rolesByUserId;
   }
 
   private String extractSubFromJwt(String token) {
@@ -375,6 +373,8 @@ public class UserService {
 
     var profile = userMapper.toUser(request);
     profile.setKeycloakUserId(userId);
+    profile.setAccountRole(UserRole.USER);
+    profile.setAccountEnabled(true);
     if (request.getDateOfBirth() != null) {
       profile.setDateOfBirth(request.getDateOfBirth().atStartOfDay());
     }
@@ -477,6 +477,11 @@ public class UserService {
             userId,
             List.of(roleRequest)
     );
+
+    userRepository.findByKeycloakUserId(userId).ifPresent(user -> {
+      user.setAccountRole(UserRole.HOST);
+      userRepository.save(user);
+    });
   }
 
 //  @Transactional(readOnly = true)

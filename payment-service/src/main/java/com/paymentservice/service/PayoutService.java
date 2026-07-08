@@ -2,6 +2,7 @@ package com.paymentservice.service;
 
 import com.paymentservice.dto.request.BookingStatus;
 import com.paymentservice.dto.response.BookingResponse;
+import com.paymentservice.dto.response.HostIncomeTransactionResponse;
 import com.paymentservice.entity.Payment;
 import com.paymentservice.entity.PaymentStatus;
 import com.paymentservice.entity.Payout;
@@ -28,8 +29,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +44,31 @@ public class PayoutService {
     private final BookingClient bookingClient;
     private final ServiceTokenProvider serviceTokenProvider;
     private final PaymentEventPublisher eventPublisher;
+
+    @Transactional(readOnly = true)
+    public List<HostIncomeTransactionResponse> getHostIncomeTransactions(UUID hostId) {
+        return payoutRepository.findByHostId(hostId).stream()
+                .sorted(Comparator.comparing(
+                        payout -> firstPresent(payout.getProcessedAt(), payout.getScheduledAt(), payout.getCreatedAt()),
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                ))
+                .map(payout -> HostIncomeTransactionResponse.builder()
+                        .id(payout.getPayoutId())
+                        .type("PAYOUT")
+                        .bookingId(payout.getBookingId())
+                        .status(payout.getStatus().name())
+                        .amount(payout.getHostEarnings())
+                        .currency(payout.getCurrency() == null ? "USD" : payout.getCurrency().toUpperCase())
+                        .payoutMethod(payout.getPayoutMethod())
+                        .description("Income for booking #" + payout.getBookingId())
+                        .providerId(payout.getStripeTransferId())
+                        .failureReason(payout.getFailureReason())
+                        .scheduledAt(payout.getScheduledAt())
+                        .processedAt(payout.getProcessedAt())
+                        .createdAt(firstPresent(payout.getProcessedAt(), payout.getScheduledAt(), payout.getCreatedAt()))
+                        .build())
+                .toList();
+    }
 
     /**
      * Lấy các payout đã tới thời điểm xử lý và xử lý lần lượt trong một transaction.
@@ -393,6 +422,15 @@ public class PayoutService {
         return status == BookingStatus.CANCELLED_BY_GUEST
                 || status == BookingStatus.CANCELLED_BY_HOST
                 || status == BookingStatus.CANCELLED_BY_ADMIN;
+    }
+
+    private LocalDateTime firstPresent(LocalDateTime... values) {
+        for (LocalDateTime value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     /**
