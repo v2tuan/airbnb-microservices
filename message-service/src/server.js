@@ -69,6 +69,6 @@ const START_SERVER = () => {
     START_SERVER()
   } catch (error) {
     console.error(error)
-    process.exit(0)
+    process.exit(1)
   }
 })()
