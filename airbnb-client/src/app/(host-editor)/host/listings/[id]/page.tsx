@@ -340,6 +340,8 @@ export default function EditListingPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -571,20 +573,52 @@ export default function EditListingPage() {
   const handleUploadPhotos = async (files?: FileList | null) => {
     if (!files?.length || !token) return;
 
+    const selectedFiles = Array.from(files);
+    const uploadedBytes = new Array(selectedFiles.length).fill(0);
+    const totalBytes =
+      selectedFiles.reduce((sum, file) => sum + file.size, 0) || 1;
     setUploadingPhoto(true);
+    setUploadProgress(1);
+    setUploadLabel(
+      selectedFiles.length === 1
+        ? `Uploading ${selectedFiles[0].name}`
+        : `Uploading ${selectedFiles.length} photos`,
+    );
     setError("");
     try {
-      const uploadedPhotos: ListingPhotoResponse[] = [];
-
-      for (const file of Array.from(files)) {
-        const uploadResponse = await uploadAPI.uploadImage(token, file);
-        const imageUrl = uploadResponse.data.data.url;
-        const addResponse = await listingAPI.addPhoto(token, listingId, {
-          photoUrl: imageUrl,
-          caption: form?.title,
-        });
-        uploadedPhotos.push(unwrapApiData(addResponse.data));
-      }
+      const uploadedPhotos = await Promise.all(
+        selectedFiles.map(async (file, index) => {
+          const uploadResponse = await uploadAPI.uploadImage(
+            token,
+            file,
+            undefined,
+            (event) => {
+              uploadedBytes[index] = Math.min(event.loaded, file.size);
+              const totalUploaded = uploadedBytes.reduce(
+                (sum, loaded) => sum + loaded,
+                0,
+              );
+              setUploadProgress(
+                Math.min(99, Math.round((totalUploaded / totalBytes) * 100)),
+              );
+            },
+          );
+          uploadedBytes[index] = file.size;
+          const totalUploaded = uploadedBytes.reduce(
+            (sum, loaded) => sum + loaded,
+            0,
+          );
+          setUploadProgress(
+            Math.min(100, Math.round((totalUploaded / totalBytes) * 100)),
+          );
+          const imageUrl = uploadResponse.data.data.url;
+          const addResponse = await listingAPI.addPhoto(token, listingId, {
+            photoUrl: imageUrl,
+            caption: form?.title,
+          });
+          return unwrapApiData(addResponse.data);
+        }),
+      );
 
       setPhotos((current) => [...current, ...uploadedPhotos]);
       flashSuccess(
@@ -596,6 +630,8 @@ export default function EditListingPage() {
       setError(error?.response?.data?.message ?? "Unable to upload images.");
     } finally {
       setUploadingPhoto(false);
+      setUploadProgress(0);
+      setUploadLabel("");
     }
   };
 
@@ -851,12 +887,23 @@ export default function EditListingPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <label className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-[#f7f7f7] text-2xl leading-none text-[#222222] transition hover:bg-[#f2f2f2]">
-                        +
+                      <label
+                        className={`flex size-12 items-center justify-center rounded-full bg-[#f7f7f7] text-2xl leading-none text-[#222222] transition ${
+                          uploadingPhoto
+                            ? "cursor-wait opacity-60"
+                            : "cursor-pointer hover:bg-[#f2f2f2]"
+                        }`}
+                      >
+                        {uploadingPhoto ? (
+                          <Loader2 className="size-5 animate-spin" />
+                        ) : (
+                          "+"
+                        )}
                         <input
                           type="file"
                           accept="image/*"
                           multiple
+                          disabled={uploadingPhoto}
                           onChange={(event) =>
                             void handleUploadPhotos(event.target.files)
                           }
@@ -865,6 +912,21 @@ export default function EditListingPage() {
                       </label>
                     </div>
                   </div>
+
+                  {uploadingPhoto ? (
+                    <div className="mt-8 rounded-[14px] border border-[#dddddd] bg-[#f7f7f7] p-4">
+                      <div className="flex items-center justify-between gap-4 text-sm font-medium text-[#222222]">
+                        <span>{uploadLabel || "Uploading photos"}</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dddddd]">
+                        <div
+                          className="h-full rounded-full bg-[#ff385c] transition-[width] duration-200"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
 
                   {photos.length ? (
                     <div className="mt-16 grid gap-8 sm:grid-cols-2 xl:grid-cols-3">
@@ -936,18 +998,33 @@ export default function EditListingPage() {
                       ))}
                     </div>
                   ) : (
-                    <label className="mt-16 flex min-h-72 cursor-pointer flex-col items-center justify-center rounded-[14px] border border-dashed border-[#dddddd] bg-[#f7f7f7] text-center transition hover:border-[#222222]">
-                      <ImagePlus className="size-8 text-[#222222]" />
+                    <label
+                      className={`mt-16 flex min-h-72 flex-col items-center justify-center rounded-[14px] border border-dashed border-[#dddddd] bg-[#f7f7f7] text-center transition ${
+                        uploadingPhoto
+                          ? "cursor-wait opacity-70"
+                          : "cursor-pointer hover:border-[#222222]"
+                      }`}
+                    >
+                      {uploadingPhoto ? (
+                        <Loader2 className="size-8 animate-spin text-[#222222]" />
+                      ) : (
+                        <ImagePlus className="size-8 text-[#222222]" />
+                      )}
                       <span className="mt-4 text-base font-semibold text-[#222222]">
-                        Add listing photos
+                        {uploadingPhoto
+                          ? "Uploading photos"
+                          : "Add listing photos"}
                       </span>
                       <span className="mt-1 text-sm text-[#6a6a6a]">
-                        Upload photos to show them here.
+                        {uploadingPhoto
+                          ? `${uploadProgress}% complete`
+                          : "Upload photos to show them here."}
                       </span>
                       <input
                         type="file"
                         accept="image/*"
                         multiple
+                        disabled={uploadingPhoto}
                         onChange={(event) =>
                           void handleUploadPhotos(event.target.files)
                         }
@@ -2013,7 +2090,13 @@ export default function EditListingPage() {
                         Choose a bright cover image and keep the gallery honest.
                       </p>
                     </div>
-                    <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#ff385c] px-6 text-sm font-medium text-white transition hover:bg-[#e00b41]">
+                    <label
+                      className={`inline-flex h-12 items-center justify-center gap-2 rounded-lg px-6 text-sm font-medium text-white transition ${
+                        uploadingPhoto
+                          ? "cursor-wait bg-[#ff8aa0]"
+                          : "cursor-pointer bg-[#ff385c] hover:bg-[#e00b41]"
+                      }`}
+                    >
                       {uploadingPhoto ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (
@@ -2024,6 +2107,7 @@ export default function EditListingPage() {
                         type="file"
                         accept="image/*"
                         multiple
+                        disabled={uploadingPhoto}
                         onChange={(event) =>
                           void handleUploadPhotos(event.target.files)
                         }
@@ -2031,6 +2115,21 @@ export default function EditListingPage() {
                       />
                     </label>
                   </div>
+
+                  {uploadingPhoto ? (
+                    <div className="mb-6 rounded-[14px] border border-[#dddddd] bg-[#f7f7f7] p-4">
+                      <div className="flex items-center justify-between gap-4 text-sm font-medium text-[#222222]">
+                        <span>{uploadLabel || "Uploading photos"}</span>
+                        <span>{uploadProgress}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#dddddd]">
+                        <div
+                          className="h-full rounded-full bg-[#ff385c] transition-[width] duration-200"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
 
                   <form
                     onSubmit={handleAddPhotoUrl}

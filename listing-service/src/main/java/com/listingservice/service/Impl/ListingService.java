@@ -421,19 +421,6 @@ public class ListingService implements IListingService {
             listingsPage = listingRepository.findHostListingItems(hostId, pageable);
         }
 
-        List<UUID> listingIds = listingsPage.getContent().stream()
-                .map(ListingItemResponse::getId)
-                .filter(id -> id != null && !id.isBlank())
-                .map(UUID::fromString)
-                .toList();
-        Map<String, RatingClient.ListingRatingSummary> ratingSummaries =
-                ratingClient.getListingRatingSummaries(listingIds);
-
-        listingsPage.getContent().forEach(item -> applyRatingSummary(
-                item,
-                ratingSummaries.get(item.getId())
-        ));
-
         return listingsPage;
     }
 

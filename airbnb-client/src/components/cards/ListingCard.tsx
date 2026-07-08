@@ -1,10 +1,11 @@
 "use client";
 
+import { Heart, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Star, Heart } from "lucide-react";
-import { formatPrice } from "@/contants";
+import { useState } from "react";
 import { activityAPI } from "@/api/endpoints/activity";
+import { formatPrice } from "@/contants";
 
 export interface HomeListingCardProps {
   listingId: string;
@@ -26,19 +27,43 @@ interface ListingCardProps {
   onToggleWishlist?: () => void;
 }
 
+const listingFallbackImage = "/header/home.png";
+const flakyImageHosts = ["loremflickr.com", "picsum.photos"];
+
+function shouldBypassImageOptimizer(src: string) {
+  try {
+    const hostname = new URL(src).hostname.replace(/^www\./, "");
+    return flakyImageHosts.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
 const ListingCard: React.FC<ListingCardProps> = ({
   listing,
   wished = false,
   wishlistLoading = false,
   onToggleWishlist,
 }) => {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const imageSource =
+    listing.coverImageUrl && failedSrc !== listing.coverImageUrl
+      ? listing.coverImageUrl
+      : listingFallbackImage;
+
   const recordClick = () => {
     const token =
-      typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      typeof window !== "undefined"
+        ? localStorage.getItem("access_token")
+        : null;
 
     if (!token) return;
 
-    void activityAPI.recordActivity(token, listing.listingId, { eventType: "CLICK" });
+    void activityAPI.recordActivity(token, listing.listingId, {
+      eventType: "CLICK",
+    });
   };
 
   return (
@@ -51,11 +76,16 @@ const ListingCard: React.FC<ListingCardProps> = ({
         {/* Image Container */}
         <div className="group/image relative aspect-square w-full overflow-hidden rounded-2xl bg-neutral-200">
           <Image
-            src={listing.coverImageUrl}
+            src={imageSource}
             alt={listing.title}
             fill
             className="object-cover transition duration-300 group-hover/image:scale-105"
             sizes="(max-width: 767px) 75vw, (max-width: 1023px) 20vw, 15vw"
+            unoptimized={
+              imageSource !== listingFallbackImage &&
+              shouldBypassImageOptimizer(imageSource)
+            }
+            onError={() => setFailedSrc(listing.coverImageUrl)}
           />
 
           {(listing.isGuestFavorite || listing.instantBook) && (
@@ -80,12 +110,16 @@ const ListingCard: React.FC<ListingCardProps> = ({
           </p>
 
           <div className="mt-1 flex gap-1 text-[12px]">
-            <span className="font-bold">{formatPrice(listing.basePrice, listing.currency)}</span>
+            <span className="font-bold">
+              {formatPrice(listing.basePrice, listing.currency)}
+            </span>
             <span className="text-neutral-600"> for 2 nights</span>
             {listing.rating && (
               <div className="flex items-center gap-1">
                 <Star size={10} className="fill-neutral-900" />
-                <span className="text-[12px] font-medium">{listing.rating.toFixed(1)}</span>
+                <span className="text-[12px] font-medium">
+                  {listing.rating.toFixed(1)}
+                </span>
               </div>
             )}
           </div>

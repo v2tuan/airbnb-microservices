@@ -62,6 +62,20 @@ const propertyLabels: Partial<Record<PropertyType, string>> = {
   BUNGALOW: "Bungalow",
 };
 
+const listingFallbackImage = "/header/home.png";
+const flakyImageHosts = ["loremflickr.com", "picsum.photos"];
+
+function shouldBypassImageOptimizer(src: string) {
+  try {
+    const hostname = new URL(src).hostname.replace(/^www\./, "");
+    return flakyImageHosts.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function normalizeItems(payload: unknown): HostListingItem[] {
   type HostListingsPayload =
     | ListingApiResponse<ListingResponse[]>
@@ -239,22 +253,34 @@ function StatusPill({ status }: { status?: ListingStatus }) {
 function ListingImage({
   item,
   className,
+  sizes = "80px",
+  eager = false,
 }: {
   item: HostListingItem;
   className?: string;
+  sizes?: string;
+  eager?: boolean;
 }) {
-  if (!item.thumbnailUrl) {
-    return <div className={`bg-[#dddddd] ${className ?? ""}`} />;
-  }
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const source =
+    item.thumbnailUrl && failedSrc !== item.thumbnailUrl
+      ? item.thumbnailUrl
+      : listingFallbackImage;
+
+  if (!source) return <div className={`bg-[#dddddd] ${className ?? ""}`} />;
 
   return (
     <Image
-      src={item.thumbnailUrl}
+      src={source}
       alt={getListingTitle(item)}
       fill
       className={`object-cover ${className ?? ""}`}
-      sizes="(max-width: 768px) 96px, 560px"
-      unoptimized
+      sizes={sizes}
+      unoptimized={
+        source !== listingFallbackImage && shouldBypassImageOptimizer(source)
+      }
+      loading={eager ? "eager" : "lazy"}
+      onError={() => setFailedSrc(item.thumbnailUrl ?? null)}
     />
   );
 }
@@ -583,7 +609,7 @@ export default function HostListingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {items.map((item, index) => (
                   <tr key={item.id} className="group">
                     <td className="px-10 py-1">
                       <Link
@@ -591,7 +617,7 @@ export default function HostListingsPage() {
                         className="flex items-center gap-7"
                       >
                         <span className="relative size-20 shrink-0 overflow-hidden rounded-[12px] bg-[#dddddd]">
-                          <ListingImage item={item} />
+                          <ListingImage item={item} eager={index < 6} />
                         </span>
                         <span className="line-clamp-2 text-base font-semibold text-[#222222]">
                           {getListingTitle(item)}
@@ -676,11 +702,15 @@ export default function HostListingsPage() {
           </div>
         ) : (
           <section className="mt-10 grid gap-x-4 gap-y-7 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <article key={item.id} className="group">
                 <Link href={`/host/listings/${item.id}`} className="block">
                   <div className="relative aspect-[5/3] overflow-hidden rounded-[10px] bg-[#dddddd]">
-                    <ListingImage item={item} />
+                    <ListingImage
+                      item={item}
+                      eager={index < 8}
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
+                    />
                     <div className="absolute left-2.5 top-2.5">
                       <StatusPill status={item.status} />
                     </div>
