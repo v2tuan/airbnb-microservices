@@ -23,6 +23,8 @@ public class BookingResponse {
     private String roomName;
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
+    private LocalDateTime scheduledCheckInAt;
+    private LocalDateTime scheduledCheckOutAt;
     private Integer totalNights;
     private long totalAmount;
     private String currency;

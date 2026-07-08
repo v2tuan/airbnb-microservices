@@ -49,6 +49,9 @@ public class PaymentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    /**
+     * stripe listen --forward-to localhost:8888/api/v1/payments/webhook
+     */
     @PostMapping("/webhook")
     public ResponseEntity<String> handleStripeWebhook(
             @RequestBody String payload,

@@ -1,18 +1,14 @@
 "use client";
 
-import { isAxiosError } from "axios";
 import {
   ArrowLeft,
   Calendar,
   Check,
-  Clock,
-  CreditCard,
   DoorOpen,
   ExternalLink,
   FileText,
   Grid3X3,
   Hash,
-  Home,
   Info,
   Key,
   MapPin,
@@ -57,16 +53,6 @@ import type {
 
 const fallbackImage = "/header/home.png";
 
-function getApiErrorMessage(error: unknown) {
-  if (!isAxiosError(error)) return null;
-
-  const data = error.response?.data as
-    | { message?: string; detail?: string; error?: string }
-    | undefined;
-
-  return data?.message ?? data?.detail ?? data?.error ?? null;
-}
-
 const amenityIcons: Record<string, string> = {
   Pool: "🏊",
   WiFi: "📶",
@@ -102,29 +88,36 @@ function formatTime(value?: string | null, fallback = "Time not provided") {
   return value.slice(0, 5);
 }
 
-function formatDateTime(value?: string | null, fallback = "Not available") {
-  if (!value) return fallback;
+function parseDateTime(value?: string | null) {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function formatOptional(
-  value?: string | number | null,
-  fallback = "Not provided",
-) {
-  if (value === null || value === undefined || value === "") return fallback;
-  return String(value);
+function dateAtTime(date: string, time?: string | null) {
+  const normalizedTime = time?.slice(0, 8) || "00:00:00";
+  const parsed = new Date(`${date}T${normalizedTime}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatType(value?: string | null) {
-  return value ? value.replaceAll("_", " ").toLowerCase() : "Not provided";
+function scheduledCheckOutAt(booking: BookingDetailResponse) {
+  return (
+    parseDateTime(booking.scheduledCheckOutAt) ??
+    dateAtTime(
+      booking.checkOutDate,
+      booking.listing?.checkOutTime ?? booking.listing?.houseRules?.checkOutTime,
+    ) ??
+    dateAtTime(booking.checkOutDate)
+  );
+}
+
+function isPaidStayStatus(status: BookingStatus) {
+  return (
+    status === "CONFIRMED" ||
+    status === "CHECKED_IN" ||
+    status === "CHECKED_OUT" ||
+    status === "COMPLETED"
+  );
 }
 
 function yesNo(value?: boolean | null) {
@@ -282,6 +275,13 @@ export default function BookingDetailPage() {
   const effectiveStatus: BookingStatus = isPaymentExpired
     ? "EXPIRED"
     : (booking?.status ?? "PENDING_PAYMENT");
+  const resolvedScheduledCheckOutAt = booking ? scheduledCheckOutAt(booking) : null;
+  const canReviewStay =
+    !!booking &&
+    isPaidStayStatus(effectiveStatus) &&
+    booking.paidAt != null &&
+    resolvedScheduledCheckOutAt != null &&
+    Date.now() >= resolvedScheduledCheckOutAt.getTime();
 
   const address = useMemo(
     () => (booking ? getAddress(booking) : ""),
@@ -356,44 +356,6 @@ export default function BookingDetailPage() {
     { label: "Children", value: booking.numChildren ?? 0 },
     { label: "Infants", value: booking.numInfants ?? 0 },
     { label: "Pets", value: booking.numPets ?? 0 },
-  ];
-  const listingFacts = [
-    {
-      label: "Property type",
-      value: formatType(listing?.propertyType),
-    },
-    {
-      label: "Room type",
-      value: formatType(listing?.roomType),
-    },
-    {
-      label: "Bedrooms",
-      value: listing?.numBedrooms ?? "Not provided",
-    },
-    {
-      label: "Beds",
-      value: listing?.numBeds ?? "Not provided",
-    },
-    {
-      label: "Bathrooms",
-      value: listing?.numBathrooms ?? "Not provided",
-    },
-    {
-      label: "Max guests",
-      value: listing?.maxGuests ?? "Not provided",
-    },
-  ];
-  const timelineItems = [
-    { label: "Booked on", value: formatDateTime(booking.createdAt) },
-    {
-      label:
-        booking.status === "PENDING_PAYMENT" ? "Payment due" : "Hold expires",
-      value: formatDateTime(booking.expiresAt),
-    },
-    { label: "Paid at", value: formatDateTime(booking.paidAt) },
-    { label: "Checked in at", value: formatDateTime(booking.checkedInAt) },
-    { label: "Checked out at", value: formatDateTime(booking.checkedOutAt) },
-    { label: "Completed at", value: formatDateTime(booking.completedAt) },
   ];
   const houseRules = listing?.houseRules;
   const guideSteps = booking.accessInfo?.checkInGuide ?? [];
@@ -947,7 +909,7 @@ export default function BookingDetailPage() {
               ) : null}
             </div>
 
-            {effectiveStatus === "COMPLETED" ? (
+            {canReviewStay ? (
               <div className="animate-fade-in-up-delay-4">
                 <ReviewCard hostName={hostName} bookingId={booking.bookingId} />
               </div>
@@ -959,6 +921,8 @@ export default function BookingDetailPage() {
               <TripTimeline
                 checkIn={booking.checkInDate}
                 checkOut={booking.checkOutDate}
+                scheduledCheckInAt={booking.scheduledCheckInAt}
+                scheduledCheckOutAt={booking.scheduledCheckOutAt}
                 status={effectiveStatus}
                 checkedInAt={booking.checkedInAt}
                 checkedOutAt={booking.checkedOutAt}

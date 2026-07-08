@@ -55,6 +55,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -75,6 +76,8 @@ public class BookingService {
     private static final String DEFAULT_CANCELLATION_POLICY_CODE = "FLEXIBLE";
     private static final int GUEST_CANCELLATION_QUOTE_TTL_MINUTES = 10;
     private static final int HOST_CANCELLATION_QUOTE_TTL_MINUTES = 10;
+    private static final LocalTime DEFAULT_CHECK_IN_TIME = LocalTime.of(15, 0);
+    private static final LocalTime DEFAULT_CHECK_OUT_TIME = LocalTime.of(11, 0);
 
     private final BookingRepository bookingRepository;
     private final BookingCancellationQuoteRepository cancellationQuoteRepository;
@@ -490,6 +493,8 @@ public class BookingService {
                 .guestId(guestId)
                 .checkInDate(request.getCheckInDate())
                 .checkOutDate(request.getCheckOutDate())
+                .scheduledCheckInAt(resolveScheduledCheckInAt(listing, request.getCheckInDate()))
+                .scheduledCheckOutAt(resolveScheduledCheckOutAt(listing, request.getCheckOutDate()))
                 .totalNights(totalNights)
                 .nightlyPrice(pricing.nightlyPrice())
                 .accommodationSubtotal(pricing.accommodationSubtotal())
@@ -527,6 +532,9 @@ public class BookingService {
                 .orElseThrow(() -> BusinessException.notFound("Booking not found"));
         if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
             throw BusinessException.conflict("Host cancellation quote is required");
+        }
+        if (isStayLifecycleStatus(request.getStatus())) {
+            throw BusinessException.badRequest("Stay lifecycle status is derived from scheduled check-in/check-out time");
         }
 
         if (booking.getStatus() == request.getStatus()) {
@@ -612,8 +620,10 @@ public class BookingService {
                 .status(booking.getStatus())
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
+                .scheduledCheckInAt(resolveScheduledCheckInAt(booking))
+                .scheduledCheckOutAt(resolveScheduledCheckOutAt(booking))
                 .completedAt(booking.getCompletedAt())
-                .canReview(booking.getStatus() == BookingStatus.COMPLETED)
+                .canReview(canReviewCompletedStay(booking, LocalDateTime.now()))
                 .build();
     }
 
@@ -875,6 +885,73 @@ public class BookingService {
                 || status == BookingStatus.CANCELLED_BY_ADMIN;
     }
 
+    private boolean isStayLifecycleStatus(BookingStatus status) {
+        return status == BookingStatus.CHECKED_IN
+                || status == BookingStatus.CHECKED_OUT
+                || status == BookingStatus.COMPLETED;
+    }
+
+    private LocalDateTime resolveScheduledCheckInAt(ListingResponse listing, LocalDate checkInDate) {
+        LocalTime checkInTime = DEFAULT_CHECK_IN_TIME;
+        if (listing != null && listing.getCheckInStartTime() != null) {
+            checkInTime = listing.getCheckInStartTime();
+        } else if (listing != null
+                && listing.getHouseRules() != null
+                && listing.getHouseRules().getCheckInFrom() != null) {
+            checkInTime = listing.getHouseRules().getCheckInFrom();
+        }
+        return checkInDate.atTime(checkInTime);
+    }
+
+    private LocalDateTime resolveScheduledCheckOutAt(ListingResponse listing, LocalDate checkOutDate) {
+        LocalTime checkOutTime = DEFAULT_CHECK_OUT_TIME;
+        if (listing != null && listing.getCheckOutTime() != null) {
+            checkOutTime = listing.getCheckOutTime();
+        } else if (listing != null
+                && listing.getHouseRules() != null
+                && listing.getHouseRules().getCheckOutTime() != null) {
+            checkOutTime = listing.getHouseRules().getCheckOutTime();
+        }
+        return checkOutDate.atTime(checkOutTime);
+    }
+
+    private LocalDateTime resolveScheduledCheckInAt(Booking booking) {
+        return booking.getScheduledCheckInAt() != null
+                ? booking.getScheduledCheckInAt()
+                : booking.getCheckInDate().atTime(DEFAULT_CHECK_IN_TIME);
+    }
+
+    private LocalDateTime resolveScheduledCheckOutAt(Booking booking) {
+        return booking.getScheduledCheckOutAt() != null
+                ? booking.getScheduledCheckOutAt()
+                : booking.getCheckOutDate().atTime(DEFAULT_CHECK_OUT_TIME);
+    }
+
+    private LocalDateTime resolveScheduledCheckInAt(ReservationResponse reservation) {
+        return reservation.getScheduledCheckInAt() != null
+                ? reservation.getScheduledCheckInAt()
+                : reservation.getCheckInDate().atTime(DEFAULT_CHECK_IN_TIME);
+    }
+
+    private LocalDateTime resolveScheduledCheckOutAt(ReservationResponse reservation) {
+        return reservation.getScheduledCheckOutAt() != null
+                ? reservation.getScheduledCheckOutAt()
+                : reservation.getCheckOutDate().atTime(DEFAULT_CHECK_OUT_TIME);
+    }
+
+    private boolean canReviewCompletedStay(Booking booking, LocalDateTime now) {
+        return isPaidConfirmedStatus(booking.getStatus())
+                && booking.getPaidAt() != null
+                && !now.isBefore(resolveScheduledCheckOutAt(booking));
+    }
+
+    private boolean isPaidConfirmedStatus(BookingStatus status) {
+        return status == BookingStatus.CONFIRMED
+                || status == BookingStatus.CHECKED_IN
+                || status == BookingStatus.CHECKED_OUT
+                || status == BookingStatus.COMPLETED;
+    }
+
     private void validateListingApproval(ListingResponse listing, CreateBookingRequest request) {
         if (listing == null) {
             throw BusinessException.notFound("Listing not found");
@@ -965,7 +1042,8 @@ public class BookingService {
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
             throw BusinessException.conflict("Booking cannot be cancelled");
         }
-        if (booking.getCheckedInAt() != null || !LocalDate.now().isBefore(booking.getCheckInDate())) {
+        LocalDateTime scheduledCheckInAt = resolveScheduledCheckInAt(booking);
+        if (booking.getCheckedInAt() != null || !LocalDateTime.now().isBefore(scheduledCheckInAt)) {
             throw BusinessException.conflict("Guest cancellation is not available after check-in");
         }
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
@@ -986,7 +1064,8 @@ public class BookingService {
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
             throw BusinessException.conflict("Reservation cannot be cancelled by host");
         }
-        if (booking.getCheckedInAt() != null || !LocalDate.now().isBefore(booking.getCheckInDate())) {
+        LocalDateTime scheduledCheckInAt = resolveScheduledCheckInAt(booking);
+        if (booking.getCheckedInAt() != null || !LocalDateTime.now().isBefore(scheduledCheckInAt)) {
             throw BusinessException.conflict("Host cancellation is not available after check-in");
         }
         if (booking.getPaymentIntentId() == null || booking.getPaymentIntentId().isBlank() || booking.getPaidAt() == null) {
@@ -1050,7 +1129,7 @@ public class BookingService {
         BigDecimal serviceFee = snapshotAmount(booking.getServiceFee());
         BigDecimal taxes = snapshotAmount(booking.getTaxes());
         BigDecimal totalPaid = money(BigDecimal.valueOf(booking.getTotalPrice()));
-        LocalDateTime checkInAt = booking.getCheckInDate().atStartOfDay();
+        LocalDateTime checkInAt = resolveScheduledCheckInAt(booking);
         long hoursUntilCheckIn = ChronoUnit.HOURS.between(now, checkInAt);
 
         BigDecimal accommodationRefund;
@@ -1235,7 +1314,9 @@ public class BookingService {
             throw BusinessException.forbidden("You cannot manage reservations for this listing");
         }
 
-        List<Booking> bookings = findReservationsForListing(listingId, admin ? null : hostId, statuses);
+        List<Booking> bookings = findReservationsForListing(listingId, admin ? null : hostId, null).stream()
+                .filter(booking -> bookingMatchesStatusFilter(booking, statuses, LocalDateTime.now()))
+                .toList();
         Map<UUID, PublicUserResponse> guestMap = fetchGuestProfiles(bookings);
         return bookings.stream()
                 .map(booking -> mapToReservationResponse(booking, listing, guestMap.get(booking.getGuestId())))
@@ -1274,15 +1355,13 @@ public class BookingService {
         UUID currentUserId = UUID.fromString(jwt.getSubject());
         String bearerToken = "Bearer " + jwt.getTokenValue();
 
-        boolean hasStatuses = statuses != null && !statuses.isEmpty();
-        List<BookingStatus> queryStatuses = hasStatuses ? statuses : List.of(BookingStatus.PENDING_PAYMENT);
         UUID queryHostId = listingId != null && admin ? null : currentUserId;
         List<Booking> scopeBookings = bookingRepository.findReservationsForDashboard(
                 queryHostId,
                 listingId,
                 listingId != null,
-                queryStatuses,
-                hasStatuses,
+                List.of(BookingStatus.PENDING_PAYMENT),
+                false,
                 dateFrom,
                 dateTo);
 
@@ -1300,6 +1379,7 @@ public class BookingService {
                     currentUserId,
                     admin,
                     scopeBookings,
+                    statuses,
                     page,
                     size);
         }
@@ -1515,10 +1595,9 @@ public class BookingService {
                 .statusCounts(Map.of(
                         "ALL", 0L,
                         "NEEDS_ATTENTION", 0L,
-                        "CONFIRMED", 0L,
-                        "IN_HOUSE", 0L,
-                        "CHECKED_OUT", 0L,
-                        "COMPLETED", 0L,
+                        "UPCOMING", 0L,
+                        "IN_STAY", 0L,
+                        "PAST_STAY", 0L,
                         "CANCELLED", 0L
                 ))
                 .occupiedDates(List.of())
@@ -1532,10 +1611,15 @@ public class BookingService {
             UUID currentUserId,
             boolean admin,
             List<Booking> scopeBookings,
+            List<BookingStatus> statuses,
             int page,
             int size
     ) {
-        List<Booking> sortedBookings = sortReservationBookings(scopeBookings);
+        LocalDateTime now = LocalDateTime.now();
+        List<Booking> filteredBookings = scopeBookings.stream()
+                .filter(booking -> bookingMatchesStatusFilter(booking, statuses, now))
+                .toList();
+        List<Booking> sortedBookings = sortReservationBookings(filteredBookings);
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(0, page);
         int fromIndex = Math.min(safePage * safeSize, sortedBookings.size());
@@ -1655,7 +1739,7 @@ public class BookingService {
             LocalDate dateFrom,
             LocalDate dateTo
     ) {
-        if (statuses != null && !statuses.isEmpty() && !statuses.contains(reservation.getStatus())) {
+        if (!reservationMatchesStatusFilter(reservation, statuses, LocalDateTime.now())) {
             return false;
         }
 
@@ -1688,6 +1772,64 @@ public class BookingService {
         return searchable.contains(normalizedSearch);
     }
 
+    private boolean bookingMatchesStatusFilter(Booking booking, List<BookingStatus> statuses, LocalDateTime now) {
+        if (statuses == null || statuses.isEmpty()) {
+            return true;
+        }
+
+        return statuses.stream().anyMatch(status -> bookingMatchesStatusFilter(booking, status, now));
+    }
+
+    private boolean bookingMatchesStatusFilter(Booking booking, BookingStatus status, LocalDateTime now) {
+        if (status == BookingStatus.CONFIRMED) {
+            return isPaidConfirmedStatus(booking.getStatus())
+                    && now.isBefore(resolveScheduledCheckInAt(booking));
+        }
+        if (status == BookingStatus.CHECKED_IN) {
+            return isPaidConfirmedStatus(booking.getStatus())
+                    && !now.isBefore(resolveScheduledCheckInAt(booking))
+                    && now.isBefore(resolveScheduledCheckOutAt(booking));
+        }
+        if (status == BookingStatus.CHECKED_OUT || status == BookingStatus.COMPLETED) {
+            return isPaidConfirmedStatus(booking.getStatus())
+                    && !now.isBefore(resolveScheduledCheckOutAt(booking));
+        }
+        return booking.getStatus() == status;
+    }
+
+    private boolean reservationMatchesStatusFilter(
+            ReservationResponse reservation,
+            List<BookingStatus> statuses,
+            LocalDateTime now
+    ) {
+        if (statuses == null || statuses.isEmpty()) {
+            return true;
+        }
+
+        return statuses.stream().anyMatch(status -> reservationMatchesStatusFilter(reservation, status, now));
+    }
+
+    private boolean reservationMatchesStatusFilter(
+            ReservationResponse reservation,
+            BookingStatus status,
+            LocalDateTime now
+    ) {
+        if (status == BookingStatus.CONFIRMED) {
+            return isPaidConfirmedStatus(reservation.getStatus())
+                    && now.isBefore(resolveScheduledCheckInAt(reservation));
+        }
+        if (status == BookingStatus.CHECKED_IN) {
+            return isPaidConfirmedStatus(reservation.getStatus())
+                    && !now.isBefore(resolveScheduledCheckInAt(reservation))
+                    && now.isBefore(resolveScheduledCheckOutAt(reservation));
+        }
+        if (status == BookingStatus.CHECKED_OUT || status == BookingStatus.COMPLETED) {
+            return isPaidConfirmedStatus(reservation.getStatus())
+                    && !now.isBefore(resolveScheduledCheckOutAt(reservation));
+        }
+        return reservation.getStatus() == status;
+    }
+
     private List<ReservationResponse> sortReservationResponses(List<ReservationResponse> reservations) {
         return reservations.stream()
                 .sorted(Comparator
@@ -1699,13 +1841,14 @@ public class BookingService {
 
     private int reservationPriority(ReservationResponse reservation) {
         LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
 
         if (reservation.getStatus() == BookingStatus.PENDING_PAYMENT) return 0;
-        if (reservation.getStatus() == BookingStatus.CHECKED_IN) return 1;
-        if (reservation.getStatus() == BookingStatus.CONFIRMED && reservation.getCheckInDate().isEqual(today)) return 2;
-        if (reservation.getStatus() == BookingStatus.CONFIRMED) return 3;
-        if (reservation.getStatus() == BookingStatus.CHECKED_OUT) return 4;
-        if (reservation.getStatus() == BookingStatus.COMPLETED) return 5;
+        if (reservationMatchesStatusFilter(reservation, BookingStatus.CHECKED_IN, now)) return 1;
+        if (reservationMatchesStatusFilter(reservation, BookingStatus.CONFIRMED, now)
+                && reservation.getCheckInDate().isEqual(today)) return 2;
+        if (reservationMatchesStatusFilter(reservation, BookingStatus.CONFIRMED, now)) return 3;
+        if (reservationMatchesStatusFilter(reservation, BookingStatus.COMPLETED, now)) return 5;
         return 6;
     }
 
@@ -1720,18 +1863,20 @@ public class BookingService {
 
     private int reservationPriority(Booking booking) {
         LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
 
         if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) return 0;
-        if (booking.getStatus() == BookingStatus.CHECKED_IN) return 1;
-        if (booking.getStatus() == BookingStatus.CONFIRMED && booking.getCheckInDate().isEqual(today)) return 2;
-        if (booking.getStatus() == BookingStatus.CONFIRMED) return 3;
-        if (booking.getStatus() == BookingStatus.CHECKED_OUT) return 4;
-        if (booking.getStatus() == BookingStatus.COMPLETED) return 5;
+        if (bookingMatchesStatusFilter(booking, BookingStatus.CHECKED_IN, now)) return 1;
+        if (bookingMatchesStatusFilter(booking, BookingStatus.CONFIRMED, now)
+                && booking.getCheckInDate().isEqual(today)) return 2;
+        if (bookingMatchesStatusFilter(booking, BookingStatus.CONFIRMED, now)) return 3;
+        if (bookingMatchesStatusFilter(booking, BookingStatus.COMPLETED, now)) return 5;
         return 6;
     }
 
     private HostReservationsPageResponse.ReservationStats buildReservationStats(List<ReservationResponse> scopedReservations) {
         LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
         long revenue = scopedReservations.stream()
                 .filter(reservation -> reservation.getStatus() == BookingStatus.CONFIRMED
                         || reservation.getStatus() == BookingStatus.CHECKED_IN
@@ -1747,11 +1892,11 @@ public class BookingService {
                         .count())
                 .arrivalsToday(scopedReservations.stream()
                         .filter(reservation -> reservation.getCheckInDate().isEqual(today)
-                                && (reservation.getStatus() == BookingStatus.CONFIRMED
-                                || reservation.getStatus() == BookingStatus.CHECKED_IN))
+                                && isPaidConfirmedStatus(reservation.getStatus())
+                                && now.isBefore(resolveScheduledCheckOutAt(reservation)))
                         .count())
                 .inHouse(scopedReservations.stream()
-                        .filter(reservation -> reservation.getStatus() == BookingStatus.CHECKED_IN)
+                        .filter(reservation -> reservationMatchesStatusFilter(reservation, BookingStatus.CHECKED_IN, now))
                         .count())
                 .revenue(revenue)
                 .currency(scopedReservations.isEmpty() ? "USD" : scopedReservations.getFirst().getCurrency())
@@ -1767,10 +1912,9 @@ public class BookingService {
         return Map.of(
                 "ALL", (long) scopedReservations.size(),
                 "NEEDS_ATTENTION", countStatuses(scopedReservations, BookingStatus.PENDING_PAYMENT),
-                "CONFIRMED", countStatuses(scopedReservations, BookingStatus.CONFIRMED),
-                "IN_HOUSE", countStatuses(scopedReservations, BookingStatus.CHECKED_IN),
-                "CHECKED_OUT", countStatuses(scopedReservations, BookingStatus.CHECKED_OUT),
-                "COMPLETED", countStatuses(scopedReservations, BookingStatus.COMPLETED),
+                "UPCOMING", countReservationPhase(scopedReservations, BookingStatus.CONFIRMED),
+                "IN_STAY", countReservationPhase(scopedReservations, BookingStatus.CHECKED_IN),
+                "PAST_STAY", countReservationPhase(scopedReservations, BookingStatus.COMPLETED),
                 "CANCELLED", countStatuses(
                         scopedReservations,
                         BookingStatus.CANCELLED_BY_GUEST,
@@ -1783,6 +1927,7 @@ public class BookingService {
 
     private HostReservationsPageResponse.ReservationStats buildReservationStatsFromBookings(List<Booking> scopeBookings) {
         LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
         long revenue = scopeBookings.stream()
                 .filter(booking -> booking.getStatus() == BookingStatus.CONFIRMED
                         || booking.getStatus() == BookingStatus.CHECKED_IN
@@ -1798,11 +1943,11 @@ public class BookingService {
                         .count())
                 .arrivalsToday(scopeBookings.stream()
                         .filter(booking -> booking.getCheckInDate().isEqual(today)
-                                && (booking.getStatus() == BookingStatus.CONFIRMED
-                                || booking.getStatus() == BookingStatus.CHECKED_IN))
+                                && isPaidConfirmedStatus(booking.getStatus())
+                                && now.isBefore(resolveScheduledCheckOutAt(booking)))
                         .count())
                 .inHouse(scopeBookings.stream()
-                        .filter(booking -> booking.getStatus() == BookingStatus.CHECKED_IN)
+                        .filter(booking -> bookingMatchesStatusFilter(booking, BookingStatus.CHECKED_IN, now))
                         .count())
                 .revenue(revenue)
                 .currency(scopeBookings.isEmpty() ? "USD" : scopeBookings.getFirst().getCurrency())
@@ -1813,10 +1958,9 @@ public class BookingService {
         return Map.of(
                 "ALL", (long) scopeBookings.size(),
                 "NEEDS_ATTENTION", countStatusesFromBookings(scopeBookings, BookingStatus.PENDING_PAYMENT),
-                "CONFIRMED", countStatusesFromBookings(scopeBookings, BookingStatus.CONFIRMED),
-                "IN_HOUSE", countStatusesFromBookings(scopeBookings, BookingStatus.CHECKED_IN),
-                "CHECKED_OUT", countStatusesFromBookings(scopeBookings, BookingStatus.CHECKED_OUT),
-                "COMPLETED", countStatusesFromBookings(scopeBookings, BookingStatus.COMPLETED),
+                "UPCOMING", countBookingPhase(scopeBookings, BookingStatus.CONFIRMED),
+                "IN_STAY", countBookingPhase(scopeBookings, BookingStatus.CHECKED_IN),
+                "PAST_STAY", countBookingPhase(scopeBookings, BookingStatus.COMPLETED),
                 "CANCELLED", countStatusesFromBookings(
                         scopeBookings,
                         BookingStatus.CANCELLED_BY_GUEST,
@@ -1834,10 +1978,24 @@ public class BookingService {
                 .count();
     }
 
+    private long countBookingPhase(List<Booking> bookings, BookingStatus phaseStatus) {
+        LocalDateTime now = LocalDateTime.now();
+        return bookings.stream()
+                .filter(booking -> bookingMatchesStatusFilter(booking, phaseStatus, now))
+                .count();
+    }
+
     private long countStatuses(List<ReservationResponse> reservations, BookingStatus... statuses) {
         Set<BookingStatus> acceptedStatuses = Set.of(statuses);
         return reservations.stream()
                 .filter(reservation -> acceptedStatuses.contains(reservation.getStatus()))
+                .count();
+    }
+
+    private long countReservationPhase(List<ReservationResponse> reservations, BookingStatus phaseStatus) {
+        LocalDateTime now = LocalDateTime.now();
+        return reservations.stream()
+                .filter(reservation -> reservationMatchesStatusFilter(reservation, phaseStatus, now))
                 .count();
     }
 
@@ -1880,24 +2038,22 @@ public class BookingService {
     }
 
     private List<ReservationResponse> buildNextReservations(List<ReservationResponse> filteredReservations) {
-        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
 
         return filteredReservations.stream()
                 .filter(reservation -> !isCancelledStatus(reservation.getStatus())
                         && reservation.getStatus() != BookingStatus.EXPIRED
-                        && reservation.getStatus() != BookingStatus.COMPLETED
-                        && !reservation.getCheckOutDate().isBefore(today))
+                        && now.isBefore(resolveScheduledCheckOutAt(reservation)))
                 .limit(4)
                 .toList();
     }
 
     private boolean isNextReservationBooking(Booking booking) {
-        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
 
         return !isCancelledStatus(booking.getStatus())
                 && booking.getStatus() != BookingStatus.EXPIRED
-                && booking.getStatus() != BookingStatus.COMPLETED
-                && !booking.getCheckOutDate().isBefore(today);
+                && now.isBefore(resolveScheduledCheckOutAt(booking));
     }
 
     private BookingResponse mapToResponse(Booking booking) {
@@ -1913,6 +2069,8 @@ public class BookingService {
                 .hostId(booking.getHostId())
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
+                .scheduledCheckInAt(resolveScheduledCheckInAt(booking))
+                .scheduledCheckOutAt(resolveScheduledCheckOutAt(booking))
                 .totalNights(booking.getTotalNights())
                 .totalAmount(booking.getTotalPrice())
                 .currency(booking.getCurrency())
@@ -2017,6 +2175,8 @@ public class BookingService {
                 .listingCoverImageUrl(resolveCoverImage(listing))
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
+                .scheduledCheckInAt(resolveScheduledCheckInAt(booking))
+                .scheduledCheckOutAt(resolveScheduledCheckOutAt(booking))
                 .totalNights(booking.getTotalNights())
                 .totalAmount(booking.getTotalPrice())
                 .currency(booking.getCurrency())
@@ -2051,6 +2211,8 @@ public class BookingService {
                 .guestId(booking.getGuestId())
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
+                .scheduledCheckInAt(resolveScheduledCheckInAt(booking))
+                .scheduledCheckOutAt(resolveScheduledCheckOutAt(booking))
                 .totalNights(booking.getTotalNights())
                 .status(booking.getStatus())
                 .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
@@ -2150,6 +2312,8 @@ public class BookingService {
                 .hostId(booking.getHostId())
                 .checkInDate(booking.getCheckInDate())
                 .checkOutDate(booking.getCheckOutDate())
+                .scheduledCheckInAt(resolveScheduledCheckInAt(booking))
+                .scheduledCheckOutAt(resolveScheduledCheckOutAt(booking))
                 .totalNights(booking.getTotalNights())
                 .status(booking.getStatus())
                 .statusDisplayName(BookingResponse.getStatusDisplayName(booking.getStatus()))
@@ -2422,8 +2586,8 @@ public class BookingService {
 
     private void validateReservationManagementStatus(BookingStatus status) {
         // CONFIRMED/EXPIRED thuộc payment/expiry flow, không cho host tự set từ dashboard để tránh lệch với Stripe/webhook.
-        if (status == BookingStatus.CONFIRMED || status == BookingStatus.EXPIRED) {
-            throw BusinessException.badRequest("Reservation management cannot set payment-owned status: " + status);
+        if (status == BookingStatus.CONFIRMED || status == BookingStatus.EXPIRED || isStayLifecycleStatus(status)) {
+            throw BusinessException.badRequest("Reservation management cannot set system-owned status: " + status);
         }
     }
 
@@ -2484,13 +2648,12 @@ public class BookingService {
     }
 
     private String resolveTripLabel(Booking booking) {
-        LocalDate today = LocalDate.now();
         if (isCancelledStatus(booking.getStatus())) return "Cancelled trip";
-        if (booking.getStatus() == BookingStatus.CHECKED_IN) return "Ongoing trip";
-        if (booking.getStatus() == BookingStatus.CHECKED_OUT) return "Checked-out trip";
-        if (booking.getStatus() == BookingStatus.COMPLETED) return "Past trip";
-        if (booking.getStatus() == BookingStatus.CONFIRMED) {
-            return booking.getCheckInDate().isAfter(today) ? "Upcoming trip" : "Ongoing trip";
+        if (isPaidConfirmedStatus(booking.getStatus())) {
+            LocalDateTime now = LocalDateTime.now();
+            if (now.isBefore(resolveScheduledCheckInAt(booking))) return "Upcoming trip";
+            if (now.isBefore(resolveScheduledCheckOutAt(booking))) return "Ongoing trip";
+            return "Past trip";
         }
         if (booking.getStatus() == BookingStatus.PENDING_PAYMENT) return "Waiting for payment";
         return "Trip";

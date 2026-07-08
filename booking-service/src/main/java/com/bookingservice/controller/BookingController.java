@@ -277,18 +277,6 @@ public class BookingController {
                 .build());
     }
 
-    @PatchMapping("/host/reservations/{reservationId}/status")
-    public ResponseEntity<ApiResponse<ReservationDetailResponse>> updateReservationStatus(
-            @PathVariable UUID reservationId,
-            @Valid @RequestBody UpdateBookingStatusRequest request
-    ) {
-        return ResponseEntity.ok(ApiResponse.<ReservationDetailResponse>builder()
-                .success(true)
-                .message("Update reservation status success")
-                .data(bookingService.updateReservationStatus(reservationId, request))
-                .build());
-    }
-
     @PostMapping("/host/reservations/{reservationId}/cancellation-quotes")
     public ResponseEntity<ApiResponse<HostCancellationQuoteResponse>> requestHostCancellationQuote(
             @PathVariable UUID reservationId,
@@ -465,18 +453,4 @@ public class BookingController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/{id}/check-in")
-    public ResponseEntity<BookingResponse> checkIn(@PathVariable UUID id) {
-        return ResponseEntity.ok(bookingService.checkIn(id));
-    }
-
-    @PostMapping("/{id}/check-out")
-    public ResponseEntity<BookingResponse> checkOut(@PathVariable UUID id) {
-        return ResponseEntity.ok(bookingService.checkOut(id));
-    }
-
-    @PostMapping("/{id}/complete")
-    public ResponseEntity<BookingResponse> complete(@PathVariable UUID id) {
-        return ResponseEntity.ok(bookingService.complete(id));
-    }
 }

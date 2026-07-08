@@ -47,6 +47,19 @@ function getRequestErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function isAlreadyReviewedError(error: unknown) {
+  if (!isAxiosError<{ message?: string }>(error)) {
+    return false;
+  }
+
+  const responseText = JSON.stringify(error.response?.data ?? {}).toLowerCase();
+
+  return (
+    error.response?.status === 409 &&
+    responseText.includes("already been reviewed")
+  );
+}
+
 export function ReviewCard({
   hostName,
   bookingId,
@@ -63,14 +76,22 @@ export function ReviewCard({
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit =
-    rating > 0 && review.trim().length >= 10 && !submitting && !uploadingPhotos;
+    rating > 0 &&
+    review.trim().length >= 10 &&
+    !submitting &&
+    !uploadingPhotos &&
+    !checkingExistingReview;
 
   useEffect(() => {
     if (!bookingId) {
+      setSubmitted(false);
+      setCheckingExistingReview(false);
       return;
     }
 
     let cancelled = false;
+    setSubmitted(false);
+    setError(null);
     setCheckingExistingReview(true);
 
     ratingAPI
@@ -209,6 +230,12 @@ export function ReviewCard({
       setSubmitted(true);
       onSubmitted?.();
     } catch (submitError: unknown) {
+      if (isAlreadyReviewedError(submitError)) {
+        setSubmitted(true);
+        onSubmitted?.();
+        return;
+      }
+
       setError(getRequestErrorMessage(submitError, "Failed to submit review."));
     } finally {
       setSubmitting(false);
@@ -228,6 +255,17 @@ export function ReviewCard({
               Thanks for sharing your experience.
             </p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (checkingExistingReview) {
+    return (
+      <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-3 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Checking review status...</span>
         </div>
       </div>
     );

@@ -5,23 +5,38 @@ import type { BookingStatus } from "@/types/booking.type";
 interface TripTimelineProps {
   checkIn: string;
   checkOut: string;
+  scheduledCheckInAt?: string | null;
+  scheduledCheckOutAt?: string | null;
   status: BookingStatus;
   checkedInAt?: string | null;
   checkedOutAt?: string | null;
   completedAt?: string | null;
 }
 
+function parseDateTime(value?: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseDateOnly(value: string) {
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date(value) : parsed;
+}
+
 export function TripTimeline({
   checkIn,
   checkOut,
+  scheduledCheckInAt,
+  scheduledCheckOutAt,
   status,
   checkedInAt,
   checkedOutAt,
   completedAt,
 }: TripTimelineProps) {
   const now = new Date();
-  const checkInDate = new Date(checkIn);
-  const checkOutDate = new Date(checkOut);
+  const checkInDate = parseDateTime(scheduledCheckInAt) ?? parseDateOnly(checkIn);
+  const checkOutDate = parseDateTime(scheduledCheckOutAt) ?? parseDateOnly(checkOut);
 
   const isPending = status === "PENDING_PAYMENT";
   const isConfirmed = status === "CONFIRMED";
@@ -37,9 +52,19 @@ export function TripTimeline({
     isConfirmed || isCheckedIn || isCheckedOut || isCompleted;
 
   const isBeforeTrip = isActiveReservation && now < checkInDate;
-  const hasCheckedIn = Boolean(checkedInAt) || isCheckedIn || isCheckedOut || isCompleted;
-  const hasCheckedOut = Boolean(checkedOutAt) || isCheckedOut || isCompleted;
-  const hasCompleted = Boolean(completedAt) || isCompleted;
+  const hasCheckedIn =
+    Boolean(checkedInAt) ||
+    isCheckedIn ||
+    isCheckedOut ||
+    isCompleted ||
+    (isActiveReservation && now >= checkInDate);
+  const hasCheckedOut =
+    Boolean(checkedOutAt) ||
+    isCheckedOut ||
+    isCompleted ||
+    (isActiveReservation && now >= checkOutDate);
+  const hasCompleted =
+    Boolean(completedAt) || isCompleted || (isActiveReservation && now >= checkOutDate);
   const isDuringTrip =
     (isActiveReservation && now >= checkInDate && now < checkOutDate) ||
     isCheckedIn;
@@ -89,7 +114,7 @@ export function TripTimeline({
       label: `Check-out - ${formatDate(checkOut)}`,
       description: hasCompleted
         ? "Your trip is completed"
-        : "Your stay has ended and is waiting for final completion",
+        : "Your stay ends at the scheduled check-out time",
       done: hasCheckedOut || isAfterTrip,
       active: isCheckedOut,
     },

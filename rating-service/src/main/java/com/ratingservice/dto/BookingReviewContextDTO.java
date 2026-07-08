@@ -11,6 +11,8 @@ public record BookingReviewContextDTO(
     String status,
     LocalDate checkInDate,
     LocalDate checkOutDate,
+    LocalDateTime scheduledCheckInAt,
+    LocalDateTime scheduledCheckOutAt,
     LocalDateTime completedAt,
     boolean canReview
 ) {

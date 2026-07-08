@@ -140,7 +140,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                         com.bookingservice.entity.BookingStatus.CHECKED_IN,
                         com.bookingservice.entity.BookingStatus.CHECKED_OUT
                     )
-                    AND b.checkOutDate >= CURRENT_DATE
+                    AND (
+                        (b.scheduledCheckOutAt IS NOT NULL AND b.scheduledCheckOutAt > :now)
+                        OR (b.scheduledCheckOutAt IS NULL AND b.checkOutDate >= CURRENT_DATE)
+                    )
                 )
 
                 OR (
@@ -152,7 +155,16 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
         OR (
             :type = 'COMPLETED'
-            AND b.status = com.bookingservice.entity.BookingStatus.COMPLETED
+            AND b.status IN (
+                com.bookingservice.entity.BookingStatus.CONFIRMED,
+                com.bookingservice.entity.BookingStatus.CHECKED_IN,
+                com.bookingservice.entity.BookingStatus.CHECKED_OUT,
+                com.bookingservice.entity.BookingStatus.COMPLETED
+            )
+            AND (
+                (b.scheduledCheckOutAt IS NOT NULL AND b.scheduledCheckOutAt <= :now)
+                OR (b.scheduledCheckOutAt IS NULL AND b.checkOutDate < CURRENT_DATE)
+            )
         )
     )
     ORDER BY b.createdAt DESC

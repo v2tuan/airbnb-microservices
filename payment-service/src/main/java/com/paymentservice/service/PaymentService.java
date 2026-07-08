@@ -224,7 +224,7 @@ public class PaymentService {
                     .currency(payment.getCurrency())
                     .payoutMethod("STRIPE_CONNECT")
                     .status(PayoutStatus.PENDING_CHECKIN)
-                    .scheduledAt(booking.getCheckInDate().atStartOfDay().plusDays(1))
+                    .scheduledAt(resolvePayoutEligibilityAt(booking))
                     .build());
         }
 
@@ -295,6 +295,13 @@ public class PaymentService {
                 || status == PaymentStatus.PARTIALLY_REFUNDED
                 || status == PaymentStatus.REFUNDED
                 || status == PaymentStatus.REFUND_FAILED;
+    }
+
+    private LocalDateTime resolvePayoutEligibilityAt(BookingResponse booking) {
+        LocalDateTime scheduledCheckInAt = booking.getScheduledCheckInAt() != null
+                ? booking.getScheduledCheckInAt()
+                : booking.getCheckInDate().atStartOfDay();
+        return scheduledCheckInAt.plusHours(24);
     }
 
     /**

@@ -33,6 +33,8 @@ public class ReservationDetailResponse {
     private UUID guestId;
     private LocalDate checkInDate;
     private LocalDate checkOutDate;
+    private LocalDateTime scheduledCheckInAt;
+    private LocalDateTime scheduledCheckOutAt;
     private Integer totalNights;
     private BookingStatus status;
     private String statusDisplayName;

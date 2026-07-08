@@ -97,19 +97,16 @@ public class PayoutService {
             return;
         }
 
-        // Chỉ payout sau khi khách đã check-in/check-out/completed; nếu chưa thì hẹn kiểm tra lại.
-        if (booking.getStatus() != BookingStatus.CHECKED_IN
-                && booking.getStatus() != BookingStatus.CHECKED_OUT
-                && booking.getStatus() != BookingStatus.COMPLETED) {
+        // Payout is released automatically 24 hours after the scheduled check-in time while booking remains confirmed.
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
             payout.setStatus(PayoutStatus.PENDING_CHECKIN);
             payout.setScheduledAt(now.plusMinutes(30));
+            payout.setFailureReason("Booking is not confirmed for payout: " + booking.getStatus());
             payoutRepository.save(payout);
             return;
         }
 
-        LocalDateTime eligibleAt = booking.getCheckedInAt() != null
-                ? booking.getCheckedInAt().plusHours(24)
-                : booking.getCheckInDate().atStartOfDay().plusDays(1);
+        LocalDateTime eligibleAt = resolvePayoutEligibilityAt(booking);
 
         if (now.isBefore(eligibleAt)) {
             // Booking đã hợp lệ nhưng chưa đủ thời gian giữ tiền, dời lịch payout tới mốc eligibleAt.
@@ -431,6 +428,13 @@ public class PayoutService {
             }
         }
         return null;
+    }
+
+    private LocalDateTime resolvePayoutEligibilityAt(BookingResponse booking) {
+        LocalDateTime scheduledCheckInAt = booking.getScheduledCheckInAt() != null
+                ? booking.getScheduledCheckInAt()
+                : booking.getCheckInDate().atStartOfDay();
+        return scheduledCheckInAt.plusHours(24);
     }
 
     /**

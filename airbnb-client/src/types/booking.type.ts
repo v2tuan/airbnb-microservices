@@ -113,6 +113,8 @@ export interface BookingDetailResponse {
   hostId: string | null;
   checkInDate: string;
   checkOutDate: string;
+  scheduledCheckInAt?: string | null;
+  scheduledCheckOutAt?: string | null;
   totalNights: number;
   status: BookingStatus;
   statusDisplayName: string;
@@ -308,6 +310,8 @@ export interface HostReservationResponse {
   listingCoverImageUrl?: string | null;
   checkInDate: string;
   checkOutDate: string;
+  scheduledCheckInAt?: string | null;
+  scheduledCheckOutAt?: string | null;
   totalNights: number;
   totalAmount: number;
   currency: string;
@@ -366,6 +370,8 @@ export interface HostReservationDetailResponse {
   guestId: string;
   checkInDate: string;
   checkOutDate: string;
+  scheduledCheckInAt?: string | null;
+  scheduledCheckOutAt?: string | null;
   totalNights: number;
   status: BookingStatus;
   statusDisplayName: string;

@@ -97,6 +97,12 @@ public class Booking {
     @Column(name = "check_out_date", nullable = false)
     private LocalDate checkOutDate;
 
+    @Column(name = "scheduled_check_in_at")
+    private LocalDateTime scheduledCheckInAt;
+
+    @Column(name = "scheduled_check_out_at")
+    private LocalDateTime scheduledCheckOutAt;
+
     /**
      * Thời điểm booking hết hạn (createdAt + 15 phút)
      */

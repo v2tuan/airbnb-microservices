@@ -28,7 +28,6 @@ import {
   type PageResponse,
   unwrapApiData,
 } from "@/api/endpoints/listing";
-import { ReservationStatusBadge } from "@/components/trips/ReservationStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -68,10 +67,9 @@ import type {
 type StatusFilterKey =
   | "ALL"
   | "NEEDS_ATTENTION"
-  | "CONFIRMED"
-  | "IN_HOUSE"
-  | "CHECKED_OUT"
-  | "COMPLETED"
+  | "UPCOMING"
+  | "IN_STAY"
+  | "PAST_STAY"
   | "CANCELLED";
 
 type ListingOption = {
@@ -179,10 +177,9 @@ const statusViews: Array<{
     label: "Needs attention",
     statuses: ["PENDING_PAYMENT"],
   },
-  { key: "CONFIRMED", label: "Confirmed", statuses: ["CONFIRMED"] },
-  { key: "IN_HOUSE", label: "In-house", statuses: ["CHECKED_IN"] },
-  { key: "CHECKED_OUT", label: "Checked out", statuses: ["CHECKED_OUT"] },
-  { key: "COMPLETED", label: "Completed", statuses: ["COMPLETED"] },
+  { key: "UPCOMING", label: "Upcoming", statuses: ["CONFIRMED"] },
+  { key: "IN_STAY", label: "In stay", statuses: ["CHECKED_IN"] },
+  { key: "PAST_STAY", label: "Past stays", statuses: ["COMPLETED"] },
   {
     key: "CANCELLED",
     label: "Cancelled",
@@ -215,10 +212,9 @@ const emptyStats: HostReservationStats = {
 const emptyStatusCounts: Record<StatusFilterKey, number> = {
   ALL: 0,
   NEEDS_ATTENTION: 0,
-  CONFIRMED: 0,
-  IN_HOUSE: 0,
-  CHECKED_OUT: 0,
-  COMPLETED: 0,
+  UPCOMING: 0,
+  IN_STAY: 0,
+  PAST_STAY: 0,
   CANCELLED: 0,
 };
 
@@ -420,6 +416,99 @@ function paymentStatusMeta(reservation: HostReservationResponse) {
   };
 }
 
+function parseDateTime(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateAtTime(dateValue: string, time: string) {
+  return new Date(`${dateValue}T${time}:00`);
+}
+
+function scheduledCheckInAt(reservation: HostReservationResponse) {
+  return (
+    parseDateTime(reservation.scheduledCheckInAt) ??
+    dateAtTime(reservation.checkInDate, "15:00")
+  );
+}
+
+function scheduledCheckOutAt(reservation: HostReservationResponse) {
+  return (
+    parseDateTime(reservation.scheduledCheckOutAt) ??
+    dateAtTime(reservation.checkOutDate, "11:00")
+  );
+}
+
+function reservationPhaseMeta(reservation: HostReservationResponse) {
+  if (reservation.status === "PENDING_PAYMENT") {
+    return {
+      label: "Pending payment",
+      className: "border-[#c13515]/20 bg-[#fff8f6] text-[#c13515]",
+    };
+  }
+
+  if (reservation.status === "EXPIRED") {
+    return {
+      label: "Expired",
+      className: "border-[#dddddd] bg-[#f7f7f7] text-[#6a6a6a]",
+    };
+  }
+
+  if (
+    reservation.status === "CANCELLED_BY_GUEST" ||
+    reservation.status === "CANCELLED_BY_HOST" ||
+    reservation.status === "CANCELLED_BY_ADMIN"
+  ) {
+    return {
+      label: "Cancelled",
+      className: "border-[#c13515]/20 bg-[#fff8f6] text-[#c13515]",
+    };
+  }
+
+  const now = new Date();
+  const checkInAt = scheduledCheckInAt(reservation);
+  const checkOutAt = scheduledCheckOutAt(reservation);
+
+  if (now < checkInAt) {
+    return {
+      label: "Upcoming",
+      className: "border-[#dddddd] bg-white text-[#222222]",
+    };
+  }
+
+  if (now < checkOutAt) {
+    return {
+      label: "In stay",
+      className: "border-[#0f766e]/20 bg-[#f0fdfa] text-[#0f766e]",
+    };
+  }
+
+  return {
+    label: "Past stay",
+    className: "border-[#dddddd] bg-[#f7f7f7] text-[#3f3f3f]",
+  };
+}
+
+function ReservationPhaseBadge({
+  reservation,
+}: {
+  reservation: HostReservationResponse;
+}) {
+  const phase = reservationPhaseMeta(reservation);
+
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
+        phase.className,
+      )}
+    >
+      {phase.label}
+    </span>
+  );
+}
+
 function Metric({
   icon,
   label,
@@ -600,7 +689,7 @@ function DateFilterButton({
 
 /**
  * Card reservation là đơn vị chính của list: ảnh listing, guest, status, payment, ngày ở và tổng tiền.
- * Click card đi thẳng vào detail để host xử lý trạng thái reservation.
+ * Click card đi thẳng vào detail để host xem phase vận hành và xử lý hủy nếu cần.
  */
 function ReservationCard({
   reservation,
@@ -608,6 +697,7 @@ function ReservationCard({
   reservation: HostReservationResponse;
 }) {
   const payment = paymentStatusMeta(reservation);
+  const phase = reservationPhaseMeta(reservation);
 
   return (
     <Link
@@ -624,7 +714,7 @@ function ReservationCard({
         />
         {reservation.status === "CONFIRMED" ? (
           <span className="absolute left-3 top-3 rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#222222] shadow-[rgba(0,0,0,0.02)_0_0_0_1px,rgba(0,0,0,0.04)_0_2px_6px_0,rgba(0,0,0,0.1)_0_4px_8px_0]">
-            Confirmed
+            {phase.label}
           </span>
         ) : null}
       </div>
@@ -643,7 +733,7 @@ function ReservationCard({
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <ReservationStatusBadge status={reservation.status} size="sm" />
+            <ReservationPhaseBadge reservation={reservation} />
             <span
               className={cn(
                 "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
@@ -1238,7 +1328,7 @@ export default function HostReservationsPage() {
             Only hosts can manage reservations
           </p>
           <p className="mt-2 text-base leading-[1.5] text-[#3f3f3f]">
-            Finish host onboarding to review guest stays and update statuses.
+            Finish host onboarding to review guest stays and reservation phases.
           </p>
           <Link
             href="/host/become"
@@ -1265,7 +1355,7 @@ export default function HostReservationsPage() {
                 Reservations
               </h1>
               <p className="mt-2 max-w-2xl text-base leading-[1.5] text-[#3f3f3f]">
-                Review guest stays, payment state, dates, and status updates
+                Review guest stays, payment state, dates, and stay phases
                 across your listings.
               </p>
             </div>

@@ -16,6 +16,8 @@ public record BookingReviewContextResponse(
         BookingStatus status,
         LocalDate checkInDate,
         LocalDate checkOutDate,
+        LocalDateTime scheduledCheckInAt,
+        LocalDateTime scheduledCheckOutAt,
         LocalDateTime completedAt,
         boolean canReview
 ) {

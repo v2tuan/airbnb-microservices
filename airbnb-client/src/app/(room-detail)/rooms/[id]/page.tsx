@@ -164,6 +164,43 @@ const toRatingsArray = (payload: unknown): unknown[] => {
   return [];
 };
 
+const toRatingPhotos = (payload: unknown): RatingRecord["photos"] => {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  const photos: NonNullable<RatingRecord["photos"]> = [];
+
+  payload.forEach((rawPhoto) => {
+    const photo = rawPhoto as Record<string, unknown>;
+    const imageUrl =
+      typeof photo?.imageUrl === "string"
+        ? photo.imageUrl
+        : typeof photo?.image_url === "string"
+          ? photo.image_url
+          : undefined;
+
+    if (!imageUrl?.trim()) {
+      return;
+    }
+
+    photos.push({
+      id: typeof photo?.id === "string" ? photo.id : undefined,
+      imageUrl,
+      sortOrder:
+        typeof photo?.sortOrder === "number"
+          ? photo.sortOrder
+          : typeof photo?.sort_order === "number"
+            ? photo.sort_order
+            : undefined,
+    });
+  });
+
+  return photos.sort(
+    (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0),
+  );
+};
+
 const normalizeRating = (raw: unknown): RatingRecord => {
   const record = raw as Record<string, unknown>;
   const reviewer = (record?.reviewer ??
@@ -238,6 +275,7 @@ const normalizeRating = (raw: unknown): RatingRecord => {
       reviewer?.profile_picture,
       reviewer?.image,
     ),
+    photos: toRatingPhotos(record?.photos),
   };
 };
 
@@ -305,11 +343,11 @@ export default function RoomDetail() {
   useEffect(() => {
     let cancelled = false;
 
-    const fetchRatings = async () => {
+    const fetchRatings = async (listingId: string) => {
       try {
         const [ratingsResponse, averageResponse] = await Promise.allSettled([
-          ratingAPI.getRatingsByListing(id),
-          ratingAPI.getAverageRating(id),
+          ratingAPI.getRatingsByListing(listingId),
+          ratingAPI.getAverageRating(listingId),
         ]);
 
         if (cancelled) return;
@@ -320,9 +358,13 @@ export default function RoomDetail() {
             : [];
 
         setRatings(toRatingsArray(rawRatingsPayload).map(normalizeRating));
-        setAverageRating(
+        const rawAverage =
           averageResponse.status === "fulfilled"
-            ? averageResponse.value.data
+            ? unwrapApiData<number>(averageResponse.value.data)
+            : 0;
+        setAverageRating(
+          typeof rawAverage === "number" && Number.isFinite(rawAverage)
+            ? rawAverage
             : 0,
         );
       } catch (ratingError) {
@@ -440,7 +482,7 @@ export default function RoomDetail() {
         setErrorMessage(null);
         setLoading(false);
 
-        void fetchRatings();
+        void fetchRatings(listingData.listingId);
         void fetchHost(listingData.hostId);
         void fetchAvailability(listingData.listingId);
       } catch (fetchError) {

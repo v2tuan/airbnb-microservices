@@ -25,9 +25,7 @@ import {
   confirmHostCancellationQuote,
   getHostReservationDetail,
   requestHostCancellationQuote,
-  updateHostReservationStatus,
 } from "@/api/endpoints/booking";
-import { ReservationStatusBadge } from "@/components/trips/ReservationStatusBadge";
 import {
   Dialog,
   DialogClose,
@@ -203,41 +201,132 @@ function coverImage(reservation: HostReservationDetailResponse) {
   );
 }
 
-/**
- * Xác định CTA chính theo state machine của reservation.
- * CONFIRMED -> host có thể check-in guest; CHECKED_IN -> host có thể mark checkout; CHECKED_OUT -> complete.
- * Các trạng thái terminal không có primary action để tránh update sai flow nghiệp vụ.
- */
-function nextPrimaryAction(status: BookingStatus) {
-  if (status === "CONFIRMED") {
-    return {
-      status: "CHECKED_IN" as BookingStatus,
-      label: "Mark checked in",
-      description: "Use this when the guest has arrived.",
-    };
-  }
-
-  if (status === "CHECKED_IN") {
-    return {
-      status: "CHECKED_OUT" as BookingStatus,
-      label: "Mark checked out",
-      description: "Use this when the guest has left.",
-    };
-  }
-
-  if (status === "CHECKED_OUT") {
-    return {
-      status: "COMPLETED" as BookingStatus,
-      label: "Mark completed",
-      description: "Use this after checkout has been finalized.",
-    };
-  }
-
-  return null;
+// Stay phase is derived from scheduled check-in/check-out timestamps, not manual host actions.
+function parseDateTime(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function canCancel(status: BookingStatus) {
-  return status === "CONFIRMED";
+function timeValue(value?: string | null, fallback = "00:00") {
+  if (!value) return fallback;
+  return value.slice(0, 5);
+}
+
+function dateAtTime(dateValue: string, time: string) {
+  return new Date(`${dateValue}T${time}:00`);
+}
+
+function scheduledCheckInAt(reservation: HostReservationDetailResponse) {
+  const scheduled = parseDateTime(reservation.scheduledCheckInAt);
+  if (scheduled) return scheduled;
+
+  return dateAtTime(
+    reservation.checkInDate,
+    timeValue(
+      reservation.listing?.checkInStartTime ??
+        reservation.listing?.houseRules?.checkInFrom,
+      "15:00",
+    ),
+  );
+}
+
+function scheduledCheckOutAt(reservation: HostReservationDetailResponse) {
+  const scheduled = parseDateTime(reservation.scheduledCheckOutAt);
+  if (scheduled) return scheduled;
+
+  return dateAtTime(
+    reservation.checkOutDate,
+    timeValue(
+      reservation.listing?.checkOutTime ??
+        reservation.listing?.houseRules?.checkOutTime,
+      "11:00",
+    ),
+  );
+}
+
+function canCancel(reservation: HostReservationDetailResponse) {
+  return (
+    reservation.status === "CONFIRMED" &&
+    new Date() < scheduledCheckInAt(reservation)
+  );
+}
+
+function stayPhaseMeta(reservation: HostReservationDetailResponse) {
+  if (reservation.status === "PENDING_PAYMENT") {
+    return {
+      label: "Pending payment",
+      description: "Waiting for guest payment.",
+      className: "border-[#c13515]/20 bg-[#fff8f6] text-[#c13515]",
+    };
+  }
+
+  if (reservation.status === "EXPIRED") {
+    return {
+      label: "Expired",
+      description: "Payment window expired.",
+      className: "border-[#dddddd] bg-[#f7f7f7] text-[#6a6a6a]",
+    };
+  }
+
+  if (
+    reservation.status === "CANCELLED_BY_GUEST" ||
+    reservation.status === "CANCELLED_BY_HOST" ||
+    reservation.status === "CANCELLED_BY_ADMIN"
+  ) {
+    return {
+      label: statusDisplayName(reservation.status),
+      description: "Reservation was cancelled.",
+      className: "border-[#c13515]/20 bg-[#fff8f6] text-[#c13515]",
+    };
+  }
+
+  const now = new Date();
+  const checkInAt = scheduledCheckInAt(reservation);
+  const checkOutAt = scheduledCheckOutAt(reservation);
+
+  if (now < checkInAt) {
+    return {
+      label: "Upcoming",
+      description: `Check-in opens ${formatDateTime(checkInAt.toISOString())}.`,
+      className: "border-[#dddddd] bg-white text-[#222222]",
+    };
+  }
+
+  if (now < checkOutAt) {
+    return {
+      label: "In stay",
+      description: `Checkout is scheduled for ${formatDateTime(checkOutAt.toISOString())}.`,
+      className: "border-[#0f766e]/20 bg-[#f0fdfa] text-[#0f766e]",
+    };
+  }
+
+  return {
+    label: "Past stay",
+    description: "Stay has passed checkout time.",
+    className: "border-[#dddddd] bg-[#f7f7f7] text-[#3f3f3f]",
+  };
+}
+
+function StayPhaseBadge({
+  reservation,
+  size = "md",
+}: {
+  reservation: HostReservationDetailResponse;
+  size?: "sm" | "md";
+}) {
+  const phase = stayPhaseMeta(reservation);
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full border font-semibold",
+        size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1 text-[11px]",
+        phase.className,
+      )}
+    >
+      {phase.label}
+    </span>
+  );
 }
 
 function statusDisplayName(status: BookingStatus) {
@@ -256,12 +345,6 @@ function statusDisplayName(status: BookingStatus) {
   return labels[status];
 }
 
-/**
- * Dựng bản reservation tạm thời ngay trên client sau khi host đổi status.
- * Input: reservation hiện tại + status mới + reason optional.
- * Xử lý: cập nhật statusDisplayName và các timestamp tương ứng giống backend sẽ trả về.
- * Output: state optimistic để UI phản hồi ngay; nếu API fail, caller rollback về bản cũ.
- */
 function buildOptimisticReservation(
   reservation: HostReservationDetailResponse,
   status: BookingStatus,
@@ -274,18 +357,6 @@ function buildOptimisticReservation(
     ...reservation,
     status,
     statusDisplayName: statusDisplayName(status),
-    checkedInAt:
-      status === "CHECKED_IN" || status === "CHECKED_OUT" || status === "COMPLETED"
-        ? (reservation.checkedInAt ?? now)
-        : reservation.checkedInAt,
-    checkedOutAt:
-      status === "CHECKED_OUT" || status === "COMPLETED"
-        ? (reservation.checkedOutAt ?? now)
-        : reservation.checkedOutAt,
-    completedAt:
-      status === "COMPLETED"
-        ? (reservation.completedAt ?? now)
-        : reservation.completedAt,
     cancelledAt:
       status === "CANCELLED_BY_HOST"
         ? (reservation.cancelledAt ?? now)
@@ -352,6 +423,9 @@ function timelineSteps(reservation: HostReservationDetailResponse) {
     reservation.status === "CANCELLED_BY_GUEST" ||
     reservation.status === "CANCELLED_BY_HOST" ||
     reservation.status === "CANCELLED_BY_ADMIN";
+  const now = new Date();
+  const checkInAt = scheduledCheckInAt(reservation);
+  const checkOutAt = scheduledCheckOutAt(reservation);
 
   return [
     {
@@ -372,29 +446,23 @@ function timelineSteps(reservation: HostReservationDetailResponse) {
     },
     {
       key: "checked-in",
-      label: "Checked in",
-      value: formatDateTime(reservation.checkedInAt),
-      done:
-        !!reservation.checkedInAt ||
-        ["CHECKED_IN", "CHECKED_OUT", "COMPLETED"].includes(
-          reservation.status,
-        ),
+      label: "Check-in opens",
+      value: formatDateTime(checkInAt.toISOString()),
+      done: now >= checkInAt || !!reservation.checkedInAt,
     },
     {
       key: "checked-out",
-      label: "Checked out",
-      value: formatDateTime(reservation.checkedOutAt),
-      done:
-        !!reservation.checkedOutAt ||
-        ["CHECKED_OUT", "COMPLETED"].includes(reservation.status),
+      label: "Checkout",
+      value: formatDateTime(checkOutAt.toISOString()),
+      done: now >= checkOutAt || !!reservation.checkedOutAt,
     },
     {
       key: "final",
-      label: cancelled ? "Cancelled" : "Completed",
+      label: cancelled ? "Cancelled" : "Past stay",
       value: cancelled
         ? formatDateTime(reservation.cancelledAt)
-        : formatDateTime(reservation.completedAt),
-      done: cancelled || reservation.status === "COMPLETED",
+        : formatDateTime(checkOutAt.toISOString()),
+      done: cancelled || now >= checkOutAt || reservation.status === "COMPLETED",
       danger: cancelled,
     },
   ];
@@ -637,8 +705,8 @@ function DetailLoadingSkeleton() {
  * 1. Đọc `reservationId` từ route và token từ auth state.
  * 2. Gọi API detail thật; trong lúc chờ chỉ render skeleton đúng layout.
  * 3. Render thông tin guest/listing/payment/stay rules từ Booking + enrichment của backend.
- * 4. Khi host đổi status, UI optimistic update trước, gọi PATCH backend, sau đó commit response hoặc rollback nếu lỗi.
- * 5. Cancel dùng dialog riêng để thu reason trước khi gửi status CANCELLED.
+ * 4. Stay lifecycle is rendered from scheduled check-in/check-out timestamps.
+ * 5. Cancel uses a dedicated quote/confirm flow before moving to CANCELLED_BY_HOST.
  */
 export default function HostReservationDetailPage() {
   const params = useParams<{ reservationId: string }>();
@@ -704,10 +772,6 @@ export default function HostReservationDetailPage() {
     };
   }, [params.reservationId, token]);
 
-  const primaryAction = reservation
-    ? nextPrimaryAction(reservation.status)
-    : null;
-
   const guestBreakdown = useMemo(() => {
     if (!reservation) return [];
 
@@ -719,41 +783,6 @@ export default function HostReservationDetailPage() {
       { label: "Pets", value: reservation.numPets ?? 0 },
     ];
   }, [reservation]);
-
-  const updateStatus = async (status: BookingStatus, reason?: string) => {
-    if (!token || !reservation) return;
-
-    const previousReservation = reservation;
-    const trimmedReason = reason?.trim() || undefined;
-    setSavingStatus(status);
-    setError("");
-    setSuccessMessage("");
-    // Optimistic update: UI đổi ngay để host thấy thao tác có phản hồi.
-    // Nếu backend từ chối transition/quyền truy cập, catch bên dưới rollback về `previousReservation`.
-    setReservation(
-      buildOptimisticReservation(previousReservation, status, trimmedReason),
-    );
-
-    try {
-      const response = await updateHostReservationStatus(
-        token,
-        previousReservation.reservationId,
-        { status, reason: trimmedReason },
-      );
-      setReservation(response.data);
-      setSuccessMessage("Reservation status updated.");
-      setCancelOpen(false);
-      setCancelReason("");
-    } catch (err) {
-      // Rollback khi API fail để tránh UI hiển thị status không thật so với database.
-      setReservation(previousReservation);
-      setError(
-        getApiErrorMessage(err) ?? "Unable to update reservation status.",
-      );
-    } finally {
-      setSavingStatus(null);
-    }
-  };
 
   const loadHostCancellationQuote = async (
     reasonCode = cancelReasonCode,
@@ -873,6 +902,7 @@ export default function HostReservationDetailPage() {
   const serviceFee = Number(payment?.serviceFee ?? 0);
   const taxes = Number(payment?.taxes ?? 0);
   const steps = timelineSteps(reservation);
+  const stayPhase = stayPhaseMeta(reservation);
 
   return (
     <main className="min-h-[calc(100vh-96px)] bg-white pb-16 text-[#222222]">
@@ -912,7 +942,7 @@ export default function HostReservationDetailPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <ReservationStatusBadge status={reservation.status} />
+              <StayPhaseBadge reservation={reservation} />
               <span
                 className={cn(
                   "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
@@ -1143,7 +1173,7 @@ export default function HostReservationDetailPage() {
                     {reservation.totalNights} nights
                   </p>
                 </div>
-                <ReservationStatusBadge status={reservation.status} size="sm" />
+                <StayPhaseBadge reservation={reservation} size="sm" />
               </div>
 
               <div className="mt-5 overflow-hidden rounded-lg border border-[#222222]">
@@ -1177,21 +1207,7 @@ export default function HostReservationDetailPage() {
               </div>
 
               <div className="mt-5 space-y-3">
-                {primaryAction ? (
-                  <button
-                    type="button"
-                    onClick={() => updateStatus(primaryAction.status)}
-                    disabled={savingStatus === primaryAction.status}
-                    className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-[#ff385c] px-6 text-base font-medium text-white transition active:bg-[#e00b41] disabled:bg-[#ffd1da]"
-                  >
-                    {savingStatus === primaryAction.status ? (
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                    ) : null}
-                    {primaryAction.label}
-                  </button>
-                ) : null}
-
-                {canCancel(reservation.status) ? (
+                {canCancel(reservation) ? (
                   <button
                     type="button"
                     onClick={openCancellationDialog}
@@ -1201,15 +1217,9 @@ export default function HostReservationDetailPage() {
                   </button>
                 ) : null}
 
-                {primaryAction ? (
-                  <p className="text-center text-sm leading-[1.43] text-[#6a6a6a]">
-                    {primaryAction.description}
-                  </p>
-                ) : (
-                  <p className="text-center text-sm leading-[1.43] text-[#6a6a6a]">
-                    This reservation is terminal.
-                  </p>
-                )}
+                <p className="text-center text-sm leading-[1.43] text-[#6a6a6a]">
+                  {stayPhase.description}
+                </p>
               </div>
 
               <div className="mt-6 border-t border-[#ebebeb] pt-6">
@@ -1291,8 +1301,8 @@ export default function HostReservationDetailPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <label className="text-sm font-medium leading-[1.43] text-[#222222]">
-            Reason code
+          <div className="text-sm font-medium leading-[1.43] text-[#222222]">
+            <p>Reason code</p>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {hostCancellationReasons.map((reason) => (
                 <button
@@ -1311,7 +1321,7 @@ export default function HostReservationDetailPage() {
                 </button>
               ))}
             </div>
-          </label>
+          </div>
 
           <div className="rounded-lg border border-[#dddddd] bg-[#f7f7f7] p-4">
             {quoteLoading ? (

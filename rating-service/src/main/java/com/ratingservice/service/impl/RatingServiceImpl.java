@@ -60,8 +60,8 @@ public class RatingServiceImpl implements RatingService {
     validateRatingInput(ratingDTO);
 
     BookingReviewContextDTO bookingContext = fetchReviewContext(jwt, bookingId);
-    if (!bookingContext.canReview() || !"COMPLETED".equals(bookingContext.status())) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "Only completed bookings can be reviewed.");
+    if (!bookingContext.canReview()) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking is not eligible for review yet.");
     }
 
     if (ratingRepository.existsByBookingId(bookingContext.bookingId())) {
