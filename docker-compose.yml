@@ -5,11 +5,19 @@ x-host-gateway: &host-gateway
 
 x-java-env: &java-env
   JAVA_OPTS: ${JAVA_OPTS:-}
+  SPRING_JPA_HIBERNATE_DDL_AUTO: ${SPRING_JPA_HIBERNATE_DDL_AUTO:-update}
   EUREKA_DEFAULT_ZONE: http://discovery-service:8761/eureka/
   KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:-http://localhost:8080/realms/airbnb}
   KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/airbnb/protocol/openid-connect/certs
   KAFKA_BOOTSTRAP_SERVERS: kafka:29092
   APP_CORS_ALLOWED_ORIGIN_PATTERNS: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:5173,http://localhost:3000,http://localhost:3001}
+  DB_MAX_POOL_SIZE: ${DB_MAX_POOL_SIZE:-3}
+  DB_MIN_IDLE: ${DB_MIN_IDLE:-0}
+  DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-30000}
+  DB_VALIDATION_TIMEOUT_MS: ${DB_VALIDATION_TIMEOUT_MS:-5000}
+  DB_IDLE_TIMEOUT_MS: ${DB_IDLE_TIMEOUT_MS:-300000}
+  DB_MAX_LIFETIME_MS: ${DB_MAX_LIFETIME_MS:-900000}
+  DB_KEEPALIVE_TIME_MS: ${DB_KEEPALIVE_TIME_MS:-300000}
 
 x-spring-service: &spring-service
   networks:
