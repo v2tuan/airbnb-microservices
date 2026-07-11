@@ -171,6 +171,34 @@ function getHostAverageRating(profile: PublicProfilePageData) {
   return 0;
 }
 
+function getHostReviewCount(profile: PublicProfilePageData) {
+  const fromStats = profile.stats?.reviewsCount;
+  if (typeof fromStats === "number" && Number.isFinite(fromStats) && fromStats > 0) {
+    return fromStats;
+  }
+
+  const fromPage = profile.reviews?.totalElements;
+  if (typeof fromPage === "number" && Number.isFinite(fromPage) && fromPage > 0) {
+    return fromPage;
+  }
+
+  return (profile.reviews?.items ?? []).length;
+}
+
+function getHostListingsCount(profile: PublicProfilePageData) {
+  const fromStats = profile.stats?.activeListingsCount;
+  if (typeof fromStats === "number" && Number.isFinite(fromStats) && fromStats > 0) {
+    return fromStats;
+  }
+
+  const fromPage = profile.listings?.totalElements;
+  if (typeof fromPage === "number" && Number.isFinite(fromPage) && fromPage > 0) {
+    return fromPage;
+  }
+
+  return (profile.listings?.items ?? []).length;
+}
+
 function renderStars(rating?: number) {
   const value = typeof rating === "number" ? rating : 0;
 
@@ -244,8 +272,8 @@ export default async function PublicProfilePage({ params }: PageProps) {
     const reviews = profile.reviews?.items ?? [];
     const listings = profile.listings?.items ?? [];
     const rating = getHostAverageRating(profile);
-    const reviewsCount = profile.stats?.reviewsCount;
-    const listingsCount = profile.stats?.activeListingsCount;
+    const reviewsCount = getHostReviewCount(profile);
+    const listingsCount = getHostListingsCount(profile);
     const messageRecipientId = profile.host.keycloakUserId ?? profile.host.id ?? id;
 
     return (

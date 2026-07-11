@@ -13,15 +13,17 @@ interface ListingData {
 
 export function ListingInfo({
   data,
-  hostName = "Host",
+  hostName,
 }: {
   data: ListingData;
-  hostName?: string;
+  hostName?: string | null;
 }) {
-  const displayPropertyType = data.propertyType.charAt(0) + data.propertyType.slice(1).toLowerCase()
+  const displayPropertyType =
+    data.propertyType.charAt(0) + data.propertyType.slice(1).toLowerCase();
   const cancellationPolicy = getCancellationPolicyDetail(
     data.cancellationPolicyCode,
   );
+  const hasHostName = Boolean(hostName?.trim());
 
   return (
     <div className="space-y-8">
@@ -30,7 +32,9 @@ export function ListingInfo({
           About this stay
         </p>
         <h2 className="text-[22px] font-semibold tracking-tight text-[#222222] sm:text-[26px]">
-          Entire {displayPropertyType} hosted by {hostName}
+          {hasHostName
+            ? `Entire ${displayPropertyType} hosted by ${hostName?.trim()}`
+            : `Entire ${displayPropertyType}`}
         </h2>
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
           <span>{data.maxGuests} guests</span>

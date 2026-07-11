@@ -44,6 +44,7 @@ public class ListingResponse {
     String cancellationPolicyCode;
     LocalDateTime suspendedUntil;
     String suspensionReason;
+    ListingHostResponse host;
     
     List<ListingPhotoResponse> photos;
     List<AmenityResponse> amenities;

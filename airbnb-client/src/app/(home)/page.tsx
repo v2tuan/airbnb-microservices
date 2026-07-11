@@ -9,6 +9,7 @@ import useLoginModal from "@/hooks/userLoginModal";
 import { authStorage } from "@/lib/auth-storage";
 import { useSelector } from "react-redux";
 import { selectIsAuthenticated } from "@/features/auth/authSelectors";
+import { LoadingScreen } from "@/components/loading-screen";
 import type { RootState } from "@/store";
 
 export default function Home() {
@@ -16,6 +17,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const personalizedHomeLoadedRef = useRef(false);
   const loginModal = useLoginModal();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const token = useSelector((state: RootState) => state.auth.token);
@@ -26,14 +28,15 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
 
-    const fetchData = async () => {
+    const fetchPublicData = async () => {
       try {
-        const requestToken = token ?? authStorage.getAccessToken();
-        const response = await listingAPI.getHomeSections(undefined, requestToken);
+        const response = await listingAPI.getPublicHomeSections(undefined);
         if (cancelled) return;
 
         if (response.data.code === 1000) {
-          setSections(unwrapApiData(response.data));
+          if (!personalizedHomeLoadedRef.current) {
+            setSections(unwrapApiData(response.data));
+          }
           setErrorMessage("");
         } else {
           setErrorMessage(response.data.message ?? "Khong the tai du lieu.");
@@ -47,14 +50,42 @@ export default function Home() {
       }
     };
 
-    if (isAuthenticated && !token && !authStorage.getAccessToken()) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
     setLoading(true);
-    void fetchData();
+    void fetchPublicData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const requestToken = token ?? authStorage.getAccessToken();
+    if (!isAuthenticated && !requestToken) return;
+    if (!requestToken) return;
+
+    let cancelled = false;
+
+    const fetchPersonalizedData = async () => {
+      try {
+        const response = await listingAPI.getHomeSections(
+          undefined,
+          requestToken,
+        );
+        if (cancelled) return;
+
+        if (response.data.code === 1000) {
+          personalizedHomeLoadedRef.current = true;
+          setSections(unwrapApiData(response.data));
+          setErrorMessage("");
+        }
+      } catch {
+        if (!cancelled) {
+          // Keep the public home sections already on screen.
+        }
+      }
+    };
+
+    void fetchPersonalizedData();
 
     return () => {
       cancelled = true;
@@ -92,7 +123,7 @@ export default function Home() {
     });
   };
 
-  if (loading) return <div className="py-8 text-center">Loading...</div>;
+  if (loading) return <LoadingScreen />;
   if (errorMessage) return <div className="py-8 text-center text-red-500">{errorMessage}</div>;
 
   return (

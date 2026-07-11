@@ -158,6 +158,16 @@ export interface ListingResponse {
   accessInfo?: ListingAccessInfoResponse;
   createdAt?: string;
   updatedAt?: string;
+  host?: ListingHostResponse;
+}
+
+export interface ListingHostResponse {
+  userId?: string;
+  keycloakUserId?: string;
+  fullName?: string;
+  avatarUrl?: string;
+  superHost?: boolean;
+  joinedAt?: string;
 }
 
 export interface ListingItemResponse {
@@ -169,6 +179,8 @@ export interface ListingItemResponse {
   propertyType?: PropertyType;
   status?: ListingStatus;
   createdAt?: string;
+  basePrice?: number;
+  currency?: string;
   shortFeatures?: string;
   avgRating?: number;
   reviewCount?: number;
@@ -286,6 +298,15 @@ export const listingAPI = {
     return apiClient.get(`${prefix}/listings/sections`, {
       params: { limit },
       ...withAuth(token ?? null),
+    });
+  },
+
+  getPublicHomeSections: (
+    limit?: number,
+  ): Promise<AxiosResponse<ApiResponse<HomeSectionResponse[]>>> => {
+    return apiClient.get(`${prefix}/listings/sections`, {
+      params: { limit },
+      ...publicRequest,
     });
   },
 

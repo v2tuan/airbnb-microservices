@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -26,6 +27,8 @@ public class ListingItemResponse {
     private PropertyType propertyType;
     private ListingStatus status;
     private LocalDateTime createdAt;
+    private BigDecimal basePrice;
+    private String currency;
     private String shortFeatures;
     private Double avgRating;
     private Long reviewCount;
@@ -39,6 +42,8 @@ public class ListingItemResponse {
             PropertyType propertyType,
             ListingStatus status,
             LocalDateTime createdAt,
+            BigDecimal basePrice,
+            String currency,
             String shortFeatures,
             Double avgRating,
             Long reviewCount
@@ -51,6 +56,8 @@ public class ListingItemResponse {
         this.propertyType = propertyType;
         this.status = status;
         this.createdAt = createdAt;
+        this.basePrice = basePrice;
+        this.currency = currency;
         this.shortFeatures = shortFeatures;
         this.avgRating = avgRating;
         this.reviewCount = reviewCount;

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { activityAPI } from "@/api/endpoints/activity";
 import { getListingUnavailableDates } from "@/api/endpoints/booking";
@@ -35,8 +35,13 @@ import { ListingGallery } from "@/components/listing/ListingGallery";
 import { ListingInfo } from "@/components/listing/ListingInfo";
 import { ListingRatingPanel } from "@/components/listing/ListingRatingPanel";
 import { RoomWishlistButton } from "@/components/listing/RoomWishlistButton";
+import { LoadingScreen } from "@/components/loading-screen";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar } from "@/components/ui/calendar";
+import {
+  getCachedConversationIdentity,
+  setCachedConversationIdentity,
+} from "@/lib/conversation-identity-cache";
 
 type RatingRecord = {
   id?: string;
@@ -388,7 +393,12 @@ export default function RoomDetail() {
           Boolean(primaryProfile?.avatarUrl?.trim());
 
         if (hasEnoughPrimaryData) {
-          setHost(normalizeHostPreview(primaryProfile, hostId));
+          const normalizedHost = normalizeHostPreview(primaryProfile, hostId);
+          setHost(normalizedHost);
+          setCachedConversationIdentity(hostId, {
+            fullName: normalizedHost.fullName,
+            avatarUrl: normalizedHost.avatarUrl,
+          });
           return;
         }
       } catch (primaryError) {
@@ -402,19 +412,22 @@ export default function RoomDetail() {
         const fallbackResponse = await userAPI.getPublicProfileById(hostId);
         if (cancelled) return;
 
-        setHost(
-          normalizeHostPreview(
-            {
-              userId: fallbackResponse.data?.userId,
-              keycloakUserId: fallbackResponse.data?.keycloakUserId,
-              fullName: fallbackResponse.data?.fullName,
-              avatarUrl: fallbackResponse.data?.avatarUrl,
-              superHost: fallbackResponse.data?.superHost,
-              joinedAt: fallbackResponse.data?.joinedAt,
-            },
-            hostId,
-          ),
+        const normalizedHost = normalizeHostPreview(
+          {
+            userId: fallbackResponse.data?.userId,
+            keycloakUserId: fallbackResponse.data?.keycloakUserId,
+            fullName: fallbackResponse.data?.fullName,
+            avatarUrl: fallbackResponse.data?.avatarUrl,
+            superHost: fallbackResponse.data?.superHost,
+            joinedAt: fallbackResponse.data?.joinedAt,
+          },
+          hostId,
         );
+        setHost(normalizedHost);
+        setCachedConversationIdentity(hostId, {
+          fullName: normalizedHost.fullName,
+          avatarUrl: normalizedHost.avatarUrl,
+        });
       } catch (hostError) {
         console.error("Failed to fetch host profile:", hostError);
         if (!cancelled) setHost(null);
@@ -480,10 +493,36 @@ export default function RoomDetail() {
         if (cancelled) return;
         setListing(listingData);
         setErrorMessage(null);
+
+        const embeddedHost = listingData.host
+          ? normalizeHostPreview(
+              listingData.host,
+              listingData.host.keycloakUserId ?? listingData.hostId,
+            )
+          : null;
+        const cachedHost = getCachedConversationIdentity(listingData.hostId);
+        const nextHost =
+          embeddedHost ??
+          (cachedHost?.fullName || cachedHost?.avatarUrl
+            ? normalizeHostPreview(
+                {
+                  keycloakUserId: listingData.hostId,
+                  fullName: cachedHost.fullName,
+                  avatarUrl: cachedHost.avatarUrl,
+                },
+                listingData.hostId,
+              )
+            : null);
+
+        setHost(nextHost);
+
         setLoading(false);
 
+        if (!nextHost?.fullName && !nextHost?.avatarUrl) {
+          void fetchHost(listingData.hostId);
+        }
+
         void fetchRatings(listingData.listingId);
-        void fetchHost(listingData.hostId);
         void fetchAvailability(listingData.listingId);
       } catch (fetchError) {
         console.error("Failed to fetch listing:", fetchError);
@@ -528,8 +567,8 @@ export default function RoomDetail() {
     });
   }, [listing?.listingId]);
 
-  // const hostProfileId = host?.keycloakUserId ?? host?.userId ?? listing?.hostId;
-  const hostDisplayName = host?.fullName?.trim() || "Host";
+  const hostDisplayName =
+    listing?.host?.fullName?.trim() ?? host?.fullName?.trim() ?? "";
   // const reviewCount = ratings.length;
   // const effectiveAverageRating = averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
   // const totalGuests = listing?.maxGuests ?? 0;
@@ -537,22 +576,9 @@ export default function RoomDetail() {
   // const amenities = (listing?.amenities ?? []).filter(Boolean);
   // const sleepCount = Math.max(1, Math.min(listing?.numBedrooms || 1, 3));
   // const bedsPerRoom = Math.max(1, Math.round((listing?.numBeds || sleepCount) / sleepCount));
-  const hostInitials = useMemo(() => {
-    const source = hostDisplayName;
-    return source
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("");
-  }, [hostDisplayName]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-white px-4 py-10 text-center text-zinc-500">
-        Loading...
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (errorMessage || !listing) {
@@ -576,7 +602,12 @@ export default function RoomDetail() {
     );
   }
 
-  const hostProfileId = host?.keycloakUserId ?? host?.userId ?? listing.hostId;
+  const hostProfileId =
+    listing?.host?.keycloakUserId ??
+    listing?.host?.userId ??
+    host?.keycloakUserId ??
+    host?.userId ??
+    listing.hostId;
   const reviewCount = ratings.length;
   const effectiveAverageRating =
     averageRating > 0 ? averageRating : getAverageFromRatings(ratings);
@@ -645,11 +676,13 @@ export default function RoomDetail() {
                     : "No reviews yet"
                 }
               />
-              <DetailMeta
-                icon={Sparkles}
-                label="Host"
-                value={host?.superHost ? "Superhost" : "Member host"}
-              />
+              {hostDisplayName ? (
+                <DetailMeta
+                  icon={Sparkles}
+                  label="Host"
+                  value={host?.superHost ? "Superhost" : "Member host"}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -662,74 +695,78 @@ export default function RoomDetail() {
 
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">
             <div className="min-w-0 space-y-8">
-              <section className="border-b border-[#ebebeb] pb-8">
-                <div className="flex items-center gap-4">
-                  <div className="relative h-14 w-14 shrink-0">
-                    <Avatar className="h-14 w-14">
-                      <AvatarImage
-                        src={host?.avatarUrl ?? undefined}
-                        alt={host?.fullName ?? "Host"}
-                      />
-                      <AvatarFallback>{hostInitials || "H"}</AvatarFallback>
-                    </Avatar>
-                    {host?.superHost ? (
-                      <span className="absolute -right-0.5 -bottom-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#ff385c] text-white shadow-sm">
-                        <CheckCircle2 className="h-3 w-3" />
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
-                      Hosted by
-                    </p>
-                    {hostProfileId ? (
-                      <Link
-                        href={`/users/profile/${hostProfileId}`}
-                        className="mt-1 inline-block text-lg font-semibold text-[#222222] underline-offset-4 hover:underline"
-                      >
-                        {hostDisplayName}
-                      </Link>
-                    ) : (
-                      <p className="mt-1 text-lg font-semibold text-[#222222]">
-                        {hostDisplayName}
+              {hostDisplayName ? (
+                <section className="border-b border-[#ebebeb] pb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="relative h-14 w-14 shrink-0">
+                      <Avatar className="h-14 w-14">
+                        <AvatarImage
+                          src={host?.avatarUrl ?? undefined}
+                          alt={hostDisplayName}
+                        />
+                        <AvatarFallback>
+                          {hostDisplayName.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      {host?.superHost ? (
+                        <span className="absolute -right-0.5 -bottom-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#ff385c] text-white shadow-sm">
+                          <CheckCircle2 className="h-3 w-3" />
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                        Hosted by
                       </p>
-                    )}
-                    <p className="mt-1 text-sm text-zinc-500">
-                      {host?.joinedAt
-                        ? formatHostSince(host.joinedAt)
-                        : "Joined recently"}
-                    </p>
+                      {hostProfileId ? (
+                        <Link
+                          href={`/users/profile/${hostProfileId}`}
+                          className="mt-1 inline-block text-lg font-semibold text-[#222222] underline-offset-4 hover:underline"
+                        >
+                          {hostDisplayName}
+                        </Link>
+                      ) : (
+                        <p className="mt-1 text-lg font-semibold text-[#222222]">
+                          {hostDisplayName}
+                        </p>
+                      )}
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {host?.joinedAt
+                          ? formatHostSince(host.joinedAt)
+                          : "Joined recently"}
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[16px] bg-[#f7f7f7] p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
-                      Status
-                    </p>
-                    <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#222222]">
-                      <CheckCircle2 className="h-4 w-4 text-[#ff385c]" />
-                      {host?.superHost ? "Superhost" : "Member host"}
-                    </p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[16px] bg-[#f7f7f7] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
+                        Status
+                      </p>
+                      <p className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#222222]">
+                        <CheckCircle2 className="h-4 w-4 text-[#ff385c]" />
+                        {host?.superHost ? "Superhost" : "Member host"}
+                      </p>
+                    </div>
+                    <div className="rounded-[16px] bg-[#f7f7f7] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
+                        Joined
+                      </p>
+                      <p className="mt-2 text-sm font-medium text-[#222222]">
+                        {host?.joinedAt
+                          ? formatHostSince(host.joinedAt)
+                          : "Joined recently"}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Public host profile
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-[16px] bg-[#f7f7f7] p-4">
-                    <p className="text-xs uppercase tracking-[0.16em] text-zinc-400">
-                      Joined
-                    </p>
-                    <p className="mt-2 text-sm font-medium text-[#222222]">
-                      {host?.joinedAt
-                        ? formatHostSince(host.joinedAt)
-                        : "Joined recently"}
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Public host profile
-                    </p>
-                  </div>
-                </div>
-              </section>
+                </section>
+              ) : null}
 
               <section className="border-b border-[#ebebeb] pb-8">
-                <ListingInfo data={listing} hostName={hostDisplayName} />
+                <ListingInfo data={listing} hostName={hostDisplayName || null} />
               </section>
 
               <section className="border-b border-[#ebebeb] pb-8">

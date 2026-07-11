@@ -174,11 +174,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                         l.propertyType,
                         l.status,
                         l.createdAt,
+                        pr.basePrice,
+                        pr.currency,
                         null,
                         null,
                         null
                     )
                     FROM Listing l
+                    LEFT JOIN l.pricing pr
                     WHERE l.hostId = :hostId
                     """,
             countQuery = "SELECT COUNT(l) FROM Listing l WHERE l.hostId = :hostId"
@@ -207,11 +210,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                         l.propertyType,
                         l.status,
                         l.createdAt,
+                        pr.basePrice,
+                        pr.currency,
                         null,
                         null,
                         null
                     )
                     FROM Listing l
+                    LEFT JOIN l.pricing pr
                     WHERE l.hostId = :hostId
                       AND l.status = :status
                     """,
@@ -242,11 +248,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                         l.propertyType,
                         l.status,
                         l.createdAt,
+                        pr.basePrice,
+                        pr.currency,
                         null,
                         null,
                         null
                     )
                     FROM Listing l
+                    LEFT JOIN l.pricing pr
                     WHERE l.hostId = :hostId
                       AND (:status IS NULL OR l.status = :status)
                       AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
@@ -285,11 +294,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                         l.propertyType,
                         l.status,
                         l.createdAt,
+                        pr.basePrice,
+                        pr.currency,
                         null,
                         null,
                         null
                     )
                     FROM Listing l
+                    LEFT JOIN l.pricing pr
                     """,
             countQuery = "SELECT COUNT(l) FROM Listing l"
     )
@@ -314,11 +326,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                         l.propertyType,
                         l.status,
                         l.createdAt,
+                        pr.basePrice,
+                        pr.currency,
                         null,
                         null,
                         null
                     )
                     FROM Listing l
+                    LEFT JOIN l.pricing pr
                     WHERE l.status = :status
                     """,
             countQuery = "SELECT COUNT(l) FROM Listing l WHERE l.status = :status"
@@ -347,11 +362,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                         l.propertyType,
                         l.status,
                         l.createdAt,
+                        pr.basePrice,
+                        pr.currency,
                         null,
                         null,
                         null
                     )
                     FROM Listing l
+                    LEFT JOIN l.pricing pr
                     WHERE (:status IS NULL OR l.status = :status)
                       AND (LOWER(l.title) LIKE :pattern OR LOWER(l.city) LIKE :pattern)
                     """,

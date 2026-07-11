@@ -1,6 +1,8 @@
 package com.activityservice.service;
 
 import com.activityservice.dto.RecommendationItemResponse;
+import com.activityservice.model.UserRecommendationCache;
+import com.activityservice.repository.RecommendationCacheRepository;
 import com.activityservice.repository.UserActivityRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,15 +21,24 @@ class CollaborativeFilteringServiceTest {
   @Mock
   private UserActivityRepository userActivityRepository;
 
+  @Mock
+  private RecommendationCacheRepository recommendationCacheRepository;
+
   private CollaborativeFilteringService collaborativeFilteringService;
 
   @BeforeEach
   void setUp() {
-    collaborativeFilteringService = new CollaborativeFilteringService(userActivityRepository);
+    collaborativeFilteringService = new CollaborativeFilteringService(
+        userActivityRepository,
+        recommendationCacheRepository);
   }
 
   @Test
   void recommendUsesCollaborativeFilteringWhenNeighborsOverlap() {
+    when(recommendationCacheRepository.findByKeycloakUserIdAndCalculatedAtAfterOrderByRankPositionAsc(
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.any()
+    )).thenReturn(List.of());
     when(userActivityRepository.findAllUserListingWeights()).thenReturn(List.of(
         userListingWeight("u1", "A", 8.0),
         userListingWeight("u1", "B", 4.0),
@@ -50,6 +61,10 @@ class CollaborativeFilteringServiceTest {
 
   @Test
   void recommendUsesColdStartFallbackWhenUserHasNoHistory() {
+    when(recommendationCacheRepository.findByKeycloakUserIdAndCalculatedAtAfterOrderByRankPositionAsc(
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.any()
+    )).thenReturn(List.of());
     when(userActivityRepository.findAllUserListingWeights()).thenReturn(List.of(
         userListingWeight("u2", "C", 8.0)
     ));
@@ -67,6 +82,10 @@ class CollaborativeFilteringServiceTest {
 
   @Test
   void recommendUsesSparseFallbackWhenNoNeighborContributesCandidates() {
+    when(recommendationCacheRepository.findByKeycloakUserIdAndCalculatedAtAfterOrderByRankPositionAsc(
+        org.mockito.ArgumentMatchers.anyString(),
+        org.mockito.ArgumentMatchers.any()
+    )).thenReturn(List.of());
     when(userActivityRepository.findAllUserListingWeights()).thenReturn(List.of(
         userListingWeight("u1", "A", 8.0),
         userListingWeight("u2", "B", 8.0)
@@ -81,6 +100,21 @@ class CollaborativeFilteringServiceTest {
     assertThat(result).hasSize(2);
     assertThat(result).allMatch(item -> item.source().equals("POPULARITY_SPARSE"));
     assertThat(result).extracting(RecommendationItemResponse::listingId).containsExactly("B", "C");
+  }
+
+  @Test
+  void recommendReturnsCachedRecommendationsWithoutRecomputingMatrix() {
+    when(recommendationCacheRepository.findByKeycloakUserIdAndCalculatedAtAfterOrderByRankPositionAsc(
+        org.mockito.ArgumentMatchers.eq("u1"),
+        org.mockito.ArgumentMatchers.any()
+    )).thenReturn(List.of(
+        cache("u1", "A", 1, 4.9, "COLLABORATIVE_FILTERING"),
+        cache("u1", "B", 2, 4.2, "POPULARITY_BACKFILL")
+    ));
+
+    List<RecommendationItemResponse> result = collaborativeFilteringService.recommend("u1", 10);
+
+    assertThat(result).extracting(RecommendationItemResponse::listingId).containsExactly("A", "B");
   }
 
   private static UserActivityRepository.UserListingWeightProjection userListingWeight(
@@ -117,6 +151,22 @@ class CollaborativeFilteringServiceTest {
         return weight;
       }
     };
+  }
+
+  private static UserRecommendationCache cache(
+      String userId,
+      String listingId,
+      int rank,
+      double score,
+      String source) {
+    UserRecommendationCache cache = new UserRecommendationCache();
+    cache.setKeycloakUserId(userId);
+    cache.setListingId(listingId);
+    cache.setRankPosition(rank);
+    cache.setScore(score);
+    cache.setSource(source);
+    cache.setCalculatedAt(java.time.Instant.now());
+    return cache;
   }
 }
 

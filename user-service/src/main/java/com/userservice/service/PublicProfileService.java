@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -29,7 +30,8 @@ public class PublicProfileService {
   private final RatingServiceClient ratingServiceClient;
 
   private static final int REVIEWS_PAGE_SIZE = 6;
-  private static final int LISTINGS_PAGE_SIZE = 8;
+  private static final int LISTINGS_PAGE_SIZE = 20;
+  private static final int LISTINGS_DISPLAY_LIMIT = 8;
 
   public Optional<PublicHostResponseDTO> getByKeycloakUserId(String keycloakUserId) {
     return userRepository.findByKeycloakUserId(keycloakUserId).map(this::toPublicResponse);
@@ -82,14 +84,25 @@ public class PublicProfileService {
     hostPayload.put("responseRate", "N/A");
     hostPayload.put("responseTime", "N/A");
 
-    Map<String, Object> reviewsPagePayload = fetchReviewsPage(hostId, reviewPage);
-    Map<String, Object> listingsPagePayload = fetchListingsPage(hostId, listingPage);
+    CompletableFuture<Map<String, Object>> reviewsFuture =
+        CompletableFuture.supplyAsync(() -> fetchReviewsPage(hostId, reviewPage));
+    CompletableFuture<Map<String, Object>> listingsFuture =
+        CompletableFuture.supplyAsync(() -> fetchListingsPage(hostId, listingPage));
+    CompletableFuture<Map<String, Object>> ratingFuture =
+        CompletableFuture.supplyAsync(() -> fetchRatingSummary(hostId));
 
-    Map<String, Object> ratingSummary = fetchRatingSummary(hostId);
+    Map<String, Object> reviewsPagePayload = reviewsFuture.join();
+    Map<String, Object> listingsPagePayload = listingsFuture.join();
+    Map<String, Object> ratingSummary = ratingFuture.join();
+
     long reviewsCount = toLong(ratingSummary.get("reviewCount"));
     double overallRating = toDouble(ratingSummary.get("overallRating"));
 
     List<Map<String, Object>> reviewItems = extractItems(reviewsPagePayload.get("items"));
+    Map<String, String> listingTitles = buildListingTitleLookup(
+        extractItems(listingsPagePayload.get("items")));
+    applyListingTitles(hostId, reviewItems, listingTitles);
+
     if (reviewsCount == 0L) {
       reviewsCount = toLong(reviewsPagePayload.getOrDefault("totalElements", 0L));
     }
@@ -112,9 +125,14 @@ public class PublicProfileService {
     reviewsPayload.put("totalElements", reviewsPagePayload.getOrDefault("totalElements", 0L));
 
     Map<String, Object> listingsPayload = new LinkedHashMap<>();
-    listingsPayload.put("items", listingsPagePayload.getOrDefault("items", List.of()));
+    listingsPayload.put(
+        "items",
+        extractItems(listingsPagePayload.get("items"))
+            .stream()
+            .limit(LISTINGS_DISPLAY_LIMIT)
+            .toList());
     listingsPayload.put("page", listingPage);
-    listingsPayload.put("size", LISTINGS_PAGE_SIZE);
+    listingsPayload.put("size", LISTINGS_DISPLAY_LIMIT);
     listingsPayload.put("totalElements", listingsPagePayload.getOrDefault("totalElements", 0L));
 
     Map<String, Object> payload = new LinkedHashMap<>();
@@ -140,16 +158,12 @@ public class PublicProfileService {
       List<Map<String, Object>> items = new ArrayList<>();
       Object content = response.get("content");
       if (content instanceof List<?> contentList) {
-        List<String> listingIds = new ArrayList<>();
         for (Object item : contentList) {
           if (item instanceof Map<?, ?> itemMap) {
             Map<String, Object> review = new LinkedHashMap<>();
             review.put("id", itemMap.get("id"));
             String listingId = itemMap.get("listingId") == null ? null : itemMap.get("listingId").toString();
             review.put("listingId", listingId);
-            if (listingId != null && !listingId.isBlank()) {
-              listingIds.add(listingId);
-            }
             review.put("reviewerName", itemMap.get("reviewerFullName"));
             review.put("reviewerAvatarUrl", itemMap.get("reviewerAvatarUrl"));
             review.put("reviewerLocation", itemMap.get("reviewerLocation"));
@@ -159,13 +173,6 @@ public class PublicProfileService {
             items.add(review);
           }
         }
-        Map<String, String> listingTitles = fetchListingTitles(hostId, listingIds);
-        items.forEach(review ->
-            review.put("listingTitle", listingTitles.getOrDefault(
-                stringValue(review.get("listingId")),
-                null
-            ))
-        );
       }
 
       Map<String, Object> normalized = new LinkedHashMap<>();
@@ -209,26 +216,73 @@ public class PublicProfileService {
     }
   }
 
-  private Map<String, String> fetchListingTitles(String hostId, Collection<String> listingIds) {
+  private Map<String, String> buildListingTitleLookup(List<Map<String, Object>> listingItems) {
     Map<String, String> result = new LinkedHashMap<>();
-    if (listingIds == null || listingIds.isEmpty()) {
+    if (listingItems == null || listingItems.isEmpty()) {
       return result;
     }
 
-    List<UUID> ids = listingIds.stream()
-        .filter(id -> id != null && !id.isBlank())
-        .map(id -> {
-          try {
-            return UUID.fromString(id);
-          } catch (IllegalArgumentException ex) {
-            return null;
-          }
-        })
-        .filter(java.util.Objects::nonNull)
-        .distinct()
-        .toList();
+    for (Map<String, Object> item : listingItems) {
+      String listingId = stringValue(
+          item.get("id") != null ? item.get("id") : item.get("listingId")
+      );
+      String title = stringValue(item.get("title"));
+      if (listingId != null && title != null) {
+        result.put(listingId, title);
+      }
+    }
 
-    if (ids.isEmpty()) {
+    return result;
+  }
+
+  private void applyListingTitles(
+      String hostId,
+      List<Map<String, Object>> reviewItems,
+      Map<String, String> listingTitles) {
+    if (reviewItems == null || reviewItems.isEmpty()) {
+      return;
+    }
+
+    List<String> missingListingIds = new ArrayList<>();
+    for (Map<String, Object> review : reviewItems) {
+      String listingId = stringValue(review.get("listingId"));
+      String title = listingTitles.get(listingId);
+      if (title != null) {
+        review.put("listingTitle", title);
+        continue;
+      }
+
+      review.put("listingTitle", null);
+      if (listingId != null && !listingId.isBlank()) {
+        missingListingIds.add(listingId);
+      }
+    }
+
+    if (missingListingIds.isEmpty()) {
+      return;
+    }
+
+    Map<String, String> fallbackTitles = fetchMissingListingTitles(hostId, missingListingIds);
+    if (fallbackTitles.isEmpty()) {
+      return;
+    }
+
+    reviewItems.forEach(review -> {
+      String listingId = stringValue(review.get("listingId"));
+      if (listingId == null || review.get("listingTitle") != null) {
+        return;
+      }
+
+      String title = fallbackTitles.get(listingId);
+      if (title != null) {
+        review.put("listingTitle", title);
+      }
+    });
+  }
+
+  private Map<String, String> fetchMissingListingTitles(String hostId, Collection<String> listingIds) {
+    Map<String, String> result = new LinkedHashMap<>();
+    if (listingIds == null || listingIds.isEmpty()) {
       return result;
     }
 
@@ -240,7 +294,7 @@ public class PublicProfileService {
             item.get("id") != null ? item.get("id") : item.get("listingId")
         );
         String title = stringValue(item.get("title"));
-        if (listingId != null && title != null) {
+        if (listingId != null && title != null && listingIds.contains(listingId)) {
           result.put(listingId, title);
         }
       }

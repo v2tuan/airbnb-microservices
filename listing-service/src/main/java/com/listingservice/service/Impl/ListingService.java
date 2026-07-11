@@ -9,6 +9,7 @@ import com.listingservice.dto.request.ListingUnsuspensionRequest;
 import com.listingservice.dto.request.ListingUpdateRequest;
 import com.listingservice.dto.response.HomeListingCardResponse;
 import com.listingservice.dto.response.HomeSectionResponse;
+import com.listingservice.dto.response.ListingHostResponse;
 import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.dto.response.ListingResponse;
 import com.listingservice.entity.Listing;
@@ -21,6 +22,7 @@ import com.listingservice.search.ListingSearchCriteria;
 import com.listingservice.search.ListingSearchSort;
 import com.listingservice.service.ActivityClient;
 import com.listingservice.service.AvailabilityClient;
+import com.listingservice.service.HostProfileClient;
 import com.listingservice.service.IListingService;
 import com.listingservice.service.RecommendationClient;
 import com.listingservice.service.RatingClient;
@@ -69,6 +71,7 @@ public class ListingService implements IListingService {
     RecentlyViewedClient recentlyViewedClient;
     RatingClient ratingClient;
     AvailabilityClient availabilityClient;
+    HostProfileClient hostProfileClient;
 
     @Override
     @Transactional
@@ -123,6 +126,7 @@ public class ListingService implements IListingService {
         Listing listing = listingRepository.findById(listingId)
                 .orElseThrow(() -> new AppException(ErrorCode.LISTING_NOT_FOUND));
         ListingResponse response = listingMapper.toResponse(listing);
+        response.setHost(loadHostSummary(listing.getHostId()));
         return response;
     }
 
@@ -378,7 +382,6 @@ public class ListingService implements IListingService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String keycloakUserId) {
         int safeLimit = normalizeLimit(limitPerSection);
         List<HomeSectionResponse> sections = new java.util.ArrayList<>();
@@ -392,6 +395,7 @@ public class ListingService implements IListingService {
                 buildSection("dalat-weekend", "Available in Dalat this weekend", "Dalat", safeLimit)
         ));
 
+        applyRatings(sections);
         return sections;
     }
 
@@ -421,6 +425,7 @@ public class ListingService implements IListingService {
             listingsPage = listingRepository.findHostListingItems(hostId, pageable);
         }
 
+        enrichListingRatings(listingsPage.getContent());
         return listingsPage;
     }
 
@@ -429,8 +434,6 @@ public class ListingService implements IListingService {
                 city,
                 ListingStatus.ACTIVE,
                 PageRequest.of(0, limit));
-
-        applyRatings(listings);
 
         return HomeSectionResponse.builder()
                 .sectionKey(sectionKey)
@@ -465,8 +468,6 @@ public class ListingService implements IListingService {
             return Optional.empty();
         }
 
-        applyRatings(cards);
-
         return Optional.of(HomeSectionResponse.builder()
                 .sectionKey("recommendations-for-you")
                 .title("Recommended for you")
@@ -500,8 +501,6 @@ public class ListingService implements IListingService {
             return Optional.empty();
         }
 
-        applyRatings(cards);
-
         return Optional.of(HomeSectionResponse.builder()
                 .sectionKey("recently-viewed")
                 .title("Recently viewed")
@@ -525,18 +524,31 @@ public class ListingService implements IListingService {
                 .build();
     }
 
-    private void applyRatings(List<HomeListingCardResponse> listings) {
-        if (listings == null || listings.isEmpty()) {
+    private void applyRatings(List<HomeSectionResponse> sections) {
+        if (sections == null || sections.isEmpty()) {
             return;
         }
 
-        List<UUID> listingIds = listings.stream()
+        List<HomeListingCardResponse> cards = sections.stream()
+                .filter(Objects::nonNull)
+                .flatMap(section -> section.getListings() == null
+                        ? java.util.stream.Stream.empty()
+                        : section.getListings().stream())
+                .toList();
+
+        if (cards.isEmpty()) {
+            return;
+        }
+
+        List<UUID> listingIds = cards.stream()
                 .map(HomeListingCardResponse::getListingId)
                 .filter(Objects::nonNull)
+                .distinct()
                 .toList();
+
         Map<String, RatingClient.ListingRatingSummary> ratingSummaries = ratingClient.getListingRatingSummaries(listingIds);
 
-        listings.forEach(item -> {
+        cards.forEach(item -> {
             RatingClient.ListingRatingSummary ratingSummary = ratingSummaries.get(
                     item.getListingId() != null ? item.getListingId().toString() : null);
             BigDecimal rating = ratingSummary != null ? ratingSummary.getOverallRating() : BigDecimal.ZERO;
@@ -567,6 +579,66 @@ public class ListingService implements IListingService {
 
         item.setAvgRating(safeRatingSummary.getOverallRating().doubleValue());
         item.setReviewCount(safeRatingSummary.getReviewCount());
+    }
+
+    private void enrichListingRatings(List<ListingItemResponse> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        List<UUID> listingIds = items.stream()
+                .map(ListingItemResponse::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .map(id -> {
+                    try {
+                        return UUID.fromString(id);
+                    } catch (IllegalArgumentException ex) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+
+        if (listingIds.isEmpty()) {
+            return;
+        }
+
+        Map<String, RatingClient.ListingRatingSummary> ratingSummaries =
+                ratingClient.getListingRatingSummaries(listingIds);
+
+        items.forEach(item -> {
+            if (item == null || item.getId() == null) {
+                return;
+            }
+
+            RatingClient.ListingRatingSummary ratingSummary = ratingSummaries.get(item.getId());
+            applyRatingSummary(item, ratingSummary);
+        });
+    }
+
+    private ListingHostResponse loadHostSummary(String hostId) {
+        if (hostId == null || hostId.isBlank()) {
+            return null;
+        }
+
+        try {
+            var profile = hostProfileClient.getHostProfile(hostId);
+            if (profile == null) {
+                return null;
+            }
+
+            return ListingHostResponse.builder()
+                    .userId(profile.getUserId())
+                    .keycloakUserId(hostId)
+                    .fullName(profile.getFullName())
+                    .avatarUrl(profile.getAvatarUrl())
+                    .superHost(profile.getSuperHost())
+                    .joinedAt(profile.getJoinedAt())
+                    .build();
+        } catch (RuntimeException ex) {
+            log.warn("Failed to load host summary for listing hostId={}", hostId, ex);
+            return null;
+        }
     }
 
     private List<Listing> filterByAmenities(

@@ -1,12 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { Bell, CheckCheck, ChevronRight, RefreshCw } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 
-import { createOrGetConversation } from "@/api/message";
 import { notificationAPI, type NotificationItem } from "@/api/endpoints/notification";
 import { userAPI } from "@/api/endpoints/user";
 import { selectIsAuthenticated } from "@/features/auth/authSelectors";
@@ -66,39 +65,104 @@ function buildNotificationId(notification: Partial<NotificationItem> & { _id?: s
   return notification.id || notification._id || "";
 }
 
-function buildNotificationKey(notification: Partial<NotificationItem> & { _id?: string }) {
-  const meta = notification.meta ?? {};
-  const messageId = normalizeStringValue(meta.messageId);
-  const conversationId = normalizeStringValue(meta.conversationId);
-  const senderId = normalizeStringValue(meta.senderId);
-  const bookingId = normalizeStringValue(meta.bookingId);
-  const listingId = normalizeStringValue(meta.listingId);
-  const href = normalizeStringValue(meta.href);
-  const message = typeof notification.message === "string" ? notification.message : "";
-  const title = typeof notification.title === "string" ? notification.title : "";
+function parseNotificationTimestamp(value: unknown): number {
+  if (value == null) return 0;
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? 0 : time;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
 
-  return [
-    notification.type || "",
-    messageId,
-    conversationId,
-    senderId,
-    bookingId,
-    listingId,
-    href,
-    title.trim(),
-    message.trim(),
-  ].join("|");
+    if (/^\d+$/.test(trimmed)) {
+      const numeric = Number(trimmed);
+      if (!Number.isFinite(numeric)) return 0;
+      return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
+
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) return parsed;
+    return 0;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return (
+      parseNotificationTimestamp(record.$date) ||
+      parseNotificationTimestamp(record.value) ||
+      parseNotificationTimestamp(record.timestamp)
+    );
+  }
+  return 0;
+}
+
+function isMongoObjectId(value?: string | null) {
+  return typeof value === "string" && /^[a-f\d]{24}$/i.test(value.trim());
+}
+
+function getObjectIdTimestamp(value?: string | null) {
+  if (!isMongoObjectId(value)) return 0;
+
+  try {
+    return new Date(parseInt(String(value).slice(0, 8), 16) * 1000).getTime();
+  } catch {
+    return 0;
+  }
+}
+
+function getNotificationTimestamp(notification: NotificationItem) {
+  const candidates = [
+    notification.createdAt,
+    normalizeStringValue(notification.meta?.createdAt),
+    normalizeStringValue(notification.meta?.savedAt),
+    normalizeStringValue(notification.meta?.updatedAt),
+    normalizeStringValue(notification.meta?.timestamp),
+  ];
+
+  for (const candidate of candidates) {
+    const time = parseNotificationTimestamp(candidate);
+    if (time) return time;
+  }
+
+  const objectIdTime = getObjectIdTimestamp(notification.id);
+  if (objectIdTime) return objectIdTime;
+
+  return 0;
+}
+
+function extractConversationIdFromHref(href?: string | null) {
+  if (!href) return "";
+
+  const normalized = href.trim();
+  const match = normalized.match(/\/(?:guest|host)\/messages\/([^/?#]+)/i);
+  return match?.[1] ?? "";
+}
+
+function resolveMessageConversationId(notification: NotificationItem) {
+  const meta = notification.meta ?? {};
+  const conversationId = normalizeStringValue(meta.conversationId);
+  if (conversationId) return conversationId;
+
+  const href = normalizeStringValue(meta.href);
+  const fromHref = extractConversationIdFromHref(href);
+  if (fromHref) return fromHref;
+
+  return "";
 }
 
 function resolveNotificationHref(notification: NotificationItem) {
   const meta = notification.meta ?? {};
   const explicitHref = normalizeStringValue(meta.href) || null;
-  if (explicitHref) return explicitHref;
+  const conversationId = resolveMessageConversationId(notification);
 
-  const conversationId = normalizeStringValue(meta.conversationId) || null;
   if (notification.type === "MESSAGE" && conversationId) {
     return `/guest/messages/${conversationId}`;
   }
+
+  if (explicitHref) return explicitHref;
 
   if (notification.type === "LISTING_SUSPENDED" || notification.type === "LISTING_UNSUSPENDED") {
     return "/host/listings";
@@ -145,7 +209,6 @@ export default function NotificationBell() {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const token = useSelector((state: RootState) => state.auth.token);
   const { socket } = useSocket();
-  const router = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
   const cacheKey = "airbnb:notifications:bell-cache";
 
@@ -160,11 +223,27 @@ export default function NotificationBell() {
   const sortedItems = useMemo(
     () =>
       [...items].sort((left, right) => {
-        const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
-        const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
-        return rightTime - leftTime;
+        const leftTime = getNotificationTimestamp(left);
+        const rightTime = getNotificationTimestamp(right);
+
+        if (rightTime !== leftTime) return rightTime - leftTime;
+
+        const leftIdTime = getObjectIdTimestamp(left.id);
+        const rightIdTime = getObjectIdTimestamp(right.id);
+        return rightIdTime - leftIdTime;
       }),
     [items],
+  );
+
+  const normalizeNotificationCreatedAt = useCallback((value?: unknown) => {
+    const parsed = parseNotificationTimestamp(value);
+    return parsed ? new Date(parsed).toISOString() : new Date().toISOString();
+  }, []);
+
+  const sortedVisibleItems = useMemo(
+    () =>
+      sortedItems.slice(0, pageSize),
+    [pageSize, sortedItems],
   );
 
   const readCache = useCallback((): CachedBellState | null => {
@@ -337,9 +416,16 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!socket || !isAuthenticated) return;
 
-    const syncNotification = async (payload: NotificationItem & { _id?: string; occurredAt?: string; payload?: { text?: string } }) => {
+    const syncNotification = async (
+      payload: NotificationItem & {
+        _id?: string;
+        occurredAt?: string;
+        payload?: { text?: string; conversationId?: string; messageId?: string };
+      },
+    ) => {
       const bodyText = (payload.payload?.text || payload.message || "").trim();
       const senderId = normalizeSenderId(payload.meta?.senderId);
+      const conversationId = resolveMessageConversationId(payload);
       const senderProfile = payload.type === "MESSAGE" ? await resolveSenderProfile(senderId) : null;
       const senderName =
         senderProfile?.fullName ||
@@ -347,18 +433,35 @@ export default function NotificationBell() {
         "Someone";
 
       const nextNotification: NotificationItem = {
-        id: buildNotificationId(payload) || `${payload.type}:${payload.createdAt ?? Date.now()}:${payload.message ?? ""}`,
+        // Realtime payload may not carry the Mongo notification id yet; messageId
+        // is the stable message-side identity we can use to reconcile with the
+        // persisted notification document later.
+        id:
+          buildNotificationId(payload) ||
+          normalizeStringValue(payload.meta?.messageId) ||
+          normalizeStringValue(payload.payload?.messageId) ||
+          `${payload.type}:${payload.createdAt ?? Date.now()}:${payload.message ?? ""}`,
         type: payload.type,
-        title: payload.type === "MESSAGE" ? `${senderName} sent you a message` : (payload.title?.trim() || "Notification"),
+        title:
+          payload.type === "MESSAGE"
+            ? `${senderName} sent you a message`
+            : (payload.title?.trim() || "Notification"),
         message: bodyText,
         meta: {
           ...(payload.meta ?? {}),
+          ...(conversationId ? { conversationId } : {}),
+          ...(normalizeStringValue(payload.meta?.messageId)
+            ? { messageId: normalizeStringValue(payload.meta?.messageId) }
+            : {}),
+          ...(normalizeStringValue(payload.payload?.messageId)
+            ? { messageId: normalizeStringValue(payload.payload?.messageId) }
+            : {}),
           senderId,
           senderName,
           senderAvatarUrl: senderProfile?.avatarUrl ?? normalizeStringValue(payload.meta?.senderAvatarUrl),
         },
         read: Boolean(payload.read),
-        createdAt: payload.createdAt || payload.occurredAt,
+        createdAt: normalizeNotificationCreatedAt(payload.createdAt || payload.occurredAt),
       };
 
       setItems((current) => {
@@ -418,42 +521,121 @@ export default function NotificationBell() {
   };
 
   const handleNotificationClick = async (notification: NotificationItem) => {
-    let href = resolveNotificationHref(notification);
-    const senderId = normalizeSenderId(notification.meta?.senderId);
-
-    if (!href && notification.type === "MESSAGE" && senderId) {
-      try {
-        const response = await createOrGetConversation(senderId);
-        const data = response.data ?? response;
-        const conversationId =
-          data?._id ||
-          data?.id ||
-          data?.conversationId ||
-          data?.conversation?._id ||
-          data?.data?._id ||
-          data?.data?.conversation?._id ||
-          null;
-        if (conversationId) {
-          href = `/guest/messages/${conversationId}`;
-        }
-      } catch {
-        // noop
-      }
-    }
+    const persistedNotificationId = isMongoObjectId(notification.id)
+      ? notification.id
+      : "";
 
     if (!notification.read) {
       setUnreadCount((current) => Math.max(0, current - 1));
       setItems((current) =>
         current.map((item) => (item.id === notification.id ? { ...item, read: true } : item)),
       );
-      void notificationAPI.markRead(notification.id).catch(() => {
+
+      const markReadRequest = persistedNotificationId
+        ? notificationAPI.markRead(persistedNotificationId)
+        : (async () => {
+            const messageId = normalizeStringValue(notification.meta?.messageId);
+            if (messageId) {
+              const response = await notificationAPI.getMyNotifications(true, 100);
+              const matched = (response.data.items ?? []).find(
+                (item) => normalizeStringValue(item.meta?.messageId) === messageId,
+              );
+              if (matched?.id) {
+                await notificationAPI.markRead(matched.id);
+                return;
+              }
+            }
+
+            const conversationId = resolveMessageConversationId(notification);
+            if (conversationId) {
+              const response = await notificationAPI.getMyNotifications(true, 100);
+              const matched = (response.data.items ?? []).find(
+                (item) =>
+                  normalizeStringValue(item.meta?.conversationId) === conversationId &&
+                  normalizeSenderId(item.meta?.senderId) === normalizeSenderId(notification.meta?.senderId),
+              );
+              if (matched?.id) {
+                await notificationAPI.markRead(matched.id);
+              }
+            }
+          })();
+
+      void markReadRequest.catch(() => {
         void refreshNotifications(pageSize);
       });
     }
 
-    if (href) router.push(href);
     setOpen(false);
   };
+
+  const renderNotificationItem = useCallback(
+    (notification: NotificationItem) => {
+      const containerClass = cn(
+        "flex w-full gap-3 px-4 py-3 text-left transition hover:bg-zinc-50",
+        notification.read ? "bg-white" : "border-l-4 border-l-rose-500 bg-rose-50/70",
+      );
+
+      const avatarNode = (
+        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-900 text-white">
+          {notification.type === "MESSAGE" && typeof notification.meta?.senderAvatarUrl === "string" && notification.meta.senderAvatarUrl ? (
+            <Image
+              src={notification.meta.senderAvatarUrl}
+              alt={String(notification.meta?.senderName ?? "Sender")}
+              width={40}
+              height={40}
+              unoptimized
+              className="h-full w-full object-cover"
+            />
+          ) : notification.type === "MESSAGE" ? (
+            <span className="text-[11px] font-semibold">{getInitials(normalizeStringValue(notification.meta?.senderName))}</span>
+          ) : (
+            <Bell className="h-4 w-4" />
+          )}
+        </div>
+      );
+
+      const bodyNode = (
+        <>
+          {avatarNode}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-2">
+                {!notification.read ? <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500" /> : null}
+                <p className={cn("truncate text-sm", notification.read ? "font-medium text-zinc-900" : "font-semibold text-zinc-950")}>
+                  {buildPreviewTitle(notification)}
+                </p>
+              </div>
+              <span className="shrink-0 text-[11px] text-zinc-500">{formatRelativeTime(notification.createdAt)}</span>
+            </div>
+            <p className={cn("mt-1 line-clamp-2 text-sm", notification.read ? "text-zinc-600" : "font-medium text-zinc-700")}>
+              {notification.message}
+            </p>
+          </div>
+
+          {notification.read ? <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-300" /> : null}
+        </>
+      );
+
+      return resolveNotificationHref(notification) ? (
+        <Link
+          href={resolveNotificationHref(notification) as string}
+          onClick={() => void handleNotificationClick(notification)}
+          className={containerClass}
+        >
+          {bodyNode}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void handleNotificationClick(notification)}
+          className={containerClass}
+        >
+          {bodyNode}
+        </button>
+      );
+    },
+    [handleNotificationClick],
+  );
 
   const handleLoadMore = async () => {
     const nextSize = Math.min(pageSize + 20, 100);
@@ -524,54 +706,11 @@ export default function NotificationBell() {
             </div>
           </div>
 
-          <ScrollArea className="max-h-[520px]">
-            <div className="divide-y divide-zinc-100">
-              {sortedItems.slice(0, pageSize).length > 0 ? (
-                sortedItems.slice(0, pageSize).map((notification) => (
-                  <div key={notification.id}>
-                    <button
-                      type="button"
-                      onClick={() => void handleNotificationClick(notification)}
-                      className={cn(
-                        "flex w-full gap-3 px-4 py-3 text-left transition hover:bg-zinc-50",
-                        notification.read ? "bg-white" : "border-l-4 border-l-rose-500 bg-rose-50/70",
-                      )}
-                    >
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-900 text-white">
-                        {notification.type === "MESSAGE" && typeof notification.meta?.senderAvatarUrl === "string" && notification.meta.senderAvatarUrl ? (
-                          <Image
-                            src={notification.meta.senderAvatarUrl}
-                            alt={String(notification.meta?.senderName ?? "Sender")}
-                            width={40}
-                            height={40}
-                            unoptimized
-                            className="h-full w-full object-cover"
-                          />
-                        ) : notification.type === "MESSAGE" ? (
-                          <span className="text-[11px] font-semibold">{getInitials(normalizeStringValue(notification.meta?.senderName))}</span>
-                        ) : (
-                          <Bell className="h-4 w-4" />
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-2">
-                            {!notification.read ? <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500" /> : null}
-                            <p className={cn("truncate text-sm", notification.read ? "font-medium text-zinc-900" : "font-semibold text-zinc-950")}>
-                              {buildPreviewTitle(notification)}
-                            </p>
-                          </div>
-                          <span className="shrink-0 text-[11px] text-zinc-500">{formatRelativeTime(notification.createdAt)}</span>
-                        </div>
-                        <p className={cn("mt-1 line-clamp-2 text-sm", notification.read ? "text-zinc-600" : "font-medium text-zinc-700")}>
-                          {notification.message}
-                        </p>
-                      </div>
-
-                      {notification.read ? <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-300" /> : null}
-                    </button>
-                  </div>
+          <ScrollArea className="h-[min(520px,calc(100vh-120px))]">
+            <div className="divide-y divide-zinc-100 pr-1">
+              {sortedVisibleItems.length > 0 ? (
+                sortedVisibleItems.map((notification) => (
+                  <div key={notification.id}>{renderNotificationItem(notification)}</div>
                 ))
               ) : (
                 <div className="px-4 py-10 text-center text-sm text-zinc-500">No notifications yet.</div>

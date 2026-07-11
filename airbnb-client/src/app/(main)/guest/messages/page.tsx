@@ -5,14 +5,24 @@ import {
   type ListingResponse,
   unwrapApiData,
 } from "@/api/endpoints/listing";
-import { fetchConversationMedia, fetchMessages, sendMessage } from "@/api/message";
-import { userAPI, type PublicProfilePageData } from "@/api/endpoints/user";
+import {
+  createOrGetConversation,
+  fetchConversationMedia,
+  fetchMessages,
+  sendMessage,
+} from "@/api/message";
+import { userAPI } from "@/api/endpoints/user";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversations } from "@/hooks/useConversations";
 import { useSocket } from "@/hooks/useSocket";
+import {
+  getCachedConversationIdentity,
+  isLikelyIdentifier,
+  setCachedConversationIdentity,
+} from "@/lib/conversation-identity-cache";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
   useCallback,
@@ -35,6 +45,7 @@ import {
   Mic,
   Loader2,
   Play,
+  Plus,
   Search,
   Send,
   Sparkles,
@@ -118,6 +129,8 @@ type HostRoomItem = {
   reviewCount?: number;
 };
 
+const HOST_ROOMS_PAGE_SIZE = 6;
+
 function isImageUrl(value?: string) {
   return typeof value === "string" && /^https?:\/\//i.test(value);
 }
@@ -129,6 +142,73 @@ function getInitials(name?: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+function pickDisplayName(...values: Array<string | undefined | null>) {
+  for (const value of values) {
+    const name = typeof value === "string" ? value.trim() : "";
+    if (name && !isLikelyIdentifier(name)) {
+      return name;
+    }
+  }
+
+  return "";
+}
+
+function pickAvatarUrl(...values: Array<string | undefined | null>) {
+  for (const value of values) {
+    const avatar = typeof value === "string" ? value.trim() : "";
+    if (avatar) {
+      return avatar;
+    }
+  }
+
+  return "";
+}
+
+function normalizeHostRoomItem(item: any): HostRoomItem | null {
+  const listingId = String(item?.id ?? item?.listingId ?? "").trim();
+  if (!listingId) return null;
+
+  const coverPhoto =
+    item?.photos?.find?.((photo: any) => photo?.isCover)?.photoUrl ??
+    item?.photos?.[0]?.photoUrl;
+
+  return {
+    listingId,
+    title: String(item?.title ?? item?.listingTitle ?? "Listing"),
+    thumbnailUrl: item?.thumbnailUrl ?? item?.coverImageUrl ?? coverPhoto,
+    city: item?.city ?? item?.location?.city,
+    country: item?.country ?? item?.location?.country,
+    basePrice:
+      typeof item?.basePrice === "number"
+        ? item.basePrice
+        : typeof item?.pricing?.basePrice === "number"
+          ? item.pricing.basePrice
+          : typeof item?.price === "number"
+            ? item.price
+          : undefined,
+    currency: item?.currency ?? item?.pricing?.currency ?? "USD",
+    avgRating: typeof item?.avgRating === "number" ? item.avgRating : undefined,
+    reviewCount:
+      typeof item?.reviewCount === "number" ? item.reviewCount : undefined,
+  };
+}
+
+function mergeHostRoomItems(
+  current: HostRoomItem[],
+  incoming: HostRoomItem[],
+  page: number,
+) {
+  if (page <= 0) {
+    return incoming;
+  }
+
+  const map = new Map(current.map((room) => [room.listingId, room] as const));
+  incoming.forEach((room) => {
+    map.set(room.listingId, room);
+  });
+  return Array.from(map.values());
 }
 
 function normalizeSenderId(value: unknown) {
@@ -512,18 +592,71 @@ function ListingLinkPreview({
 function GuestMessagesPageContent() {
   const { user } = useAuth();
   const { socket } = useSocket();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams<{ id?: string }>();
-  const conversationId = typeof params?.id === "string" ? params.id : null;
+  const routeConversationId = typeof params?.id === "string" ? params.id : null;
+  const hostId = searchParams.get("hostId")?.trim() || null;
+  const [resolvedConversationId, setResolvedConversationId] = useState<string | null>(null);
+  const [isResolvingConversation, setIsResolvingConversation] = useState(
+    () => !!searchParams.get("hostId") && !routeConversationId,
+  );
+
+  useEffect(() => {
+    setResolvedConversationId(null);
+
+    if (routeConversationId || !hostId) {
+      setIsResolvingConversation(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsResolvingConversation(true);
+
+    const resolveConversation = async () => {
+      try {
+        const response = await createOrGetConversation(hostId);
+        const data = response.data ?? response;
+        const nextConversationId =
+          data?._id ||
+          data?.id ||
+          data?.conversationId ||
+          data?.conversation?._id ||
+          data?.data?._id ||
+          data?.data?.conversation?._id ||
+          null;
+
+        if (cancelled || !nextConversationId) return;
+
+        setResolvedConversationId(nextConversationId);
+        router.replace(`/guest/messages/${nextConversationId}`);
+      } catch {
+        // keep the query route; the page will render the loading/empty state
+      } finally {
+        if (!cancelled) {
+          setIsResolvingConversation(false);
+        }
+      }
+    };
+
+    void resolveConversation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hostId, routeConversationId, router]);
+
+  const conversationId = routeConversationId ?? resolvedConversationId;
   const { conversations, updateConversationLastMessage } = useConversations({
     activeConversationId: conversationId,
   });
-  const isMobileConversationOpen = !!conversationId;
+  const isMobileConversationOpen = !!conversationId || isResolvingConversation;
 
   const emptyConversation: Conversation = {
     id: "empty",
     conversationId: "empty",
     partnerId: undefined,
-    name: conversationId ?? "",
+    name: "Conversation",
     avatar: "",
     listing: "",
     time: "",
@@ -531,14 +664,9 @@ function GuestMessagesPageContent() {
   };
 
   const activeConversation =
-    conversationId &&
     conversations.find(
       (conversation) => conversation.conversationId === conversationId,
-    )
-      ? conversations.find(
-          (conversation) => conversation.conversationId === conversationId,
-        )!
-      : emptyConversation;
+    ) ?? emptyConversation;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draftText, setDraftText] = useState("");
@@ -547,10 +675,11 @@ function GuestMessagesPageContent() {
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingAttachment[]
   >([]);
-  const [partnerAvatarUrl, setPartnerAvatarUrl] = useState("");
-  const [partnerDisplayName, setPartnerDisplayName] = useState("");
-  const [partnerProfilePage, setPartnerProfilePage] =
-    useState<PublicProfilePageData | null>(null);
+  const [hostRooms, setHostRooms] = useState<HostRoomItem[]>([]);
+  const [hostRoomsPage, setHostRoomsPage] = useState(0);
+  const [hostRoomsTotalPages, setHostRoomsTotalPages] = useState(1);
+  const [hostRoomsLoading, setHostRoomsLoading] = useState(false);
+  const [roomPickerOpen, setRoomPickerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<"details" | "media" | "rooms">(
     "details",
@@ -567,43 +696,49 @@ function GuestMessagesPageContent() {
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const roomPricingCacheRef = useRef(
+    new Map<string, { basePrice?: number; currency?: string }>(),
+  );
 
-  const activeAvatarUrl =
-    partnerAvatarUrl ||
-    (isImageUrl(activeConversation.avatar) ? activeConversation.avatar : "");
-  const activeAvatarLabel =
-    partnerDisplayName || activeConversation.name || "Conversation";
+  const activeConversationIdentity = useMemo(() => {
+    const partnerId = activeConversation.partnerId;
+    const cachedIdentity = partnerId
+      ? getCachedConversationIdentity(partnerId)
+      : null;
+
+    return {
+      avatarUrl: pickAvatarUrl(activeConversation.avatar, cachedIdentity?.avatarUrl),
+      displayName: pickDisplayName(activeConversation.name, cachedIdentity?.fullName),
+    };
+  }, [activeConversation.avatar, activeConversation.name, activeConversation.partnerId]);
+
+  const activeAvatarUrl = isImageUrl(activeConversationIdentity.avatarUrl)
+    ? activeConversationIdentity.avatarUrl
+    : "";
+  const activeAvatarLabel = activeConversationIdentity.displayName.trim();
 
   const draftListingId = extractListingId(draftText);
-  const hostRooms = useMemo(() => {
-    const items = partnerProfilePage?.listings?.items ?? [];
-    return items
-      .map((item: any): HostRoomItem | null => {
-        const listingId = String(item?.id ?? item?.listingId ?? "");
-        if (!listingId) return null;
+  const visibleHostRooms = useMemo(() => hostRooms.slice(0, 3), [hostRooms]);
 
-        return {
-          listingId,
-          title: String(item?.title ?? "Listing"),
-          thumbnailUrl: item?.thumbnailUrl ?? item?.coverImageUrl,
-          city: item?.city,
-          country: item?.country,
-          basePrice:
-            typeof item?.basePrice === "number"
-              ? item.basePrice
-              : typeof item?.pricing?.basePrice === "number"
-                ? item.pricing.basePrice
-                : undefined,
-          currency:
-            item?.currency ?? item?.pricing?.currency ?? "USD",
-          avgRating:
-            typeof item?.avgRating === "number" ? item.avgRating : undefined,
-          reviewCount:
-            typeof item?.reviewCount === "number" ? item.reviewCount : undefined,
-        };
-      })
-      .filter(Boolean) as HostRoomItem[];
-  }, [partnerProfilePage?.listings?.items]);
+  const isRoomsPanelOpen = roomPickerOpen || sidebarTab === "rooms";
+
+  const attachRoomToDraft = useCallback((room: HostRoomItem) => {
+    if (!room.listingId) return;
+
+    const roomUrl =
+      typeof window === "undefined"
+        ? `/rooms/${room.listingId}`
+        : new URL(`/rooms/${room.listingId}`, window.location.origin).toString();
+
+    setDraftText((current) => {
+      const trimmed = current.trimEnd();
+      if (!trimmed) return roomUrl;
+      if (trimmed.includes(roomUrl)) return trimmed;
+      return `${trimmed}\n${roomUrl}`;
+    });
+
+    setRoomPickerOpen(false);
+  }, []);
 
   const formatMessageTime = (value?: string | Date) => {
     if (!value) return "";
@@ -773,14 +908,18 @@ function GuestMessagesPageContent() {
 
   const clearPendingAttachments = useCallback(() => {
     setPendingAttachments((current) => {
-      current.forEach((attachment) => URL.revokeObjectURL(attachment.url));
+      current.forEach((attachment) => {
+        URL.revokeObjectURL(attachment.url);
+      });
       return [];
     });
   }, []);
 
   useEffect(() => {
     if (!conversationId || !user?.keycloakUserId) {
-      setMessages([]);
+      if (!hostId || !isResolvingConversation) {
+        setMessages([]);
+      }
       return;
     }
 
@@ -831,77 +970,211 @@ function GuestMessagesPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, user?.keycloakUserId]);
+  }, [conversationId, hostId, isResolvingConversation, user?.keycloakUserId]);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!isRoomsPanelOpen) {
+      setHostRoomsLoading(false);
+      return;
+    }
 
-    const loadPartnerProfile = async () => {
-      if (!activeConversation.partnerId) {
-        setPartnerAvatarUrl("");
-        setPartnerDisplayName(activeConversation.name ?? "");
-        setPartnerProfilePage(null);
-        return;
-      }
-
-      try {
-        const response = await userAPI.getPublicProfileById(
-          activeConversation.partnerId,
-        );
-        if (cancelled) return;
-
-        const profile = response.data ?? null;
-        setPartnerAvatarUrl(profile?.avatarUrl ?? "");
-        setPartnerDisplayName(
-          profile?.fullName ?? activeConversation.name ?? "",
-        );
-        setPartnerProfilePage(null);
-      } catch {
-        if (cancelled) return;
-        setPartnerAvatarUrl("");
-        setPartnerDisplayName(activeConversation.name ?? "");
-        setPartnerProfilePage(null);
-      }
-    };
-
-    void loadPartnerProfile();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeConversation.name, activeConversation.partnerId]);
-
-  useEffect(() => {
-    if (sidebarTab !== "rooms" || !activeConversation.partnerId) {
+    const partnerId = activeConversation.partnerId;
+    if (!partnerId) {
+      setHostRooms([]);
+      setHostRoomsPage(0);
+      setHostRoomsTotalPages(1);
+      setHostRoomsLoading(false);
       return;
     }
 
     let cancelled = false;
-    const partnerId = activeConversation.partnerId;
+    setHostRoomsLoading(true);
 
-    const loadHostRooms = async () => {
+    const loadRooms = async () => {
       try {
-        const response = await userAPI.getPublicProfilePageData(
-          partnerId,
-          { listingPage: 1 },
-        );
+        const response = await listingAPI.getListingsByHost(partnerId, {
+          page: 0,
+          size: HOST_ROOMS_PAGE_SIZE,
+        });
+        const payload = response.data as unknown;
+        const source = Array.isArray(payload)
+          ? payload
+          : Array.isArray((payload as { data?: unknown })?.data)
+            ? (payload as { data: unknown[] }).data
+            : Array.isArray((payload as { items?: unknown[] })?.items)
+              ? (payload as { items: unknown[] }).items
+              : Array.isArray((payload as { content?: unknown[] })?.content)
+                ? (payload as { content: unknown[] }).content
+                : [];
+        const rooms = source
+          .map(normalizeHostRoomItem)
+          .filter(Boolean) as HostRoomItem[];
 
-        if (!cancelled) {
-          setPartnerProfilePage(response.data ?? null);
-        }
+        const pageMeta = payload as {
+          page?: number;
+          size?: number;
+          totalElements?: number;
+          totalPages?: number;
+          number?: number;
+        };
+
+        const pageSize = Number(pageMeta.size ?? rooms.length ?? 0);
+        const totalElements = Number(pageMeta.totalElements ?? rooms.length ?? 0);
+        const totalPages =
+          pageSize > 0 ? Math.max(1, Math.ceil(totalElements / pageSize)) : 1;
+
+        if (cancelled) return;
+
+        setHostRooms(rooms);
+        setHostRoomsPage(Number(pageMeta.page ?? pageMeta.number ?? 0));
+        setHostRoomsTotalPages(totalPages);
       } catch {
+        if (cancelled) return;
+        setHostRooms([]);
+        setHostRoomsPage(0);
+        setHostRoomsTotalPages(1);
+      } finally {
         if (!cancelled) {
-          setPartnerProfilePage(null);
+          setHostRoomsLoading(false);
         }
       }
     };
 
-    void loadHostRooms();
+    void loadRooms();
 
     return () => {
       cancelled = true;
     };
-  }, [activeConversation.partnerId, sidebarTab]);
+  }, [activeConversation.partnerId, isRoomsPanelOpen]);
+
+  useEffect(() => {
+    if (!roomPickerOpen || hostRooms.length === 0) {
+      return;
+    }
+
+    const missingPriceRooms = hostRooms
+      .filter((room) => typeof room.basePrice !== "number")
+      .slice(0, 6);
+
+    if (missingPriceRooms.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateRoomPrices = async () => {
+      try {
+        const results = await Promise.allSettled(
+          missingPriceRooms.map((room) => listingAPI.getRoomById(room.listingId)),
+        );
+
+        if (cancelled) return;
+
+        const nextPricing = new Map<
+          string,
+          { basePrice?: number; currency?: string }
+        >();
+
+        results.forEach((result, index) => {
+          if (result.status !== "fulfilled") return;
+
+          const listing = unwrapApiData(result.value.data) as ListingResponse | null;
+          const basePrice =
+            typeof listing?.pricing?.basePrice === "number"
+              ? listing.pricing.basePrice
+              : undefined;
+
+          if (typeof basePrice !== "number") return;
+
+          const room = missingPriceRooms[index];
+          const currency = listing?.pricing?.currency ?? room.currency ?? "USD";
+          const pricing = { basePrice, currency };
+          roomPricingCacheRef.current.set(room.listingId, pricing);
+          nextPricing.set(room.listingId, pricing);
+        });
+
+        if (nextPricing.size === 0 || cancelled) return;
+
+        setHostRooms((current) =>
+          current.map((room) => {
+            const pricing = nextPricing.get(room.listingId);
+            if (!pricing) return room;
+
+            return {
+              ...room,
+              basePrice: pricing.basePrice,
+              currency: pricing.currency ?? room.currency ?? "USD",
+            };
+          }),
+        );
+      } catch {
+        // keep the popup usable even if detail hydration fails
+      }
+    };
+
+    void hydrateRoomPrices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hostRooms, roomPickerOpen]);
+
+  const loadMoreHostRooms = useCallback(async () => {
+    const partnerId = activeConversation.partnerId;
+    if (!partnerId || hostRoomsLoading || hostRoomsPage + 1 >= hostRoomsTotalPages) {
+      return;
+    }
+
+    const nextPage = hostRoomsPage + 1;
+    setHostRoomsLoading(true);
+
+    try {
+      const response = await listingAPI.getListingsByHost(partnerId, {
+        page: nextPage,
+        size: HOST_ROOMS_PAGE_SIZE,
+      });
+
+      const payload = response.data as unknown;
+      const source = Array.isArray(payload)
+        ? payload
+        : Array.isArray((payload as { data?: unknown })?.data)
+          ? (payload as { data: unknown[] }).data
+          : Array.isArray((payload as { items?: unknown[] })?.items)
+            ? (payload as { items: unknown[] }).items
+            : Array.isArray((payload as { content?: unknown[] })?.content)
+              ? (payload as { content: unknown[] }).content
+              : [];
+      const nextRooms = source
+        .map(normalizeHostRoomItem)
+        .filter(Boolean) as HostRoomItem[];
+
+      const pageMeta = payload as {
+        page?: number;
+        size?: number;
+        totalElements?: number;
+        totalPages?: number;
+        number?: number;
+      };
+      const currentPage = Number(pageMeta.page ?? pageMeta.number ?? nextPage);
+      const pageSize = Number(pageMeta.size ?? nextRooms.length ?? 0);
+      const totalElements = Number(pageMeta.totalElements ?? nextRooms.length ?? 0);
+      const totalPages =
+        pageSize > 0 ? Math.max(1, Math.ceil(totalElements / pageSize)) : 1;
+
+      setHostRooms((current) => mergeHostRoomItems(current, nextRooms, nextPage));
+      setHostRoomsPage(currentPage);
+      setHostRoomsTotalPages(totalPages);
+    } catch {
+      return;
+    } finally {
+      setHostRoomsLoading(false);
+    }
+  }, [
+    activeConversation.partnerId,
+    hostRoomsLoading,
+    hostRoomsPage,
+    hostRoomsTotalPages,
+  ]);
 
   useEffect(() => {
     if (sidebarTab !== "media" || !conversationId) {
@@ -1597,6 +1870,106 @@ function GuestMessagesPageContent() {
                   </div>
                 ) : null}
 
+                {roomPickerOpen ? (
+                  <div className="mb-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900">
+                          Rooms
+                        </p>
+                        <p className="mt-0.5 text-xs text-zinc-500">
+                          Pick a room to attach its link to the message.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRoomPickerOpen(false)}
+                        className="rounded-full border border-zinc-200 p-2 text-zinc-500 transition hover:border-zinc-900 hover:text-zinc-900"
+                        aria-label="Close room picker"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 max-h-60 space-y-2 overflow-y-auto pr-1">
+                      {hostRoomsLoading ? (
+                        <div className="space-y-2">
+                          <div className="h-20 animate-pulse rounded-2xl border border-zinc-200 bg-zinc-100" />
+                          <div className="h-20 animate-pulse rounded-2xl border border-zinc-200 bg-zinc-100" />
+                        </div>
+                      ) : hostRooms.length > 0 ? (
+                        hostRooms.map((room) => (
+                          <button
+                            key={room.listingId}
+                            type="button"
+                            onClick={() => attachRoomToDraft(room)}
+                            className="flex w-full items-center gap-3 rounded-2xl border border-zinc-200 px-3 py-2.5 text-left transition hover:border-zinc-900 hover:bg-zinc-50"
+                          >
+                            <div className="relative h-14 w-18 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
+                              {room.thumbnailUrl ? (
+                                <Image
+                                  src={room.thumbnailUrl}
+                                  alt={room.title}
+                                  fill
+                                  className="object-cover"
+                                  sizes="72px"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-zinc-400">
+                                  <Grid2x2 className="h-4 w-4" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-zinc-900">
+                                {room.title}
+                              </p>
+                              <p className="truncate text-xs text-zinc-500">
+                                {room.city || "Room"}
+                                {room.country ? `, ${room.country}` : ""}
+                              </p>
+                              <p className="mt-0.5 text-xs font-medium text-rose-600">
+                                {typeof room.basePrice === "number"
+                                  ? formatCurrency(
+                                      room.basePrice,
+                                      room.currency ?? "USD",
+                                    )
+                                  : "Loading price..."}
+                              </p>
+                            </div>
+                            <Link2 className="h-4 w-4 shrink-0 text-zinc-400" />
+                          </button>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-zinc-200 px-3 py-8 text-center text-xs text-zinc-500">
+                          No rooms available for this host.
+                        </div>
+                      )}
+                    </div>
+
+                    {hostRoomsTotalPages > hostRoomsPage + 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreHostRooms()}
+                        disabled={hostRoomsLoading}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {hostRoomsLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading more rooms
+                          </>
+                        ) : (
+                          <>
+                            Load more rooms
+                            <ChevronRight className="h-4 w-4" />
+                          </>
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {pendingAttachments.length > 0 ? (
                   <div className="mb-3 grid gap-2 sm:grid-cols-2">
                     {pendingAttachments.map((attachment) => (
@@ -1675,6 +2048,15 @@ function GuestMessagesPageContent() {
                     aria-label="Attach files"
                   >
                     <Paperclip className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoomPickerOpen((current) => !current)}
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-300 text-zinc-600 transition hover:border-zinc-900 hover:text-zinc-900"
+                    aria-label="Add room link"
+                    aria-pressed={roomPickerOpen}
+                  >
+                    <Plus className="h-4 w-4" />
                   </button>
                   <textarea
                     rows={2}
@@ -1768,92 +2150,17 @@ function GuestMessagesPageContent() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                        <div className="rounded-xl bg-zinc-50 p-3">
-                          <p className="text-zinc-500">Messages</p>
-                          <p className="mt-1 text-sm font-semibold text-zinc-900">
-                            {messages.length}
-                          </p>
-                        </div>
-                        <div className="rounded-xl bg-zinc-50 p-3">
-                          <p className="text-zinc-500">Unread</p>
-                          <p className="mt-1 text-sm font-semibold text-zinc-900">
-                            {conversations.find(
-                              (item) =>
-                                item.conversationId === activeConversation.conversationId,
-                            )?.unread
-                              ? "Yes"
-                              : "No"}
-                          </p>
-                        </div>
-                      </div>
+                      {activeConversation.partnerId ? (
+                        <Link
+                          href={`/users/profile/${activeConversation.partnerId}`}
+                          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium text-zinc-900 transition hover:border-zinc-900 hover:bg-zinc-50"
+                        >
+                          View profile page
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      ) : null}
                     </div>
 
-                    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-zinc-900">
-                            Host rooms
-                          </p>
-                          <p className="mt-0.5 text-xs text-zinc-500">
-                            More rooms from this host
-                          </p>
-                        </div>
-                        <FolderOpen className="h-4 w-4 text-zinc-500" />
-                      </div>
-
-                      <div className="mt-3 space-y-3">
-                        {hostRooms.length > 0 ? (
-                          hostRooms.slice(0, 3).map((room) => (
-                            <Link
-                              key={room.listingId}
-                              href={`/rooms/${room.listingId}`}
-                              className="group flex gap-3 rounded-2xl border border-zinc-200 p-2.5 transition hover:border-zinc-900 hover:bg-zinc-50"
-                            >
-                              <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
-                                {room.thumbnailUrl ? (
-                                  <Image
-                                    src={room.thumbnailUrl}
-                                    alt={room.title}
-                                    fill
-                                    className="object-cover"
-                                    sizes="80px"
-                                  />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center text-zinc-400">
-                                    <Grid2x2 className="h-4 w-4" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold text-zinc-900">
-                                  {room.title}
-                                </p>
-                                <p className="truncate text-xs text-zinc-500">
-                                  {room.city || "Room"}
-                                  {room.country ? `, ${room.country}` : ""}
-                                </p>
-                                <p className="mt-1 text-xs font-medium text-rose-600">
-                                  {formatCurrency(room.basePrice ?? 0, room.currency ?? "USD")}
-                                </p>
-                              </div>
-                            </Link>
-                          ))
-                        ) : (
-                          <div className="rounded-2xl border border-dashed border-zinc-200 px-3 py-6 text-center text-xs text-zinc-500">
-                            No host room data yet.
-                          </div>
-                        )}
-                      </div>
-
-                      <Link
-                        href={`/users/profile/${activeConversation.partnerId ?? ""}`}
-                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-zinc-900 underline-offset-2 hover:underline"
-                      >
-                        View all rooms
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
                   </div>
                 ) : null}
 
@@ -2017,12 +2324,12 @@ function GuestMessagesPageContent() {
                       </p>
                     </div>
 
-                    {partnerProfilePage?.listings?.items?.length ? (
+                    {hostRooms.length > 0 ? (
                       <div className="grid gap-3">
-                        {partnerProfilePage.listings.items.map((item: any) => (
+                        {hostRooms.map((item) => (
                           <Link
-                            key={item.id ?? item.listingId}
-                            href={`/rooms/${item.id ?? item.listingId}`}
+                            key={item.listingId}
+                            href={`/rooms/${item.listingId}`}
                             className="group flex gap-3 rounded-2xl border border-zinc-200 bg-white p-2.5 transition hover:border-zinc-900"
                           >
                             <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
@@ -2051,15 +2358,38 @@ function GuestMessagesPageContent() {
                                 {formatCurrency(
                                   typeof item.basePrice === "number"
                                     ? item.basePrice
-                                    : typeof item.pricing?.basePrice === "number"
-                                      ? item.pricing.basePrice
-                                      : 0,
-                                  item.currency ?? item.pricing?.currency ?? "USD",
+                                    : 0,
+                                  item.currency ?? "USD",
                                 )}
                               </p>
                             </div>
                           </Link>
                         ))}
+                        {hostRoomsTotalPages > hostRoomsPage + 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => void loadMoreHostRooms()}
+                            disabled={hostRoomsLoading}
+                            className="mt-1 inline-flex items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {hostRoomsLoading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading more rooms
+                              </>
+                            ) : (
+                              <>
+                                Load more rooms
+                                <ChevronRight className="h-4 w-4" />
+                              </>
+                            )}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : hostRoomsLoading ? (
+                      <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-center text-xs text-zinc-500">
+                        <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+                        Loading host rooms...
                       </div>
                     ) : (
                       <div className="rounded-2xl border border-dashed border-zinc-200 bg-white px-3 py-12 text-center text-xs text-zinc-500">
