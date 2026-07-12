@@ -37,6 +37,7 @@ interface SearchPageProps {
 type SearchQuery = Awaited<SearchPageProps["searchParams"]>;
 
 const PAGE_SIZE = 12;
+const SEARCH_FETCH_LIMIT = 1000;
 
 const destinationAliases: Record<string, string> = {
   "da lat": "Dalat",
@@ -147,7 +148,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       radiusKm: radius,
       checkIn,
       checkOut,
-      limit: PAGE_SIZE * Math.max(requestedPage, 1),
+      limit: SEARCH_FETCH_LIMIT,
     });
     listings = unwrapApiData(response.data);
   } catch {
