@@ -3,9 +3,9 @@ spring:
     name: rating-service
 
   datasource:
-    url: ${RATING_DB_URL:jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/listing_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+    url: ${RATING_DB_URL:jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/listing_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
     username: ${RATING_DB_USERNAME:neondb_owner}
-    password: ${RATING_DB_PASSWORD:npg_Wre0B1zxgOod}
+    password: ${RATING_DB_PASSWORD:npg_94bsAULVZBHE}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${RATING_DB_MAX_POOL_SIZE:${DB_MAX_POOL_SIZE:3}}
