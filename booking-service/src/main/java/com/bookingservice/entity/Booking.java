@@ -39,6 +39,30 @@ import java.util.UUID;
                 @Index(
                         name = "idx_bookings_admin_dashboard",
                         columnList = "status, check_in_date, created_at"
+                ),
+                @Index(
+                        name = "idx_bookings_guest_created",
+                        columnList = "guest_id, created_at"
+                ),
+                @Index(
+                        name = "idx_bookings_host_checkin_created",
+                        columnList = "host_id, check_in_date, created_at"
+                ),
+                @Index(
+                        name = "idx_bookings_host_status_checkin_created",
+                        columnList = "host_id, status, check_in_date, created_at"
+                ),
+                @Index(
+                        name = "idx_bookings_listing_checkin_created",
+                        columnList = "listing_id, check_in_date, created_at"
+                ),
+                @Index(
+                        name = "idx_bookings_listing_status_checkin_created",
+                        columnList = "listing_id, status, check_in_date, created_at"
+                ),
+                @Index(
+                        name = "idx_bookings_status_expires_at",
+                        columnList = "status, expires_at"
                 )
         }
 )
