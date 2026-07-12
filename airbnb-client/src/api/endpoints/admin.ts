@@ -206,6 +206,8 @@ export interface AdminListingItemRecord {
   city?: string | null;
   country?: string | null;
   propertyType?: string | null;
+  basePrice?: number | null;
+  currency?: string | null;
   status?: string | null;
   createdAt?: string | null;
 }

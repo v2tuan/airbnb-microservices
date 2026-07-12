@@ -18,11 +18,11 @@ public class CreateBookingRequest {
     private UUID roomId;
 
     @NotNull(message = "Ngày check-in không được để trống")
-    @FutureOrPresent(message = "Ngày check-in phải từ hôm nay trở đi")
+    // @FutureOrPresent(message = "Ngày check-in phải từ hôm nay trở đi")
     private LocalDate checkInDate;
 
     @NotNull(message = "Ngày check-out không được để trống")
-    @Future(message = "Ngày check-out phải là ngày trong tương lai")
+    // @Future(message = "Ngày check-out phải là ngày trong tương lai")
     private LocalDate checkOutDate;
 
     @Pattern(regexp = "USD|VND|EUR", message = "Currency phải là USD, VND hoặc EUR")
