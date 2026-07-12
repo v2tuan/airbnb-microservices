@@ -42,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { parseJwt } from "@/lib/jwt";
 
 function getInitials(name?: string | null) {
   const source = name?.trim() || "User";
@@ -87,6 +88,10 @@ const roleFilters: Array<{ label: string; value: RoleFilter }> = [
 
 export function UsersManagementModule() {
   const { token } = useAdminToken();
+  const currentAdminUserId = useMemo(
+    () => (token ? (parseJwt(token)?.sub ?? null) : null),
+    [token],
+  );
   const [items, setItems] = useState<AdminUserRecord[]>([]);
   const [pageData, setPageData] =
     useState<PageResponse<AdminUserRecord> | null>(null);
@@ -158,6 +163,11 @@ export function UsersManagementModule() {
     : items.length;
 
   async function updateUserBlocked(item: AdminUserRecord, blocked: boolean) {
+    if (blocked && item.keycloakUserId === currentAdminUserId) {
+      setActionMessage("You cannot block your own admin account.");
+      return;
+    }
+
     setUpdatingUserId(item.keycloakUserId);
     setActionMessage(null);
     try {
@@ -298,75 +308,88 @@ export function UsersManagementModule() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.userId} className="border-[#eeeeee]">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="size-10 rounded-[12px]">
-                            <AvatarImage
-                              src={item.avatarUrl || undefined}
-                              alt={item.fullName}
-                            />
-                            <AvatarFallback className="rounded-[12px] bg-[#f0f0f3] text-[#222222]">
-                              {getInitials(item.fullName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-[#222222]">
-                              {item.fullName || "Unnamed user"}
-                            </p>
-                            <p className="truncate text-xs text-[#6a6a6a]">
-                              {item.gender || "No gender set"}
-                            </p>
+                  {items.map((item) => {
+                    const isCurrentAdmin =
+                      item.keycloakUserId === currentAdminUserId;
+
+                    return (
+                      <TableRow key={item.userId} className="border-[#eeeeee]">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="size-10 rounded-[12px]">
+                              <AvatarImage
+                                src={item.avatarUrl || undefined}
+                                alt={item.fullName}
+                              />
+                              <AvatarFallback className="rounded-[12px] bg-[#f0f0f3] text-[#222222]">
+                                {getInitials(item.fullName)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-[#222222]">
+                                {item.fullName || "Unnamed user"}
+                              </p>
+                              <p className="truncate text-xs text-[#6a6a6a]">
+                                {item.gender || "No gender set"}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <TextStatusPill tone={roleTone(item)}>
-                          <span className="inline-flex items-center gap-1">
-                            <ShieldCheck className="size-3.5" />
-                            {roleLabel(item)}
-                          </span>
-                        </TextStatusPill>
-                      </TableCell>
-                      <TableCell>
-                        <TextStatusPill
-                          tone={item.enabled === false ? "danger" : "success"}
-                        >
-                          {item.enabled === false ? "BLOCKED" : "ACTIVE"}
-                        </TextStatusPill>
-                      </TableCell>
-                      <TableCell>
-                        <TextStatusPill
-                          tone={stripeTone(item.stripeAccountStatus)}
-                        >
-                          {item.stripeAccountStatus || "NONE"}
-                        </TextStatusPill>
-                      </TableCell>
-                      <TableCell>{formatAdminDate(item.createdAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant={
-                            item.enabled === false ? "outline" : "destructive"
-                          }
-                          size="sm"
-                          disabled={updatingUserId === item.keycloakUserId}
-                          onClick={() =>
-                            updateUserBlocked(item, item.enabled !== false)
-                          }
-                          className="gap-2"
-                        >
-                          {item.enabled === false ? (
-                            <LockOpen className="size-4" />
+                        </TableCell>
+                        <TableCell>
+                          <TextStatusPill tone={roleTone(item)}>
+                            <span className="inline-flex items-center gap-1">
+                              <ShieldCheck className="size-3.5" />
+                              {roleLabel(item)}
+                            </span>
+                          </TextStatusPill>
+                        </TableCell>
+                        <TableCell>
+                          <TextStatusPill
+                            tone={item.enabled === false ? "danger" : "success"}
+                          >
+                            {item.enabled === false ? "BLOCKED" : "ACTIVE"}
+                          </TextStatusPill>
+                        </TableCell>
+                        <TableCell>
+                          <TextStatusPill
+                            tone={stripeTone(item.stripeAccountStatus)}
+                          >
+                            {item.stripeAccountStatus || "NONE"}
+                          </TextStatusPill>
+                        </TableCell>
+                        <TableCell>{formatAdminDate(item.createdAt)}</TableCell>
+                        <TableCell className="text-right">
+                          {isCurrentAdmin ? (
+                            <TextStatusPill tone="neutral">
+                              Current admin
+                            </TextStatusPill>
                           ) : (
-                            <Ban className="size-4" />
+                            <Button
+                              type="button"
+                              variant={
+                                item.enabled === false
+                                  ? "outline"
+                                  : "destructive"
+                              }
+                              size="sm"
+                              disabled={updatingUserId === item.keycloakUserId}
+                              onClick={() =>
+                                updateUserBlocked(item, item.enabled !== false)
+                              }
+                              className="gap-2"
+                            >
+                              {item.enabled === false ? (
+                                <LockOpen className="size-4" />
+                              ) : (
+                                <Ban className="size-4" />
+                              )}
+                              {item.enabled === false ? "Unblock" : "Block"}
+                            </Button>
                           )}
-                          {item.enabled === false ? "Unblock" : "Block"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : null}
