@@ -18,9 +18,9 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8080/realms/airbnb/protocol/openid-connect/certs}
 
   datasource:
-    url: ${USER_DB_URL:jdbc:postgresql://ep-divine-math-a1lyqysl-pooler.ap-southeast-1.aws.neon.tech/user_db?sslmode=require}
+    url: ${USER_DB_URL:jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/user_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
     username: ${USER_DB_USERNAME:neondb_owner}
-    password: ${USER_DB_PASSWORD:npg_GnXE70sJUjmu}
+    password: ${USER_DB_PASSWORD:npg_Wre0B1zxgOod}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: ${USER_DB_MAX_POOL_SIZE:${DB_MAX_POOL_SIZE:3}}
