@@ -50,6 +50,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -89,6 +90,7 @@ public class BookingService {
     private final UserClient userClient;
     private final HostPenaltyService hostPenaltyService;
     private final NotificationEventPublisher notificationEventPublisher;
+    private final TransactionTemplate transactionTemplate;
 
     private record PricingSnapshot(
             BigDecimal nightlyPrice,
@@ -109,6 +111,12 @@ public class BookingService {
             BigDecimal taxesRefund,
             BigDecimal refundAmount,
             BigDecimal nonRefundableAmount
+    ) {
+    }
+
+    private record ReservationStatusUpdateResult(
+            Booking booking,
+            BookingStatus previousStatus
     ) {
     }
 
@@ -150,7 +158,6 @@ public class BookingService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
     public List<AdminReservationSummaryResponse> getAdminReservations(
             List<BookingStatus> statuses,
             String search,
@@ -460,7 +467,6 @@ public class BookingService {
         );
     }
 
-    @Transactional
     public CreateBookingResponse createBooking(CreateBookingRequest request) {
         Jwt jwt = currentJwt();
         UUID guestId = UUID.fromString(jwt.getSubject());
@@ -469,51 +475,14 @@ public class BookingService {
             throw BusinessException.badRequest("Check-out date must be after check-in date");
         }
 
-        // Lock listing ngăn double booking
-        if (!Boolean.TRUE.equals(bookingRepository.tryAcquireListingBookingLock(request.getRoomId().toString()))) {
-            throw BusinessException.conflict("Another booking is being processed for this listing. Please try again.");
-        }
-
         ListingResponse listing = listingClient
                 .getListingById("Bearer " + jwt.getTokenValue(), request.getRoomId())
                 .getData();
         validateListingApproval(listing, request);
 
-        List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(
-                request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate());
-        if (!conflictingBookings.isEmpty()) {
-            throw BusinessException.conflict("Listing is not available for the selected dates");
-        }
-
         int totalNights = (int) ChronoUnit.DAYS.between(request.getCheckInDate(), request.getCheckOutDate());
         PricingSnapshot pricing = buildPricingSnapshot(listing, request, totalNights);
-        Booking booking = Booking.builder()
-                .listingId(request.getRoomId())
-                .hostId(UUID.fromString(listing.getHostId()))
-                .guestId(guestId)
-                .checkInDate(request.getCheckInDate())
-                .checkOutDate(request.getCheckOutDate())
-                .scheduledCheckInAt(resolveScheduledCheckInAt(listing, request.getCheckInDate()))
-                .scheduledCheckOutAt(resolveScheduledCheckOutAt(listing, request.getCheckOutDate()))
-                .totalNights(totalNights)
-                .nightlyPrice(pricing.nightlyPrice())
-                .accommodationSubtotal(pricing.accommodationSubtotal())
-                .cleaningFee(pricing.cleaningFee())
-                .serviceFee(pricing.serviceFee())
-                .taxes(pricing.taxes())
-                .totalPrice(toPaymentAmount(pricing.totalAmount()))
-                .currency(pricing.currency())
-                .cancellationPolicyCode(pricing.cancellationPolicyCode())
-                .hostPayoutEligible(resolveHostPayoutEligibility(listing))
-                .numAdults(adultCount(request.getNumberOfAdults()))
-                .numChildren(safeCount(request.getNumberOfChildren()))
-                .numInfants(safeCount(request.getNumberOfInfants()))
-                .numPets(safeCount(request.getNumberOfPets()))
-                .guestNotes(request.getGuestNotes())
-                .status(BookingStatus.PENDING_PAYMENT)
-                .build();
-
-        Booking saved = bookingRepository.save(booking);
+        Booking saved = createPendingBookingInTransaction(request, guestId, listing, pricing, totalNights);
         publishBookingEvent("BOOKING_REQUEST_CREATED", saved, true, false, false);
         return CreateBookingResponse.builder()
                 .bookingId(saved.getBookingId())
@@ -524,6 +493,60 @@ public class BookingService {
                 .expiresAt(saved.getExpiresAt())
                 .message("Booking created. Complete payment before it expires.")
                 .build();
+    }
+
+    private Booking createPendingBookingInTransaction(
+            CreateBookingRequest request,
+            UUID guestId,
+            ListingResponse listing,
+            PricingSnapshot pricing,
+            int totalNights
+    ) {
+        Booking saved = transactionTemplate.execute(status -> {
+            // Keep advisory lock, conflict check, and insert in one short DB transaction.
+            if (!Boolean.TRUE.equals(bookingRepository.tryAcquireListingBookingLock(request.getRoomId().toString()))) {
+                throw BusinessException.conflict("Another booking is being processed for this listing. Please try again.");
+            }
+
+            List<Booking> conflictingBookings = bookingRepository.findConflictingBookings(
+                    request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate());
+            if (!conflictingBookings.isEmpty()) {
+                throw BusinessException.conflict("Listing is not available for the selected dates");
+            }
+
+            Booking booking = Booking.builder()
+                    .listingId(request.getRoomId())
+                    .hostId(UUID.fromString(listing.getHostId()))
+                    .guestId(guestId)
+                    .checkInDate(request.getCheckInDate())
+                    .checkOutDate(request.getCheckOutDate())
+                    .scheduledCheckInAt(resolveScheduledCheckInAt(listing, request.getCheckInDate()))
+                    .scheduledCheckOutAt(resolveScheduledCheckOutAt(listing, request.getCheckOutDate()))
+                    .totalNights(totalNights)
+                    .nightlyPrice(pricing.nightlyPrice())
+                    .accommodationSubtotal(pricing.accommodationSubtotal())
+                    .cleaningFee(pricing.cleaningFee())
+                    .serviceFee(pricing.serviceFee())
+                    .taxes(pricing.taxes())
+                    .totalPrice(toPaymentAmount(pricing.totalAmount()))
+                    .currency(pricing.currency())
+                    .cancellationPolicyCode(pricing.cancellationPolicyCode())
+                    .hostPayoutEligible(resolveHostPayoutEligibility(listing))
+                    .numAdults(adultCount(request.getNumberOfAdults()))
+                    .numChildren(safeCount(request.getNumberOfChildren()))
+                    .numInfants(safeCount(request.getNumberOfInfants()))
+                    .numPets(safeCount(request.getNumberOfPets()))
+                    .guestNotes(request.getGuestNotes())
+                    .status(BookingStatus.PENDING_PAYMENT)
+                    .build();
+
+            return bookingRepository.save(booking);
+        });
+
+        if (saved == null) {
+            throw new IllegalStateException("Create booking transaction completed without a result");
+        }
+        return saved;
     }
 
     @Transactional
@@ -583,7 +606,6 @@ public class BookingService {
                 .orElseThrow(() -> BusinessException.notFound("Booking not found"));
     }
 
-    @Transactional(readOnly = true)
     public BookingDetailResponse getMyBookingDetail(UUID bookingId) {
         Jwt jwt = currentJwt();
         UUID guestId = UUID.fromString(jwt.getSubject());
@@ -1263,7 +1285,6 @@ public class BookingService {
         return bookings.stream().map(this::mapToResponse).toList();
     }
 
-    @Transactional(readOnly = true)
     public List<BookingTripResponse> getMyBookings(BookingFilterType type) {
         Jwt jwt = currentJwt();
         UUID userId = UUID.fromString(jwt.getSubject());
@@ -1296,7 +1317,6 @@ public class BookingService {
      * - Query Booking theo listing/status, sau đó enrich guest profile để card có tên/avatar.
      * Output: danh sách ReservationResponse đủ dữ liệu cho list, stats và calendar.
      */
-    @Transactional(readOnly = true)
     public List<ReservationResponse> getReservationsByListing(UUID listingId, List<BookingStatus> statuses) {
         Jwt jwt = currentJwt();
         boolean admin = isAdmin(jwt);
@@ -1340,7 +1360,6 @@ public class BookingService {
      * các field searchable vào Booking read-model hoặc đẩy sang Search Service để pagination được thực hiện
      * trực tiếp bằng DB/search index thay vì lọc trong memory sau bước enrich.
      */
-    @Transactional(readOnly = true)
     public HostReservationsPageResponse getHostReservations(
             UUID listingId,
             List<BookingStatus> statuses,
@@ -1431,7 +1450,6 @@ public class BookingService {
      * Reservation dùng chung entity Booking nên bước quan trọng nhất là kiểm quyền quản lý
      * trước khi enrich dữ liệu listing/guest/payment cho màn detail.
      */
-    @Transactional(readOnly = true)
     public ReservationDetailResponse getReservationDetail(UUID reservationId) {
         Jwt jwt = currentJwt();
         Booking booking = bookingRepository.findById(reservationId)
@@ -1453,53 +1471,69 @@ public class BookingService {
      * validate transition, set timestamp nghiệp vụ, lưu DB.
      * Output: ReservationDetailResponse mới nhất để frontend thay thế optimistic state.
      */
-    @Transactional
     public ReservationDetailResponse updateReservationStatus(UUID reservationId, UpdateBookingStatusRequest request) {
         Jwt jwt = currentJwt();
-        Booking booking = bookingRepository.findByIdForUpdate(reservationId)
-                .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
+        ReservationStatusUpdateResult result = updateReservationStatusInTransaction(jwt, reservationId, request);
+        Booking saved = result.booking();
 
-        ensureCanManageReservation(jwt, booking);
-        validateReservationManagementStatus(request.getStatus());
-        if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
-            throw BusinessException.conflict("Host cancellation quote is required");
-        }
-
-        // Chỉ đổi status khi status mới khác status hiện tại; nếu trùng, vẫn cho phép cập nhật reason/timestamp liên quan.
-        BookingStatus previousStatus = booking.getStatus();
-        if (booking.getStatus() != request.getStatus()) {
-            validateStatusTransition(booking.getStatus(), request.getStatus());
-            booking.setStatus(request.getStatus());
-        }
-
-        if (request.getPaymentIntentId() != null) {
-            booking.setPaymentIntentId(request.getPaymentIntentId());
-        }
-        if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
-            booking.setCheckedInAt(LocalDateTime.now());
-        }
-        if ((request.getStatus() == BookingStatus.CHECKED_OUT || request.getStatus() == BookingStatus.COMPLETED)
-                && booking.getCheckedOutAt() == null) {
-            booking.setCheckedOutAt(LocalDateTime.now());
-        }
-        if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
-            booking.setCompletedAt(LocalDateTime.now());
-        }
-        if (isCancelledStatus(request.getStatus()) && booking.getCancelledAt() == null) {
-            booking.setCancelledAt(LocalDateTime.now());
-        }
-        if (isCancelledStatus(request.getStatus()) && request.getReason() != null) {
-            booking.setCancellationReason(request.getReason());
-        }
-
-        Booking saved = bookingRepository.save(booking);
-        if (previousStatus != saved.getStatus()) {
-            publishStatusTransitionEvent(previousStatus, saved);
+        if (result.previousStatus() != saved.getStatus()) {
+            publishStatusTransitionEvent(result.previousStatus(), saved);
         }
         ListingResponse listing = listingClient
                 .getListingById("Bearer " + jwt.getTokenValue(), saved.getListingId())
                 .getData();
         return mapToReservationDetailResponse(saved, listing, fetchGuestProfile(saved.getGuestId()));
+    }
+
+    private ReservationStatusUpdateResult updateReservationStatusInTransaction(
+            Jwt jwt,
+            UUID reservationId,
+            UpdateBookingStatusRequest request
+    ) {
+        ReservationStatusUpdateResult result = transactionTemplate.execute(status -> {
+            Booking booking = bookingRepository.findByIdForUpdate(reservationId)
+                    .orElseThrow(() -> BusinessException.notFound("Reservation not found"));
+
+            ensureCanManageReservation(jwt, booking);
+            validateReservationManagementStatus(request.getStatus());
+            if (request.getStatus() == BookingStatus.CANCELLED_BY_HOST) {
+                throw BusinessException.conflict("Host cancellation quote is required");
+            }
+
+            // Only DB mutation stays inside this transaction; enrichment and events run after commit.
+            BookingStatus previousStatus = booking.getStatus();
+            if (booking.getStatus() != request.getStatus()) {
+                validateStatusTransition(booking.getStatus(), request.getStatus());
+                booking.setStatus(request.getStatus());
+            }
+
+            if (request.getPaymentIntentId() != null) {
+                booking.setPaymentIntentId(request.getPaymentIntentId());
+            }
+            if (request.getStatus() == BookingStatus.CHECKED_IN && booking.getCheckedInAt() == null) {
+                booking.setCheckedInAt(LocalDateTime.now());
+            }
+            if ((request.getStatus() == BookingStatus.CHECKED_OUT || request.getStatus() == BookingStatus.COMPLETED)
+                    && booking.getCheckedOutAt() == null) {
+                booking.setCheckedOutAt(LocalDateTime.now());
+            }
+            if (request.getStatus() == BookingStatus.COMPLETED && booking.getCompletedAt() == null) {
+                booking.setCompletedAt(LocalDateTime.now());
+            }
+            if (isCancelledStatus(request.getStatus()) && booking.getCancelledAt() == null) {
+                booking.setCancelledAt(LocalDateTime.now());
+            }
+            if (isCancelledStatus(request.getStatus()) && request.getReason() != null) {
+                booking.setCancellationReason(request.getReason());
+            }
+
+            return new ReservationStatusUpdateResult(bookingRepository.save(booking), previousStatus);
+        });
+
+        if (result == null) {
+            throw new IllegalStateException("Update reservation status transaction completed without a result");
+        }
+        return result;
     }
 
     private List<ListingResponse> resolveReservationScopeListings(

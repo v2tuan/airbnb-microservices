@@ -17,6 +17,7 @@ import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +41,6 @@ class ListingSearchRepositoryImpl implements ListingSearchRepository {
         predicates.add(criteriaBuilder.equal(listing.get("status"), ListingStatus.ACTIVE));
 
         addTextSearchPredicate(predicates, criteriaBuilder, listing, criteria.keyword());
-        addEqualIgnoreCasePredicate(predicates, criteriaBuilder, listing.get("city"), criteria.city());
         addEqualIgnoreCasePredicate(predicates, criteriaBuilder, listing.get("state"), criteria.state());
         addEqualIgnoreCasePredicate(predicates, criteriaBuilder, listing.get("country"), criteria.country());
 
@@ -107,18 +107,19 @@ class ListingSearchRepositoryImpl implements ListingSearchRepository {
             return;
         }
 
-        String pattern = "%" + keyword.toLowerCase(Locale.ROOT) + "%";
+        String pattern = "%" + compactText(keyword) + "%";
         predicates.add(criteriaBuilder.or(
-                containsIgnoreCase(criteriaBuilder, listing.get("title"), pattern),
-                containsIgnoreCase(criteriaBuilder, listing.get("description"), pattern),
-                containsIgnoreCase(criteriaBuilder, listing.get("address"), pattern),
-                containsIgnoreCase(criteriaBuilder, listing.get("city"), pattern),
-                containsIgnoreCase(criteriaBuilder, listing.get("country"), pattern)
+            containsIgnoreCase(criteriaBuilder, listing.get("title"), pattern),
+            containsIgnoreCase(criteriaBuilder, listing.get("description"), pattern),
+            containsIgnoreCase(criteriaBuilder, listing.get("address"), pattern),
+            containsIgnoreCase(criteriaBuilder, listing.get("city"), pattern),
+            containsIgnoreCase(criteriaBuilder, listing.get("state"), pattern),
+            containsIgnoreCase(criteriaBuilder, listing.get("country"), pattern)
         ));
     }
 
     private Predicate containsIgnoreCase(CriteriaBuilder criteriaBuilder, Path<String> path, String pattern) {
-        return criteriaBuilder.like(criteriaBuilder.lower(path), pattern);
+        return criteriaBuilder.like(compactExpression(criteriaBuilder, path), pattern);
     }
 
     private void addEqualIgnoreCasePredicate(
@@ -129,11 +130,43 @@ class ListingSearchRepositoryImpl implements ListingSearchRepository {
     ) {
         if (value != null) {
             predicates.add(criteriaBuilder.equal(
-                    criteriaBuilder.lower(path),
-                    value.toLowerCase(Locale.ROOT)
+                    compactExpression(criteriaBuilder, path),
+                    compactText(value)
             ));
         }
     }
+
+    private Expression<String> compactExpression(CriteriaBuilder criteriaBuilder, Path<String> path) {
+        return criteriaBuilder.function(
+                "replace",
+                String.class,
+            criteriaBuilder.function(
+                "translate",
+                String.class,
+                criteriaBuilder.lower(path),
+                criteriaBuilder.literal(ACCENTED_CHARS),
+                criteriaBuilder.literal(PLAIN_CHARS)
+            ),
+                criteriaBuilder.literal(" "),
+                criteriaBuilder.literal("")
+        );
+    }
+
+    private String compactText(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String normalized = Normalizer.normalize(value.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+            .replaceAll("\\p{M}+", "");
+        return normalized.replaceAll("\\s+", "");
+    }
+
+        private static final String ACCENTED_CHARS =
+            "áàảãạăắằẳẵặâấầẩẫậđéèẻẽẹêếềểễệíìỉĩịóòỏõọôốồổỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ";
+
+        private static final String PLAIN_CHARS =
+            "aaaaaaaaaaaaaaaaaadeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyy";
 
     private List<Order> orderBy(
             CriteriaBuilder criteriaBuilder,

@@ -30,6 +30,8 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -44,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,6 +66,7 @@ class BookingFlowV2RulesTest {
     @Mock UserClient userClient;
     @Mock HostPenaltyService hostPenaltyService;
     @Mock NotificationEventPublisher notificationEventPublisher;
+    @Mock TransactionTemplate transactionTemplate;
 
     BookingService bookingService;
 
@@ -78,8 +82,13 @@ class BookingFlowV2RulesTest {
                 ratingClient,
                 userClient,
                 hostPenaltyService,
-                notificationEventPublisher
+                notificationEventPublisher,
+                transactionTemplate
         );
+        lenient().when(transactionTemplate.execute(any(TransactionCallback.class))).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         Jwt jwt = Jwt.withTokenValue("token")
                 .header("alg", "none")
                 .subject(GUEST_ID.toString())
@@ -134,13 +143,16 @@ class BookingFlowV2RulesTest {
                 .currency("USD")
                 .numberOfAdults(2)
                 .build();
+        when(listingClient.getListingById("Bearer token", LISTING_ID))
+                .thenReturn(ApiResponse.<ListingResponse>builder().data(activeListing()).build());
         when(bookingRepository.tryAcquireListingBookingLock(LISTING_ID.toString())).thenReturn(false);
 
         assertThatThrownBy(() -> bookingService.createBooking(request))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Another booking is being processed");
 
-        verify(listingClient, never()).getListingById(any(), any());
+        verify(listingClient).getListingById("Bearer token", LISTING_ID);
+        verify(bookingRepository, never()).findConflictingBookings(any(), any(), any());
         verify(bookingRepository, never()).save(any(Booking.class));
     }
 

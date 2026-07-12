@@ -53,13 +53,13 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
     @Query("""
         SELECT l FROM Listing l
         WHERE l.status = :status
-        AND (:city IS NULL OR :city = '' OR LOWER(l.city) = LOWER(:city))
+        AND (:state IS NULL OR :state = '' OR REPLACE(translate(LOWER(l.state), 'áàảãạăắằẳẵặâấầẩẫậđéèẻẽẹêếềểễệíìỉĩịóòỏõọôốỗộơớờởỡợúùủũụưứừửữựýỳỷỹỵ', 'aaaaaaaaaaaaaaaaaadeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyy'), ' ', '') = :state)
         AND (:country IS NULL OR :country = '' OR LOWER(l.country) = LOWER(:country))
         AND (:maxGuests IS NULL OR l.maxGuests >= :maxGuests)
         """)
     List<Listing> searchActiveListings(
         @Param("status") ListingStatus status,
-        @Param("city") String city,
+        @Param("state") String state,
         @Param("country") String country,
         @Param("maxGuests") Integer maxGuests
     );

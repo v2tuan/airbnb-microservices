@@ -3,12 +3,12 @@
 import { Ban, ChevronLeft, ChevronRight, Home, ListChecks } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  listAdminListings,
+  listAdminListingItems,
+  type AdminListingItemRecord,
   type PageResponse,
   suspendAdminListing,
   unsuspendAdminListing,
 } from "@/api/endpoints/admin";
-import type { ListingResponse } from "@/api/endpoints/listing";
 import { useAdminToken } from "@/components/admin/admin-shell";
 import {
   AdminCard,
@@ -19,6 +19,7 @@ import {
   AdminPageHeader,
   AdminSectionHeader,
   FieldLabel,
+  formatAdminDate,
   getAdminErrorMessage,
   TextStatusPill,
 } from "@/components/admin/admin-ui";
@@ -28,9 +29,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 export function ListingSuspensionManagementModule() {
   const { token } = useAdminToken();
-  const [items, setItems] = useState<ListingResponse[]>([]);
+  const [items, setItems] = useState<AdminListingItemRecord[]>([]);
   const [pageData, setPageData] =
-    useState<PageResponse<ListingResponse> | null>(null);
+    useState<PageResponse<AdminListingItemRecord> | null>(null);
   const [page, setPage] = useState(0);
   const pageSize = 12;
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export function ListingSuspensionManagementModule() {
     setLoading(true);
     setError(null);
 
-    listAdminListings(token, { page, size: pageSize })
+    listAdminListingItems(token, { page, size: pageSize })
       .then((response) => {
         if (!active) return;
         const data = response.data;
@@ -93,28 +94,27 @@ export function ListingSuspensionManagementModule() {
     : items.length;
 
   const selectedListing = useMemo(
-    () => items.find((item) => item.listingId === listingId) ?? null,
+    () => items.find((item) => item.id === listingId) ?? null,
     [items, listingId],
   );
 
   const canSubmit = !!selectedListing && reason.trim();
 
-  function formatListingPrice(item: ListingResponse) {
-    const amount = item.pricing?.basePrice;
+  function formatListingPrice(item: AdminListingItemRecord) {
+    const amount = item.basePrice;
     if (amount == null) return "No price";
 
     return new Intl.NumberFormat("vi-VN", {
       style: "currency",
-      currency: item.pricing?.currency || "VND",
+      currency: item.currency || "VND",
       maximumFractionDigits: 0,
     }).format(amount);
   }
 
-  function formatListingType(item: ListingResponse) {
-    return [item.propertyType, item.roomType]
-      .filter(Boolean)
-      .map((value) => value.toLowerCase().replaceAll("_", " "))
-      .join(" / ");
+  function formatListingType(item: AdminListingItemRecord) {
+    return item.propertyType
+      ? item.propertyType.toLowerCase().replaceAll("_", " ")
+      : "Unknown";
   }
 
   async function submitSuspend() {
@@ -122,14 +122,14 @@ export function ListingSuspensionManagementModule() {
     setSubmitting("suspend");
     setActionMessage(null);
     try {
-      await suspendAdminListing(token, selectedListing.listingId, {
+      await suspendAdminListing(token, selectedListing.id, {
         reason: reason.trim(),
         suspendedUntil: suspendedUntil || undefined,
       });
       setActionMessage("Listing suspended.");
       setItems((current) =>
         current.map((item) =>
-          item.listingId === selectedListing.listingId
+          item.id === selectedListing.id
             ? { ...item, status: "SUSPENDED" }
             : item,
         ),
@@ -146,15 +146,11 @@ export function ListingSuspensionManagementModule() {
     setSubmitting("unsuspend");
     setActionMessage(null);
     try {
-      await unsuspendAdminListing(
-        token,
-        selectedListing.listingId,
-        reason.trim(),
-      );
+      await unsuspendAdminListing(token, selectedListing.id, reason.trim());
       setActionMessage("Listing unsuspended.");
       setItems((current) =>
         current.map((item) =>
-          item.listingId === selectedListing.listingId
+          item.id === selectedListing.id
             ? { ...item, status: "ACTIVE" }
             : item,
         ),
@@ -173,7 +169,7 @@ export function ListingSuspensionManagementModule() {
         title="Listing management"
         description="Review listing inventory, status, location and bookability controls from listing-service."
       />
-      <div className="mx-auto max-w-[1280px] space-y-6 p-5 sm:p-8">
+      <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
         <div className="grid gap-4 md:grid-cols-3">
           <AdminMetricCard
             label="Listings"
@@ -219,9 +215,9 @@ export function ListingSuspensionManagementModule() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {items.map((item) => (
                     <button
-                      key={item.listingId}
+                      key={item.id}
                       type="button"
-                      onClick={() => setListingId(item.listingId)}
+                      onClick={() => setListingId(item.id)}
                       className="rounded-[14px] border border-[#ebebeb] bg-white p-4 text-left transition hover:border-[#dddddd] hover:shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_2px_6px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.10)]"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -340,9 +336,9 @@ export function ListingSuspensionManagementModule() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span>Guests</span>
+                      <span>Created</span>
                       <span className="text-right text-[#222222]">
-                        {selectedListing.maxGuests}
+                        {formatAdminDate(selectedListing.createdAt)}
                       </span>
                     </div>
                   </div>

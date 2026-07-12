@@ -218,7 +218,7 @@ public class ListingService implements IListingService {
 
     @Override
         public List<ListingResponse> searchListings(
-            String city,
+            String state,
             String country,
             Integer maxGuests,
             BigDecimal minPrice,
@@ -228,8 +228,8 @@ public class ListingService implements IListingService {
             Double radius,
             LocalDate checkIn,
             LocalDate checkOut) {
-        log.info("Searching listings - City: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}",
-            city, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius);
+        log.info("Searching listings - State: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}",
+            state, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius);
 
         List<Listing> listings;
 
@@ -240,13 +240,13 @@ public class ListingService implements IListingService {
         } else {
             listings = listingRepository.searchActiveListings(
                 ListingStatus.ACTIVE,
-                normalizeFilter(city),
+                normalizeSearchLocation(state),
                 normalizeFilter(country),
                 maxGuests);
         }
 
         return filterAvailableForSearch(
-            filterBySearchCriteria(listings, city, country, maxGuests, minPrice, maxPrice),
+            filterBySearchCriteria(listings, state, country, maxGuests, minPrice, maxPrice),
             checkIn,
             checkOut)
             .stream()
@@ -260,9 +260,9 @@ public class ListingService implements IListingService {
         ListingFilterRequest safeRequest = request != null ? request : new ListingFilterRequest();
 
         log.info(
-                "Advanced listing search - keyword={}, city={}, country={}, guests={}, price={}..{}, propertyTypes={}, roomTypes={}, checkIn={}, checkOut={}, limit={}",
+                "Advanced listing search - keyword={}, state={}, country={}, guests={}, price={}..{}, propertyTypes={}, roomTypes={}, checkIn={}, checkOut={}, limit={}",
                 safeRequest.getKeyword(),
-                safeRequest.getCity(),
+                safeRequest.getState(),
                 safeRequest.getCountry(),
                 safeRequest.getGuests(),
                 safeRequest.getMinPrice(),
@@ -1049,18 +1049,23 @@ public class ListingService implements IListingService {
                 || actual != null && actual.equalsIgnoreCase(expected.trim());
     }
 
+    private boolean matchesLocationCompact(String actual, String expected) {
+        return expected == null || expected.isBlank()
+                || actual != null && compactText(actual).equals(compactText(expected));
+    }
+
     private List<Listing> filterBySearchCriteria(
             List<Listing> listings,
-            String city,
+            String state,
             String country,
             Integer maxGuests,
             BigDecimal minPrice,
             BigDecimal maxPrice) {
-        String normalizedCity = normalizeFilter(city);
+        String normalizedState = normalizeSearchLocation(state);
         String normalizedCountry = normalizeFilter(country);
 
         return listings.stream()
-                .filter(listing -> matchesIgnoreCase(listing.getCity(), normalizedCity))
+            .filter(listing -> matchesLocationCompact(listing.getState(), normalizedState))
                 .filter(listing -> matchesIgnoreCase(listing.getCountry(), normalizedCountry))
                 .filter(listing -> maxGuests == null || listing.getMaxGuests() >= maxGuests)
                 .filter(listing -> {
@@ -1101,6 +1106,20 @@ public class ListingService implements IListingService {
 
     private String normalizeFilter(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String normalizeSearchLocation(String value) {
+        return value == null || value.isBlank() ? null : compactText(value);
+    }
+
+    private String compactText(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String normalized = Normalizer.normalize(value.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        return normalized.replaceAll("\\s+", "");
     }
 
     private void validateCheckInWindow(Listing listing) {

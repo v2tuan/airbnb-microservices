@@ -37,6 +37,7 @@ interface SearchPageProps {
 type SearchQuery = Awaited<SearchPageProps["searchParams"]>;
 
 const PAGE_SIZE = 12;
+const SEARCH_FETCH_LIMIT = 1000;
 
 const destinationAliases: Record<string, string> = {
   "da lat": "Dalat",
@@ -48,79 +49,6 @@ const destinationAliases: Record<string, string> = {
 function normalizeDestination(value: string) {
   const trimmed = value.trim();
   return destinationAliases[trimmed.toLowerCase()] ?? trimmed;
-}
-
-function filterListings(
-  listings: ListingResponse[],
-  destination: string,
-  country: string | undefined,
-  maxGuests: number | undefined,
-  minPrice: number | undefined,
-  maxPrice: number | undefined,
-  roomTypes: string[],
-  bedrooms: number | undefined,
-  beds: number | undefined,
-  bathrooms: number | undefined,
-  amenities: string[],
-  petsAllowed: boolean,
-  instantBook: boolean,
-) {
-  const normalizedDestination = destination.trim().toLowerCase();
-  const normalizedCountry = country?.trim().toLowerCase();
-  const normalizedAmenities = amenities.map((amenity) => amenity.toLowerCase());
-
-  return listings.filter((listing) => {
-    const basePrice = listing.pricing?.basePrice;
-    const matchesDestination =
-      !normalizedDestination ||
-      listing.city?.toLowerCase().includes(normalizedDestination) ||
-      listing.country?.toLowerCase().includes(normalizedDestination) ||
-      listing.title?.toLowerCase().includes(normalizedDestination);
-
-    const matchesCountry =
-      !normalizedCountry ||
-      listing.country?.toLowerCase().includes(normalizedCountry);
-
-    const matchesGuests = !maxGuests || listing.maxGuests >= maxGuests;
-    const matchesMinPrice =
-      !Number.isFinite(minPrice) ||
-      (typeof basePrice === "number" && basePrice >= (minPrice as number));
-    const matchesMaxPrice =
-      !Number.isFinite(maxPrice) ||
-      (typeof basePrice === "number" && basePrice <= (maxPrice as number));
-    const matchesRoomType =
-      roomTypes.length === 0 || roomTypes.includes(listing.roomType);
-    const matchesBedrooms = !bedrooms || listing.numBedrooms >= bedrooms;
-    const matchesBeds = !beds || listing.numBeds >= beds;
-    const matchesBathrooms = !bathrooms || listing.numBathrooms >= bathrooms;
-    const listingAmenities =
-      listing.amenities?.map((amenity) => amenity.name.toLowerCase()) ?? [];
-    const matchesAmenities =
-      normalizedAmenities.length === 0 ||
-      normalizedAmenities.every((selectedAmenity) =>
-        listingAmenities.some((listingAmenity) =>
-          listingAmenity.includes(selectedAmenity),
-        ),
-      );
-    const matchesPetsAllowed =
-      !petsAllowed || listing.houseRules?.petsAllowed === true;
-    const matchesInstantBook = !instantBook || listing.instantBook === true;
-
-    return (
-      matchesDestination &&
-      matchesCountry &&
-      matchesGuests &&
-      matchesMinPrice &&
-      matchesMaxPrice &&
-      matchesRoomType &&
-      matchesBedrooms &&
-      matchesBeds &&
-      matchesBathrooms &&
-      matchesAmenities &&
-      matchesPetsAllowed &&
-      matchesInstantBook
-    );
-  });
 }
 
 function getAmenities(query: SearchQuery) {
@@ -186,7 +114,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const beds = query.beds ? Number(query.beds) : undefined;
   const bathrooms = query.bathrooms ? Number(query.bathrooms) : undefined;
   const amenities = query.amenities ? getAmenities(query) : [];
-  const petsAllowed = query.petsAllowed === "true";
   const instantBook = query.instantBook === "true";
   const requestedPage = query.page ? Number(query.page) : 1;
   const latitude = query.latitude ? Number(query.latitude) : undefined;
@@ -202,45 +129,39 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   let errorMessage = "";
 
   try {
-    const response = await listingAPI.searchListings({
-      city: destination || undefined,
+    const response = await listingAPI.searchListingsWithFilters({
+      state: destination || undefined,
       country,
-      maxGuests,
+      guests: maxGuests,
       minPrice,
       maxPrice,
+      minBedrooms: bedrooms,
+      minBeds: beds,
+      minBathrooms: bathrooms,
+      roomTypes: roomTypes.length
+        ? (roomTypes as Array<"ENTIRE_PLACE" | "PRIVATE_ROOM" | "SHARED_ROOM">)
+        : undefined,
+      instantBook,
+      amenityNames: amenities,
       latitude,
       longitude,
-      radius,
+      radiusKm: radius,
       checkIn,
       checkOut,
+      limit: SEARCH_FETCH_LIMIT,
     });
     listings = unwrapApiData(response.data);
   } catch {
     errorMessage = "Unable to load search results.";
   }
 
-  const visibleListings = filterListings(
-    listings,
-    destination,
-    country,
-    maxGuests,
-    minPrice,
-    maxPrice,
-    roomTypes,
-    bedrooms,
-    beds,
-    bathrooms,
-    amenities,
-    petsAllowed,
-    instantBook,
-  );
-  const pageCount = Math.max(1, Math.ceil(visibleListings.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(listings.length / PAGE_SIZE));
   const currentPage = Math.min(
     Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1),
     pageCount,
   );
   const pageStart = (currentPage - 1) * PAGE_SIZE;
-  const paginatedListings = visibleListings.slice(
+  const paginatedListings = listings.slice(
     pageStart,
     pageStart + PAGE_SIZE,
   );
@@ -266,7 +187,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           {/* Result meta */}
           <div className="mb-5">
             <p className="text-sm text-neutral-500">
-              {visibleListings.length} stays
+              {listings.length} stays
               {pageCount > 1 ? ` · Page ${currentPage} of ${pageCount}` : ""} ·{" "}
               <span className="font-medium text-neutral-700">{priceLabel}</span>
               {maxGuests ? ` · ${maxGuests} guests` : ""}
@@ -281,7 +202,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             <div className="rounded-2xl border border-red-100 bg-red-50 p-6 text-sm text-red-600">
               {errorMessage}
             </div>
-          ) : visibleListings.length === 0 ? (
+          ) : listings.length === 0 ? (
             <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-10 text-center text-neutral-500">
               <p className="text-base font-medium">
                 No listings match your search.
