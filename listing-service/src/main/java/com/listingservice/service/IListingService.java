@@ -29,7 +29,7 @@ public interface IListingService {
     Page<ListingItemResponse> getAdminListingItems(ListingStatus status, String keyword, Pageable pageable);
     List<ListingResponse> getListingsByHost(String hostId);
         List<ListingResponse> searchListings(
-            String city,
+            String state,
             String country,
             Integer maxGuests,
             BigDecimal minPrice,

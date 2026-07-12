@@ -46,8 +46,8 @@ class ListingServiceSearchV2Test {
 
     @Test
     void searchListingsUsesOnlyActiveListingsAndDoesNotUseLegacyStatusQueries() {
-        Listing activeMatch = listing("Hanoi", "Vietnam", 2);
-        Listing activeOtherCity = listing("Dalat", "Vietnam", 2);
+        Listing activeMatch = listing("Hanoi", "Hanoi", "Vietnam", 2);
+        Listing activeOtherCity = listing("Dalat", "Dalat", "Vietnam", 2);
         when(listingRepository.searchActiveListings(ListingStatus.ACTIVE, "hanoi", "vietnam", 2))
             .thenReturn(List.of(activeMatch, activeOtherCity));
         when(listingMapper.toResponse(any())).thenAnswer(invocation -> response(invocation.getArgument(0)));
@@ -74,9 +74,9 @@ class ListingServiceSearchV2Test {
     void searchListingsFiltersUnavailableListingsWhenDateRangeIsProvided() {
         LocalDate checkIn = LocalDate.of(2026, 7, 10);
         LocalDate checkOut = LocalDate.of(2026, 7, 12);
-        Listing available = listing("Hanoi", "Vietnam", 2);
-        Listing unavailable = listing("Hanoi", "Vietnam", 2);
-        when(listingRepository.searchActiveListings(ListingStatus.ACTIVE, "Hanoi", null, 1))
+        Listing available = listing("Hanoi", "Hanoi", "Vietnam", 2);
+        Listing unavailable = listing("Hanoi", "Hanoi", "Vietnam", 2);
+        when(listingRepository.searchActiveListings(ListingStatus.ACTIVE, "hanoi", null, 1))
             .thenReturn(List.of(available, unavailable));
         when(availabilityClient.getAvailability(
             List.of(available.getListingId(), unavailable.getListingId()),
@@ -104,8 +104,8 @@ class ListingServiceSearchV2Test {
 
     @Test
     void searchListingsWithFiltersUsesIdOnlySearchAndPreservesCandidateOrder() {
-        Listing first = listing("Hanoi", "Vietnam", 2);
-        Listing second = listing("Hanoi", "Vietnam", 4);
+        Listing first = listing("Hanoi", "Hanoi", "Vietnam", 2);
+        Listing second = listing("Hanoi", "Hanoi", "Vietnam", 4);
         ListingFilterRequest request = ListingFilterRequest.builder()
                 .city("Hanoi")
                 .limit(6)
@@ -124,16 +124,41 @@ class ListingServiceSearchV2Test {
 
         ArgumentCaptor<ListingSearchCriteria> criteriaCaptor = ArgumentCaptor.forClass(ListingSearchCriteria.class);
         verify(listingRepository).findCandidateIds(criteriaCaptor.capture());
-        assertThat(criteriaCaptor.getValue().city()).isEqualTo("Hanoi");
+        assertThat(criteriaCaptor.getValue().city()).isEqualTo("hanoi");
         assertThat(criteriaCaptor.getValue().limit()).isEqualTo(6);
         verify(listingRepository).findByListingIdIn(candidateIds);
         verify(listingRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
-    private Listing listing(String city, String country, int maxGuests) {
+    @Test
+    void searchListingsMatchesLocationWithoutAccentsOrSpaces() {
+        Listing match = listing("Nha Trang", "Khánh Hòa", "Vietnam", 2);
+        when(listingRepository.searchActiveListings(ListingStatus.ACTIVE, "khanhhoa", "Vietnam", null))
+            .thenReturn(List.of(match));
+        when(listingMapper.toResponse(any())).thenAnswer(invocation -> response(invocation.getArgument(0)));
+
+        List<ListingResponse> results = listingService.searchListings(
+            "Khanh Hoa",
+            "Vietnam",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().getListingId()).isEqualTo(match.getListingId());
+        verify(listingRepository).searchActiveListings(ListingStatus.ACTIVE, "khanhhoa", "Vietnam", null);
+    }
+
+    private Listing listing(String city, String state, String country, int maxGuests) {
         return Listing.builder()
                 .listingId(UUID.randomUUID())
                 .city(city)
+                .state(state)
                 .country(country)
                 .maxGuests(maxGuests)
                 .status(ListingStatus.ACTIVE)

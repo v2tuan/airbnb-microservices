@@ -281,7 +281,7 @@ public class ListingDetailController {
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ListingResponse>>> searchListings(
-            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String state,
             @RequestParam(required = false) String country,
             @RequestParam(required = false) Integer maxGuests,
             @RequestParam(required = false) BigDecimal minPrice,
@@ -291,10 +291,10 @@ public class ListingDetailController {
             @RequestParam(required = false) Double radius,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
-        log.info("REST request to search listings - City: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}, CheckIn: {}, CheckOut: {}",
-                city, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius, checkIn, checkOut);
+        log.info("REST request to search listings - State: {}, Country: {}, Max Guests: {}, Min Price: {}, Max Price: {}, Latitude: {}, Longitude: {}, Radius: {}, CheckIn: {}, CheckOut: {}",
+                state, country, maxGuests, minPrice, maxPrice, latitude, longitude, radius, checkIn, checkOut);
         List<ListingResponse> response = listingService.searchListings(
-                city,
+                state,
                 country,
                 maxGuests,
                 minPrice,

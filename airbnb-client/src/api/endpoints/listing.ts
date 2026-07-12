@@ -218,6 +218,31 @@ export interface ListingMutationPayload {
   checkOutTime: string;
 }
 
+export interface ListingSearchFilterPayload {
+  keyword?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  guests?: number;
+  minBedrooms?: number;
+  minBeds?: number;
+  minBathrooms?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  propertyTypes?: PropertyType[];
+  roomTypes?: RoomType[];
+  instantBook?: boolean;
+  amenityIds?: string[];
+  amenityNames?: string[];
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
+  checkIn?: string;
+  checkOut?: string;
+  sortBy?: string;
+  limit?: number;
+}
+
 export interface ListingPricingPayload {
   basePrice: number;
   currency: string;
@@ -328,6 +353,7 @@ export const listingAPI = {
 
   searchListings: (params: {
     city?: string;
+    state?: string;
     country?: string;
     maxGuests?: number;
     minPrice?: number;
@@ -340,6 +366,14 @@ export const listingAPI = {
   }): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
     return apiClient.get(`${prefix}/listings/search`, {
       params,
+      ...publicRequest,
+    });
+  },
+
+  searchListingsWithFilters: (
+    payload: ListingSearchFilterPayload,
+  ): Promise<AxiosResponse<ApiResponse<ListingResponse[]>>> => {
+    return apiClient.post(`${prefix}/listings/search/filter`, payload, {
       ...publicRequest,
     });
   },
