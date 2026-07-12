@@ -4,6 +4,9 @@ import com.listingservice.constant.ListingStatus;
 import com.listingservice.dto.response.HomeListingCardResponse;
 import com.listingservice.dto.response.ListingItemResponse;
 import com.listingservice.entity.Listing;
+import com.listingservice.repository.projection.HomeDestinationCardProjection;
+import com.listingservice.repository.projection.HomeDestinationProjection;
+import com.listingservice.repository.projection.HomeListingCardProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -73,6 +76,7 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
                 l.listingId,
                 l.title,
                 l.city,
+                l.state,
                 l.country,
                 (
                     SELECT p.photoUrl
@@ -99,6 +103,146 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             @Param("city") String city,
             @Param("status") ListingStatus status,
             Pageable pageable
+    );
+
+    @Query(value = """
+            SELECT
+                MIN(BTRIM(l.city)) AS city,
+                MIN(BTRIM(l.country)) AS country,
+                LOWER(BTRIM(l.city)) || '|' || LOWER(BTRIM(l.country)) AS destinationKey,
+                COUNT(*) AS listingCount
+            FROM listings l
+            WHERE l.status = :status
+              AND l.city IS NOT NULL
+              AND BTRIM(l.city) <> ''
+              AND l.country IS NOT NULL
+              AND BTRIM(l.country) <> ''
+            GROUP BY LOWER(BTRIM(l.city)), LOWER(BTRIM(l.country))
+            ORDER BY COUNT(*) DESC, MIN(l.created_at) DESC, MIN(BTRIM(l.city)) ASC, MIN(BTRIM(l.country)) ASC
+            """, nativeQuery = true)
+    List<HomeDestinationProjection> findTopActiveDestinations(
+            @Param("status") String status,
+            Pageable pageable
+    );
+
+    @Query("""
+            SELECT TRIM(l.state)
+            FROM Listing l
+            WHERE l.status = :status
+              AND l.state IS NOT NULL
+              AND TRIM(l.state) <> ''
+            GROUP BY TRIM(l.state)
+            ORDER BY COUNT(l) DESC, MIN(l.createdAt) DESC, TRIM(l.state) ASC
+            """)
+    List<String> findTopActiveStates(
+            @Param("status") ListingStatus status,
+            Pageable pageable
+    );
+
+    @Query(value = """
+            SELECT
+                ranked.listing_id AS listingId,
+                ranked.title AS title,
+                ranked.city AS city,
+                ranked.state AS state,
+                ranked.country AS country,
+                ranked.cover_image_url AS coverImageUrl,
+                ranked.base_price AS basePrice,
+                ranked.currency AS currency,
+                ranked.max_guests AS maxGuests,
+                ranked.instant_book AS instantBook
+            FROM (
+                SELECT
+                    l.listing_id,
+                    l.title,
+                    l.city,
+                    BTRIM(l.state) AS state,
+                    l.country,
+                    (
+                        SELECT p.photo_url
+                        FROM listing_photos p
+                        WHERE p.listing_id = l.listing_id
+                        ORDER BY
+                            CASE WHEN p.is_cover = true THEN 0 ELSE 1 END,
+                            p.display_order ASC
+                        LIMIT 1
+                    ) AS cover_image_url,
+                    pr.base_price,
+                    pr.currency,
+                    l.max_guests,
+                    l.instant_book,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY LOWER(BTRIM(l.state))
+                        ORDER BY l.instant_book DESC, l.created_at DESC, l.listing_id DESC
+                    ) AS rn
+                FROM listings l
+                LEFT JOIN listing_pricing pr ON pr.listing_id = l.listing_id
+                WHERE l.status = :status
+                  AND l.state IS NOT NULL
+                  AND BTRIM(l.state) <> ''
+                  AND LOWER(BTRIM(l.state)) IN (:states)
+            ) ranked
+            WHERE ranked.rn <= :limitPerState
+            ORDER BY ranked.state, ranked.rn
+            """, nativeQuery = true)
+    List<HomeListingCardProjection> findHomeCardsByStates(
+            @Param("states") List<String> states,
+            @Param("status") String status,
+            @Param("limitPerState") int limitPerState
+    );
+
+    @Query(value = """
+            SELECT
+                ranked.listing_id AS listingId,
+                ranked.title AS title,
+                ranked.city AS city,
+                ranked.country AS country,
+                ranked.cover_image_url AS coverImageUrl,
+                ranked.base_price AS basePrice,
+                ranked.currency AS currency,
+                ranked.max_guests AS maxGuests,
+                ranked.instant_book AS instantBook,
+                ranked.destination_key AS destinationKey
+            FROM (
+                SELECT
+                    l.listing_id,
+                    l.title,
+                    BTRIM(l.city) AS city,
+                    BTRIM(l.country) AS country,
+                    (
+                        SELECT p.photo_url
+                        FROM listing_photos p
+                        WHERE p.listing_id = l.listing_id
+                        ORDER BY
+                            CASE WHEN p.is_cover = true THEN 0 ELSE 1 END,
+                            p.display_order ASC
+                        LIMIT 1
+                    ) AS cover_image_url,
+                    pr.base_price,
+                    pr.currency,
+                    l.max_guests,
+                    l.instant_book,
+                    LOWER(BTRIM(l.city)) || '|' || LOWER(BTRIM(l.country)) AS destination_key,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY LOWER(BTRIM(l.city)), LOWER(BTRIM(l.country))
+                        ORDER BY l.instant_book DESC, l.created_at DESC, l.listing_id DESC
+                    ) AS rn
+                FROM listings l
+                LEFT JOIN listing_pricing pr ON pr.listing_id = l.listing_id
+                WHERE l.status = :status
+                  AND l.city IS NOT NULL
+                  AND BTRIM(l.city) <> ''
+                  AND l.country IS NOT NULL
+                  AND BTRIM(l.country) <> ''
+                  AND LOWER(BTRIM(l.city)) || '|' || LOWER(BTRIM(l.country)) IN (:destinationKeys)
+            ) ranked
+            WHERE ranked.rn <= :limitPerDestination
+            ORDER BY ranked.destination_key, ranked.rn
+            """, nativeQuery = true)
+    List<HomeDestinationCardProjection> findHomeCardsByDestinations(
+            @Param("destinationKeys") List<String> destinationKeys,
+            @Param("status") String status,
+            @Param("limitPerDestination") int limitPerDestination
     );
 
     // Fallback query cho section trang chu

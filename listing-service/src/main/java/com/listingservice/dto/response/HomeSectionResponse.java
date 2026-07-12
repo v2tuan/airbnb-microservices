@@ -19,6 +19,10 @@ public class HomeSectionResponse {
     String sectionKey;
     String title;
     String city;
+    String state;
+    String country;
+    String viewAllHref;
+    Boolean hasMore;
     List<HomeListingCardResponse> listings;
 }
 

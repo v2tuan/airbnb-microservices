@@ -9,6 +9,8 @@ import com.listingservice.entity.ListingPhoto;
 import com.listingservice.entity.ListingPricing;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
+import com.listingservice.repository.projection.HomeDestinationCardProjection;
+import com.listingservice.repository.projection.HomeDestinationProjection;
 import com.listingservice.service.ActivityClient;
 import com.listingservice.service.AvailabilityClient;
 import com.listingservice.service.RecommendationClient;
@@ -66,57 +68,85 @@ class ListingServiceRecommendationTest {
         String userId = UUID.randomUUID().toString();
         UUID recommendedId = UUID.randomUUID();
         UUID recentlyViewedId = UUID.randomUUID();
-        UUID staticHanoiId = UUID.randomUUID();
-        UUID staticDalatId = UUID.randomUUID();
+        UUID losAngelesId = UUID.randomUUID();
+        UUID austinId = UUID.randomUUID();
 
         when(recommendationClient.getRecommendedListingIds(userId, 10)).thenReturn(List.of(recommendedId));
         when(recentlyViewedClient.getRecentlyViewedListingIds(userId, 10)).thenReturn(List.of(recentlyViewedId));
         when(listingRepository.findByListingIdIn(List.of(recommendedId))).thenReturn(List.of(recommendedListing(recommendedId)));
         when(listingRepository.findByListingIdIn(List.of(recentlyViewedId))).thenReturn(List.of(recommendedListing(recentlyViewedId)));
-        when(listingRepository.findHomeCardsByCity(eq("Hanoi"), eq(ListingStatus.ACTIVE), any()))
-                .thenReturn(List.of(homeCard(staticHanoiId, "Hanoi stay")));
-        when(listingRepository.findHomeCardsByCity(eq("Dalat"), eq(ListingStatus.ACTIVE), any()))
-                .thenReturn(List.of(homeCard(staticDalatId, "Dalat stay")));
+        when(listingRepository.findTopActiveDestinations(eq(ListingStatus.ACTIVE.name()), any()))
+                .thenReturn(List.of(
+                        destination("Los Angeles", "United States"),
+                        destination("Austin", "United States")
+                ));
+        when(listingRepository.findHomeCardsByDestinations(anyList(), eq("ACTIVE"), eq(8)))
+                .thenReturn(List.of(
+                        homeCard(losAngelesId, "Los Angeles stay", "Los Angeles", "United States"),
+                        homeCard(austinId, "Austin stay", "Austin", "United States")
+                ));
         when(ratingClient.getListingRatingSummaries(anyList())).thenReturn(Map.of(
                 recommendedId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.90"), 27L),
                 recentlyViewedId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.80"), 12L),
-                staticHanoiId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.70"), 11L),
-                staticDalatId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.50"), 8L)
+                losAngelesId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.70"), 11L),
+                austinId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.50"), 8L)
         ));
 
         List<HomeSectionResponse> sections = listingService.getHomeSections(10, userId);
 
         assertThat(sections).hasSize(4);
         assertThat(sections.getFirst().getSectionKey()).isEqualTo("recommendations-for-you");
+        assertThat(sections.getFirst().getViewAllHref()).isNull();
+        assertThat(sections.getFirst().getHasMore()).isFalse();
         assertThat(sections.getFirst().getListings())
                 .extracting(HomeListingCardResponse::getListingId)
                 .containsExactly(recommendedId);
         assertThat(sections.getFirst().getListings().getFirst().getRating()).isEqualByComparingTo("4.90");
         assertThat(sections.get(1).getSectionKey()).isEqualTo("recently-viewed");
+        assertThat(sections.get(1).getViewAllHref()).isNull();
+        assertThat(sections.get(1).getHasMore()).isFalse();
         assertThat(sections.get(1).getListings())
                 .extracting(HomeListingCardResponse::getListingId)
                 .containsExactly(recentlyViewedId);
+        assertThat(sections.get(2).getSectionKey()).isEqualTo("browse-los-angeles-united-states");
+        assertThat(sections.get(2).getTitle()).contains("Los Angeles");
+        assertThat(sections.get(2).getViewAllHref()).isEqualTo("/search?q=Los%20Angeles");
+        assertThat(sections.get(2).getListings())
+                .extracting(HomeListingCardResponse::getCity)
+                .containsExactly("Los Angeles");
+        assertThat(sections.get(3).getSectionKey()).isEqualTo("browse-austin-united-states");
+        assertThat(sections.get(3).getTitle()).contains("Austin");
+        assertThat(sections.get(3).getViewAllHref()).isEqualTo("/search?q=Austin");
+        verify(recommendationClient).getRecommendedListingIds(userId, 10);
+        verify(recentlyViewedClient).getRecentlyViewedListingIds(userId, 10);
     }
 
     @Test
     void getHomeSectionsShouldHidePersonalizedSectionsForAnonymousUser() {
-        UUID staticHanoiId = UUID.randomUUID();
-        UUID staticDalatId = UUID.randomUUID();
+        UUID losAngelesId = UUID.randomUUID();
+        UUID austinId = UUID.randomUUID();
 
-        when(listingRepository.findHomeCardsByCity(eq("Hanoi"), eq(ListingStatus.ACTIVE), any()))
-                .thenReturn(List.of(homeCard(staticHanoiId, "Hanoi stay")));
-        when(listingRepository.findHomeCardsByCity(eq("Dalat"), eq(ListingStatus.ACTIVE), any()))
-                .thenReturn(List.of(homeCard(staticDalatId, "Dalat stay")));
+        when(listingRepository.findTopActiveDestinations(eq(ListingStatus.ACTIVE.name()), any()))
+                .thenReturn(List.of(
+                        destination("Los Angeles", "United States"),
+                        destination("Austin", "United States")
+                ));
+        when(listingRepository.findHomeCardsByDestinations(anyList(), eq("ACTIVE"), eq(8)))
+                .thenReturn(List.of(
+                        homeCard(losAngelesId, "Los Angeles stay", "Los Angeles", "United States"),
+                        homeCard(austinId, "Austin stay", "Austin", "United States")
+                ));
         when(ratingClient.getListingRatingSummaries(anyList())).thenReturn(Map.of(
-                staticHanoiId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.70"), 11L),
-                staticDalatId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.50"), 8L)
+                losAngelesId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.70"), 11L),
+                austinId.toString(), new RatingClient.ListingRatingSummary(new BigDecimal("4.50"), 8L)
         ));
 
         List<HomeSectionResponse> sections = listingService.getHomeSections(10, null);
 
         assertThat(sections).hasSize(2);
-        assertThat(sections.getFirst().getSectionKey()).isEqualTo("popular-hanoi");
-        assertThat(sections.get(1).getSectionKey()).isEqualTo("dalat-weekend");
+        assertThat(sections.getFirst().getSectionKey()).isEqualTo("browse-los-angeles-united-states");
+        assertThat(sections.getFirst().getViewAllHref()).isEqualTo("/search?q=Los%20Angeles");
+        assertThat(sections.get(1).getSectionKey()).isEqualTo("browse-austin-united-states");
         verifyNoInteractions(recommendationClient, recentlyViewedClient);
     }
 
@@ -150,17 +180,81 @@ class ListingServiceRecommendationTest {
                 .build();
     }
 
-    private HomeListingCardResponse homeCard(UUID listingId, String title) {
-        return HomeListingCardResponse.builder()
-                .listingId(listingId)
-                .title(title)
-                .city("Hanoi")
-                .country("Vietnam")
-                .coverImageUrl("https://example.com/card.jpg")
-                .basePrice(new BigDecimal("900000"))
-                .currency("VND")
-                .maxGuests(2)
-                .instantBook(Boolean.TRUE)
-                .build();
+    private HomeDestinationProjection destination(String city, String country) {
+        return new HomeDestinationProjection() {
+            @Override
+            public String getCity() {
+                return city;
+            }
+
+            @Override
+            public String getCountry() {
+                return country;
+            }
+
+            @Override
+            public String getDestinationKey() {
+                return (city + "|" + country).toLowerCase();
+            }
+
+            @Override
+            public Long getListingCount() {
+                return 2L;
+            }
+        };
+    }
+
+    private HomeDestinationCardProjection homeCard(UUID listingId, String title, String city, String country) {
+        return new HomeDestinationCardProjection() {
+            @Override
+            public UUID getListingId() {
+                return listingId;
+            }
+
+            @Override
+            public String getTitle() {
+                return title;
+            }
+
+            @Override
+            public String getCity() {
+                return city;
+            }
+
+            @Override
+            public String getCountry() {
+                return country;
+            }
+
+            @Override
+            public String getCoverImageUrl() {
+                return "https://example.com/card.jpg";
+            }
+
+            @Override
+            public BigDecimal getBasePrice() {
+                return new BigDecimal("900000");
+            }
+
+            @Override
+            public String getCurrency() {
+                return "USD";
+            }
+
+            @Override
+            public Integer getMaxGuests() {
+                return 2;
+            }
+
+            @Override
+            public Boolean getInstantBook() {
+                return Boolean.TRUE;
+            }
+
+            @Override
+            public String getDestinationKey() {
+                return (city + "|" + country).toLowerCase();
+            }
+        };
     }
 }

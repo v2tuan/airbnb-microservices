@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { HomeSectionResponse, listingAPI, unwrapApiData } from "@/api/endpoints/listing";
 import ListingCard from "@/components/cards/ListingCard";
 import { useWishlistStore } from "@/hooks/useWishlistStore";
@@ -11,6 +12,21 @@ import { useSelector } from "react-redux";
 import { selectIsAuthenticated } from "@/features/auth/authSelectors";
 import { LoadingScreen } from "@/components/loading-screen";
 import type { RootState } from "@/store";
+
+function SectionViewAllCard({ href }: { href: string }) {
+  return (
+    <Link href={href} className="group flex w-full flex-col gap-2">
+      <div className="flex aspect-square w-full items-center justify-center rounded-2xl border border-neutral-300 bg-white transition hover:border-neutral-900 hover:shadow-sm">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex size-11 items-center justify-center rounded-full bg-neutral-900 text-white transition group-hover:bg-neutral-800">
+            <ChevronRight size={18} className="translate-x-px" />
+          </div>
+          <span className="text-sm font-semibold text-neutral-900">View All</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 export default function Home() {
   const [sections, setSections] = useState<HomeSectionResponse[]>([]);
@@ -132,12 +148,21 @@ export default function Home() {
         {sections.map((section) => (
           <section key={section.sectionKey} className="group relative space-y-4">
             <div className="flex items-center justify-between pr-2">
-              <div className="group/title flex cursor-pointer items-center gap-1">
-                <h2 className="text-xl font-bold tracking-tight text-neutral-900 group-hover/title:underline md:text-2xl">
+              {section.viewAllHref ? (
+                <Link
+                  href={section.viewAllHref}
+                  className="group/title inline-flex items-center gap-1"
+                >
+                  <h2 className="text-xl font-bold tracking-tight text-neutral-900 group-hover/title:underline md:text-2xl">
+                    {section.title}
+                  </h2>
+                  <ChevronRight size={24} className="mt-0.5" />
+                </Link>
+              ) : (
+                <h2 className="text-xl font-bold tracking-tight text-neutral-900 md:text-2xl">
                   {section.title}
                 </h2>
-                <ChevronRight size={24} className="mt-0.5" />
-              </div>
+              )}
 
               <div className="hidden items-center gap-3 md:flex">
                 <button
@@ -184,8 +209,22 @@ export default function Home() {
                   />
                 </div>
               ))}
+
+              {section.hasMore ? (
+                <div
+                  className="
+                    flex-none
+                    basis-[72%]
+                    md:basis-[calc((100%-4*1rem)/5)]
+                    lg:basis-[calc((100%-6*1rem)/7)]
+                  "
+                  style={{ scrollSnapAlign: "start" }}
+                >
+                  <SectionViewAllCard href={section.viewAllHref ?? "/search"} />
+                </div>
+              ) : null}
             </div>
-          </section>
+            </section>
         ))}
       </div>
     </main>

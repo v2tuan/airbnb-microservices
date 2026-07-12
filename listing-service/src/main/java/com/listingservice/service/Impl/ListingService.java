@@ -18,6 +18,8 @@ import com.listingservice.exception.AppException;
 import com.listingservice.exception.ErrorCode;
 import com.listingservice.mapper.IListingMapper;
 import com.listingservice.repository.ListingRepository;
+import com.listingservice.repository.projection.HomeDestinationCardProjection;
+import com.listingservice.repository.projection.HomeDestinationProjection;
 import com.listingservice.search.ListingSearchCriteria;
 import com.listingservice.search.ListingSearchSort;
 import com.listingservice.service.ActivityClient;
@@ -39,8 +41,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -61,8 +65,20 @@ import java.util.UUID;
 @Slf4j
 public class ListingService implements IListingService {
 
-    static int DEFAULT_SECTION_LIMIT = 10;
-    static int MAX_SECTION_LIMIT = 20;
+    static int DEFAULT_SECTION_LIMIT = 7;
+    static int MAX_SECTION_LIMIT = 7;
+    static int MAX_DESTINATION_SECTIONS = 6;
+    static int PERSONALIZED_SECTION_LIMIT = 10;
+    static final List<String> DESTINATION_TITLE_TEMPLATES = List.of(
+            "Homes in %s",
+            "Stays in %s",
+            "Places to stay in %s",
+            "Weekend escapes in %s",
+            "Guest-loved homes in %s",
+            "Comfortable stays in %s",
+            "Homes you'll love in %s",
+            "Relaxing stays in %s"
+    );
 
     ListingRepository listingRepository;
     IListingMapper listingMapper;
@@ -382,18 +398,17 @@ public class ListingService implements IListingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<HomeSectionResponse> getHomeSections(Integer limitPerSection, String keycloakUserId) {
         int safeLimit = normalizeLimit(limitPerSection);
         List<HomeSectionResponse> sections = new java.util.ArrayList<>();
 
         if (hasKeycloakUserId(keycloakUserId)) {
-            buildRecommendationSection(keycloakUserId, safeLimit).ifPresent(sections::add);
-            buildRecentlyViewedSection(keycloakUserId, safeLimit).ifPresent(sections::add);
+            buildRecommendationSection(keycloakUserId, PERSONALIZED_SECTION_LIMIT).ifPresent(sections::add);
+            buildRecentlyViewedSection(keycloakUserId, PERSONALIZED_SECTION_LIMIT).ifPresent(sections::add);
         }
-        sections.addAll(List.of(
-                buildSection("popular-hanoi", "Popular homes in Hanoi", "Hanoi", safeLimit),
-                buildSection("dalat-weekend", "Available in Dalat this weekend", "Dalat", safeLimit)
-        ));
+
+        sections.addAll(buildDestinationSections(safeLimit));
 
         applyRatings(sections);
         return sections;
@@ -429,18 +444,104 @@ public class ListingService implements IListingService {
         return listingsPage;
     }
 
-    private HomeSectionResponse buildSection(String sectionKey, String title, String city, int limit) {
-        List<HomeListingCardResponse> listings = listingRepository.findHomeCardsByCity(
-                city,
-                ListingStatus.ACTIVE,
-                PageRequest.of(0, limit));
+    private List<HomeSectionResponse> buildDestinationSections(int limitPerSection) {
+        int fetchLimitPerDestination = limitPerSection + 1;
+        List<HomeDestinationProjection> destinations = listingRepository.findTopActiveDestinations(
+                ListingStatus.ACTIVE.name(),
+                PageRequest.of(0, MAX_DESTINATION_SECTIONS)
+        );
 
-        return HomeSectionResponse.builder()
-                .sectionKey(sectionKey)
-                .title(title)
+        if (destinations == null || destinations.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, HomeDestinationProjection> destinationsByKey = new LinkedHashMap<>();
+        List<String> destinationKeys = new ArrayList<>();
+        for (HomeDestinationProjection destination : destinations) {
+            if (destination == null) {
+                continue;
+            }
+
+            String exactKey = destination.getDestinationKey();
+            if (exactKey != null && !exactKey.isBlank()) {
+                destinationKeys.add(exactKey);
+            }
+
+            String canonicalKey = normalizeDestinationKey(destination.getCity(), destination.getCountry());
+            if (canonicalKey != null && !destinationsByKey.containsKey(canonicalKey)) {
+                destinationsByKey.put(canonicalKey, destination);
+            }
+        }
+
+        if (destinationKeys.isEmpty() || destinationsByKey.isEmpty()) {
+            return List.of();
+        }
+
+        List<HomeListingCardResponse> cards = listingRepository.findHomeCardsByDestinations(
+                        destinationKeys,
+                        ListingStatus.ACTIVE.name(),
+                        fetchLimitPerDestination
+                )
+                .stream()
+                .map(this::toHomeCard)
+                .toList();
+
+        if (cards.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, List<HomeListingCardResponse>> cardsByDestinationKey = cards.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.groupingBy(
+                        card -> normalizeDestinationKey(card.getCity(), card.getCountry()),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        return destinationsByKey.values().stream()
+                .map(destination -> buildDestinationSection(
+                        destination,
+                        cardsByDestinationKey.get(normalizeDestinationKey(destination.getCity(), destination.getCountry())),
+                        limitPerSection
+                ))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    private Optional<HomeSectionResponse> buildDestinationSection(
+            HomeDestinationProjection destination,
+            List<HomeListingCardResponse> listings,
+            int limitPerSection
+    ) {
+        if (destination == null || listings == null || listings.isEmpty()) {
+            return Optional.empty();
+        }
+
+        String city = normalizeFilter(destination.getCity());
+        String country = normalizeFilter(destination.getCountry());
+        String destinationKey = normalizeDestinationKey(city, country);
+        String locationLabel = formatDestinationLabel(city, country);
+        List<HomeListingCardResponse> visibleListings = limitUniqueCards(listings, limitPerSection);
+
+        if (destinationKey == null || locationLabel == null || visibleListings.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(HomeSectionResponse.builder()
+                .sectionKey("browse-" + slugify(destinationKey))
+                .title(buildDestinationTitle(locationLabel, destinationKey))
                 .city(city)
-                .listings(listings)
-                .build();
+                .state(city)
+                .country(country)
+                .viewAllHref(buildSearchHref(locationLabel))
+                .hasMore(listings.stream()
+                        .filter(Objects::nonNull)
+                        .map(HomeListingCardResponse::getListingId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .count() > limitPerSection)
+                .listings(visibleListings)
+                .build());
     }
 
     private Optional<HomeSectionResponse> buildRecommendationSection(String userId, int limit) {
@@ -472,6 +573,8 @@ public class ListingService implements IListingService {
                 .sectionKey("recommendations-for-you")
                 .title("Recommended for you")
                 .city(null)
+                .viewAllHref(null)
+                .hasMore(false)
                 .listings(cards)
                 .build());
     }
@@ -505,6 +608,8 @@ public class ListingService implements IListingService {
                 .sectionKey("recently-viewed")
                 .title("Recently viewed")
                 .city(null)
+                .viewAllHref(null)
+                .hasMore(false)
                 .listings(cards)
                 .build());
     }
@@ -514,6 +619,7 @@ public class ListingService implements IListingService {
                 .listingId(listing.getListingId())
                 .title(listing.getTitle())
                 .city(listing.getCity())
+                .state(listing.getState())
                 .country(listing.getCountry())
                 .coverImageUrl(resolveCoverImageUrl(listing))
                 .basePrice(listing.getPricing() != null ? listing.getPricing().getBasePrice() : null)
@@ -521,6 +627,26 @@ public class ListingService implements IListingService {
                 .currency(listing.getPricing() != null ? listing.getPricing().getCurrency() : null)
                 .maxGuests(listing.getMaxGuests())
                 .instantBook(listing.getInstantBook())
+                .build();
+    }
+
+    private HomeListingCardResponse toHomeCard(HomeDestinationCardProjection projection) {
+        if (projection == null) {
+            return null;
+        }
+
+        return HomeListingCardResponse.builder()
+                .listingId(projection.getListingId())
+                .title(projection.getTitle())
+                .city(projection.getCity())
+                .state(projection.getCity())
+                .country(projection.getCountry())
+                .coverImageUrl(projection.getCoverImageUrl())
+                .basePrice(projection.getBasePrice())
+                .rating(null)
+                .currency(projection.getCurrency())
+                .maxGuests(projection.getMaxGuests())
+                .instantBook(projection.getInstantBook())
                 .build();
     }
 
@@ -826,6 +952,96 @@ public class ListingService implements IListingService {
 
     private boolean hasKeycloakUserId(String keycloakUserId) {
         return keycloakUserId != null && !keycloakUserId.isBlank();
+    }
+
+    private String buildDestinationTitle(String locationLabel, String destinationKey) {
+        if (locationLabel == null || locationLabel.isBlank() || destinationKey == null || destinationKey.isBlank()) {
+            return null;
+        }
+
+        String template = DESTINATION_TITLE_TEMPLATES.get(
+                Math.floorMod(destinationKey.hashCode(), DESTINATION_TITLE_TEMPLATES.size())
+        );
+        return template.formatted(locationLabel);
+    }
+
+    private String formatDestinationLabel(String city, String country) {
+        if (city != null && !city.isBlank()) {
+            return city;
+        }
+
+        if (country != null && !country.isBlank()) {
+            return country;
+        }
+
+        return null;
+    }
+
+    private String buildSearchHref() {
+        return "/search";
+    }
+
+    private String buildSearchHref(String query) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/search");
+
+        if (query != null && !query.isBlank()) {
+            builder.queryParam("q", query);
+        }
+
+        return builder.build().encode().toUriString();
+    }
+
+    private String normalizeDestinationKey(String city, String country) {
+        String normalizedCity = normalizeFilter(city);
+        String normalizedCountry = normalizeFilter(country);
+
+        if (normalizedCity == null && normalizedCountry == null) {
+            return null;
+        }
+
+        if (normalizedCity == null) {
+            return slugify(normalizedCountry);
+        }
+
+        if (normalizedCountry == null) {
+            return slugify(normalizedCity);
+        }
+
+        return slugify(normalizedCity) + "|" + slugify(normalizedCountry);
+    }
+
+    private List<HomeListingCardResponse> limitUniqueCards(List<HomeListingCardResponse> cards, int limit) {
+        if (cards == null || cards.isEmpty() || limit < 1) {
+            return List.of();
+        }
+
+        Map<UUID, HomeListingCardResponse> uniqueCards = new LinkedHashMap<>();
+        for (HomeListingCardResponse card : cards) {
+            if (card == null || card.getListingId() == null) {
+                continue;
+            }
+
+            uniqueCards.putIfAbsent(card.getListingId(), card);
+            if (uniqueCards.size() >= limit) {
+                break;
+            }
+        }
+
+        return new ArrayList<>(uniqueCards.values());
+    }
+
+    private String slugify(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+
+        return normalized.isBlank() ? "section" : normalized;
     }
 
     private boolean matchesIgnoreCase(String actual, String expected) {
