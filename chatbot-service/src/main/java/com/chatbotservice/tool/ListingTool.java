@@ -168,8 +168,8 @@ public class ListingTool {
                     new ListingFilterRequest(
                             normalizeNullable(filters.keyword()),
                             normalizeCityName(filters.city()),
-                            normalizeNullable(filters.state()),
-                            normalizeNullable(filters.country()),
+                            normalizeLocalityName(filters.state()),
+                            normalizeCountryName(filters.country()),
                             filters.guests(),
                             filters.minBedrooms(),
                             filters.minBeds(),
@@ -658,17 +658,35 @@ public class ListingTool {
             return null;
         }
 
-        String normalized = normalizeSearchText(value)
-                .replaceAll("[^a-z0-9]+", " ")
-                .trim();
+        String normalized = normalizeLocalitySearchText(value);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
 
         return switch (normalized) {
             case "ha noi", "hanoi" -> "Hanoi";
             case "da nang", "danang" -> "Da Nang";
             case "da lat", "dalat" -> "Dalat";
             case "ho chi minh", "ho chi minh city", "hcm", "tp hcm", "tp ho chi minh", "sai gon", "saigon" -> "Ho Chi Minh City";
-            default -> value.trim();
+            default -> toTitleCaseAscii(normalized);
         };
+    }
+
+    private String normalizeCountryName(String value) {
+        String normalized = normalizeLocalitySearchText(value);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+
+        return switch (normalized) {
+            case "viet nam", "vietnam" -> "Vietnam";
+            default -> toTitleCaseAscii(normalized);
+        };
+    }
+
+    private String normalizeLocalityName(String value) {
+        String normalized = normalizeLocalitySearchText(value);
+        return StringUtils.hasText(normalized) ? toTitleCaseAscii(normalized) : null;
     }
 
     private String normalizePropertyType(String value) {
@@ -749,6 +767,35 @@ public class ListingTool {
                 .replace('\u0110', 'D');
 
         return normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeLocalitySearchText(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        return normalizeSearchText(value)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim();
+    }
+
+    private String toTitleCaseAscii(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String[] words = value.trim().split("\\s+");
+        StringBuilder builder = new StringBuilder();
+        for (String word : words) {
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            builder.append(Character.toUpperCase(word.charAt(0)));
+            if (word.length() > 1) {
+                builder.append(word.substring(1));
+            }
+        }
+        return builder.toString();
     }
 
     private ListingCardResponse toCardResponse(ListingResponse listing) {
