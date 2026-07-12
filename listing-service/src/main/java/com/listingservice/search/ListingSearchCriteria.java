@@ -66,7 +66,9 @@ public record ListingSearchCriteria(
         }
 
         String normalized = Normalizer.normalize(value.trim().toLowerCase(), Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "");
+                .replaceAll("\\p{M}+", "")
+                .replace('\u0111', 'd')
+                .replace('\u0110', 'D');
         return normalized.replaceAll("\\s+", "");
     }
 

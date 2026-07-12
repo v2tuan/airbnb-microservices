@@ -64,12 +64,13 @@ public class ListingTool {
                     coordinates, radius, date availability, and sorting.
                     Use this tool whenever the user asks for real listings, room recommendations, prices, capacity,
                     amenities, or stays in a city.
+                    Put place names in city, state, or country. Do not put city/province/country names in keyword.
                     """
     )
     public String searchListings(
-            @ToolParam(required = false, description = "Free text keyword from the user, for example lake view, balcony, quiet, center.")
+            @ToolParam(required = false, description = "Free text keyword for listing features, for example lake view, balcony, quiet, center. Do not include city, province, or country here.")
             String keyword,
-            @ToolParam(required = false, description = "City name, for example Hanoi, Da Nang, Dalat, Ho Chi Minh City.")
+            @ToolParam(required = false, description = "City name from the user's location request, for example Hanoi, Da Nang, Da lat, Ho Chi Minh.")
             String city,
             @ToolParam(required = false, description = "State, province, or region when the user provides it.")
             String state,
@@ -163,13 +164,27 @@ public class ListingTool {
             List<String> roomTypes = singleValueList(normalizeRoomType(filters.roomType()));
             List<String> normalizedAmenityNames = normalizeAmenityNames(filters.amenityNames());
             String normalizedSortBy = normalizeSortBy(filters.sortBy());
+            String normalizedKeyword = normalizeNullable(filters.keyword());
+            SearchLocation normalizedLocation = normalizeSearchLocation(
+                    filters.city(),
+                    filters.state(),
+                    filters.country()
+            );
+
+            log.info(
+                    "Normalized listing search request - keyword={}, city={}, state={}, country={}",
+                    normalizedKeyword,
+                    normalizedLocation.city(),
+                    normalizedLocation.state(),
+                    normalizedLocation.country()
+            );
 
             ApiResponse<List<ListingResponse>> response = listingFeignClient.searchListingsWithFilters(
                     new ListingFilterRequest(
-                            normalizeNullable(filters.keyword()),
-                            normalizeCityName(filters.city()),
-                            normalizeLocalityName(filters.state()),
-                            normalizeCountryName(filters.country()),
+                            normalizedKeyword,
+                            normalizedLocation.city(),
+                            normalizedLocation.state(),
+                            normalizedLocation.country(),
                             filters.guests(),
                             filters.minBedrooms(),
                             filters.minBeds(),
@@ -653,40 +668,45 @@ public class ListingTool {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
-    private String normalizeCityName(String value) {
-        if (!StringUtils.hasText(value)) {
-            return null;
-        }
+    private SearchLocation normalizeSearchLocation(String city, String state, String country) {
+        return new SearchLocation(
+                normalizeLocationField(city, LocationField.CITY),
+                normalizeLocationField(state, LocationField.STATE),
+                normalizeLocationField(country, LocationField.COUNTRY)
+        );
+    }
 
+    private String normalizeLocationField(String value, LocationField field) {
         String normalized = normalizeLocalitySearchText(value);
         if (!StringUtils.hasText(normalized)) {
             return null;
         }
 
+        // Một vài địa danh trong dữ liệu đang dùng tên phổ biến bằng tiếng Anh.
+        String alias = switch (field) {
+            case CITY -> normalizeCityAlias(normalized);
+            case COUNTRY -> normalizeCountryAlias(normalized);
+            case STATE -> null;
+        };
+
+        return alias != null ? alias : toTitleCaseAscii(normalized);
+    }
+
+    private String normalizeCityAlias(String normalized) {
         return switch (normalized) {
             case "ha noi", "hanoi" -> "Hanoi";
             case "da nang", "danang" -> "Da Nang";
             case "da lat", "dalat" -> "Dalat";
-            case "ho chi minh", "ho chi minh city", "hcm", "tp hcm", "tp ho chi minh", "sai gon", "saigon" -> "Ho Chi Minh City";
-            default -> toTitleCaseAscii(normalized);
+            case "ho chi minh", "ho chi minh city", "hcm", "tp hcm", "tp ho chi minh", "sai gon", "saigon" -> "Ho Chi Minh";
+            default -> null;
         };
     }
 
-    private String normalizeCountryName(String value) {
-        String normalized = normalizeLocalitySearchText(value);
-        if (!StringUtils.hasText(normalized)) {
-            return null;
-        }
-
+    private String normalizeCountryAlias(String normalized) {
         return switch (normalized) {
             case "viet nam", "vietnam" -> "Vietnam";
-            default -> toTitleCaseAscii(normalized);
+            default -> null;
         };
-    }
-
-    private String normalizeLocalityName(String value) {
-        String normalized = normalizeLocalitySearchText(value);
-        return StringUtils.hasText(normalized) ? toTitleCaseAscii(normalized) : null;
     }
 
     private String normalizePropertyType(String value) {
@@ -1010,6 +1030,15 @@ public class ListingTool {
 
     private String nullToDash(Object value) {
         return value != null ? value.toString() : "-";
+    }
+
+    private record SearchLocation(String city, String state, String country) {
+    }
+
+    private enum LocationField {
+        CITY,
+        STATE,
+        COUNTRY
     }
 
     private record SearchFilters(

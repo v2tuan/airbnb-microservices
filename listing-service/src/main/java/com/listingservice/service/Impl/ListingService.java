@@ -260,8 +260,9 @@ public class ListingService implements IListingService {
         ListingFilterRequest safeRequest = request != null ? request : new ListingFilterRequest();
 
         log.info(
-                "Advanced listing search - keyword={}, state={}, country={}, guests={}, price={}..{}, propertyTypes={}, roomTypes={}, checkIn={}, checkOut={}, limit={}",
+                "Advanced listing search - keyword={}, city={}, state={}, country={}, guests={}, price={}..{}, propertyTypes={}, roomTypes={}, checkIn={}, checkOut={}, limit={}",
                 safeRequest.getKeyword(),
+                safeRequest.getCity(),
                 safeRequest.getState(),
                 safeRequest.getCountry(),
                 safeRequest.getGuests(),

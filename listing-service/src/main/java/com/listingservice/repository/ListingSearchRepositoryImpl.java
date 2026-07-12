@@ -41,8 +41,9 @@ class ListingSearchRepositoryImpl implements ListingSearchRepository {
         predicates.add(criteriaBuilder.equal(listing.get("status"), ListingStatus.ACTIVE));
 
         addTextSearchPredicate(predicates, criteriaBuilder, listing, criteria.keyword());
-        addEqualIgnoreCasePredicate(predicates, criteriaBuilder, listing.get("state"), criteria.state());
-        addEqualIgnoreCasePredicate(predicates, criteriaBuilder, listing.get("country"), criteria.country());
+        addCompactEqualsPredicate(predicates, criteriaBuilder, listing.get("city"), criteria.city());
+        addCompactEqualsPredicate(predicates, criteriaBuilder, listing.get("state"), criteria.state());
+        addCompactEqualsPredicate(predicates, criteriaBuilder, listing.get("country"), criteria.country());
 
         if (criteria.guests() != null) {
             predicates.add(criteriaBuilder.greaterThanOrEqualTo(listing.get("maxGuests"), criteria.guests()));
@@ -122,7 +123,7 @@ class ListingSearchRepositoryImpl implements ListingSearchRepository {
         return criteriaBuilder.like(compactExpression(criteriaBuilder, path), pattern);
     }
 
-    private void addEqualIgnoreCasePredicate(
+    private void addCompactEqualsPredicate(
             List<Predicate> predicates,
             CriteriaBuilder criteriaBuilder,
             Path<String> path,
@@ -158,7 +159,9 @@ class ListingSearchRepositoryImpl implements ListingSearchRepository {
         }
 
         String normalized = Normalizer.normalize(value.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
-            .replaceAll("\\p{M}+", "");
+            .replaceAll("\\p{M}+", "")
+            .replace('\u0111', 'd')
+            .replace('\u0110', 'D');
         return normalized.replaceAll("\\s+", "");
     }
 

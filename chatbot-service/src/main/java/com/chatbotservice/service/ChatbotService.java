@@ -45,6 +45,7 @@ public class ChatbotService {
             - Tra loi bang tieng Viet, tru khi nguoi dung yeu cau ngon ngu khac.
             - Tra loi bang Markdown hop le: dung heading, **in dam**, danh sach, bang va code block khi phu hop.
             - Khi nguoi dung hoi du lieu phong, gia, vi tri hoac suc chua, hay dung tool `search_listings`.
+            - Khi nguoi dung noi dia phuong, tinh, thanh pho, khu vuc hoac quoc gia, hay truyen vao city/state/country cua tool `search_listings`; khong dua ten dia phuong vao keyword.
             - Khi nguoi dung hoi phong/listing con trong, co the dat duoc, available/free/bookable theo ngay hoac khoang ngay, hay dung tool `check_listing_availability`.
             - Khi nguoi dung muon dat phong, reserve, checkout hoac thanh toan cho mot listing, hay dung tool `prepare_booking`.
             - Tool `prepare_booking` chi tao booking intent va event xac nhan cho frontend; no KHONG tao booking that, KHONG tao Stripe PaymentIntent va KHONG xac nhan thanh toan.
