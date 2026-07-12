@@ -122,9 +122,9 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: activity-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      ACTIVITY_DB_URL: ${ACTIVITY_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/activity_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      ACTIVITY_DB_URL: ${ACTIVITY_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/activity_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       ACTIVITY_DB_USERNAME: ${ACTIVITY_DB_USERNAME:-neondb_owner}
-      ACTIVITY_DB_PASSWORD: ${ACTIVITY_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      ACTIVITY_DB_PASSWORD: ${ACTIVITY_DB_PASSWORD:-npg_94bsAULVZBHE}
 
   user-service:
     <<: *spring-service
@@ -140,9 +140,9 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: user-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      USER_DB_URL: ${USER_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/user_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      USER_DB_URL: ${USER_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/user_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       USER_DB_USERNAME: ${USER_DB_USERNAME:-neondb_owner}
-      USER_DB_PASSWORD: ${USER_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      USER_DB_PASSWORD: ${USER_DB_PASSWORD:-npg_94bsAULVZBHE}
       IDP_URL: http://keycloak:8080
       USER_SERVICE_IDP_CLIENT_ID: ${USER_SERVICE_IDP_CLIENT_ID:-user_service}
       USER_SERVICE_IDP_CLIENT_SECRET: ${USER_SERVICE_IDP_CLIENT_SECRET:-Vzg4aVN4v35o2HhDX0jsKcVX6mGN4c96}
@@ -168,9 +168,9 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: listing-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      LISTING_DB_URL: ${LISTING_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/listing_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      LISTING_DB_URL: ${LISTING_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/listing_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       LISTING_DB_USERNAME: ${LISTING_DB_USERNAME:-neondb_owner}
-      LISTING_DB_PASSWORD: ${LISTING_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      LISTING_DB_PASSWORD: ${LISTING_DB_PASSWORD:-npg_94bsAULVZBHE}
       JWT_SIGNER_KEY: ${JWT_SIGNER_KEY:-1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij}
       RATING_SERVICE_BASE_URL: http://api-gateway:8888
       BOOKING_SERVICE_BASE_URL: http://booking-service:8086/bookings
@@ -189,9 +189,9 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: wishlist-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      WISHLIST_DB_URL: ${WISHLIST_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/wishlist_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      WISHLIST_DB_URL: ${WISHLIST_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/wishlist_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       WISHLIST_DB_USERNAME: ${WISHLIST_DB_USERNAME:-neondb_owner}
-      WISHLIST_DB_PASSWORD: ${WISHLIST_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      WISHLIST_DB_PASSWORD: ${WISHLIST_DB_PASSWORD:-npg_94bsAULVZBHE}
       JWT_SIGNER_KEY: ${JWT_SIGNER_KEY:-1TjXchw5FloESb63Kc+DFhTARvpWL4jUGCwfGWxuG5SIf/1y/LgJxHnMqaF6A/ij}
 
   rating-service:
@@ -208,9 +208,9 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: rating-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      RATING_DB_URL: ${RATING_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/listing_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      RATING_DB_URL: ${RATING_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/listing_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       RATING_DB_USERNAME: ${RATING_DB_USERNAME:-neondb_owner}
-      RATING_DB_PASSWORD: ${RATING_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      RATING_DB_PASSWORD: ${RATING_DB_PASSWORD:-npg_94bsAULVZBHE}
       APP_GATEWAY_BASE_URL: http://api-gateway:8888/api/v1
 
   booking-service:
@@ -228,9 +228,9 @@ services:
       EUREKA_INSTANCE_HOSTNAME: booking-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
       KAFKA_NOTIFICATION_TOPIC: ${KAFKA_NOTIFICATION_TOPIC:-notification.events}
-      BOOKING_DB_URL: ${BOOKING_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/booking_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      BOOKING_DB_URL: ${BOOKING_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/booking_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       BOOKING_DB_USERNAME: ${BOOKING_DB_USERNAME:-neondb_owner}
-      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-npg_94bsAULVZBHE}
 
   chatbot-service:
     <<: *spring-service
@@ -268,9 +268,9 @@ services:
       <<: *java-env
       EUREKA_INSTANCE_HOSTNAME: payment-service
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-      PAYMENT_DB_URL: ${PAYMENT_DB_URL:-jdbc:postgresql://ep-long-art-admsxgi9-pooler.c-2.us-east-1.aws.neon.tech/payment_db?user=neondb_owner&password=npg_Wre0B1zxgOod&sslmode=require&channelBinding=require}
+      PAYMENT_DB_URL: ${PAYMENT_DB_URL:-jdbc:postgresql://ep-summer-cell-aoj8338q-pooler.c-2.ap-southeast-1.aws.neon.tech/payment_db?user=neondb_owner&password=npg_94bsAULVZBHE&sslmode=require&channelBinding=require}
       PAYMENT_DB_USERNAME: ${PAYMENT_DB_USERNAME:-neondb_owner}
-      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-npg_Wre0B1zxgOod}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-npg_94bsAULVZBHE}
       IDP_URL: http://keycloak:8080
       PAYMENT_SERVICE_IDP_CLIENT_ID: ${PAYMENT_SERVICE_IDP_CLIENT_ID:-payment_service}
       PAYMENT_SERVICE_IDP_CLIENT_SECRET: ${PAYMENT_SERVICE_IDP_CLIENT_SECRET:-by2n65zqJJrNemDHwVRSiOtl3f5CwdgK}
