@@ -3,12 +3,24 @@
 import { Heart, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
+import { activityAPI } from "@/api/endpoints/activity";
 import type { ListingResponse } from "@/api/endpoints/listing";
 import { formatPrice } from "@/contants";
-import { activityAPI } from "@/api/endpoints/activity";
 
-const fallbackImage =
-  "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=1200&auto=format&fit=crop";
+const fallbackImage = "/header/home.png";
+const flakyImageHosts = ["loremflickr.com", "picsum.photos"];
+
+function shouldBypassImageOptimizer(src: string) {
+  try {
+    const hostname = new URL(src).hostname.replace(/^www\./, "");
+    return flakyImageHosts.some(
+      (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+    );
+  } catch {
+    return false;
+  }
+}
 
 function resolveCoverImage(listing: ListingResponse) {
   return (
@@ -42,28 +54,46 @@ interface SearchListingCardProps {
 }
 
 export default function SearchListingCard({ listing }: SearchListingCardProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const coverImageUrl = resolveCoverImage(listing);
+  const imageSource =
+    coverImageUrl && failedSrc !== coverImageUrl
+      ? coverImageUrl
+      : fallbackImage;
   const basePrice = listing.pricing?.basePrice ?? 0;
   const currency = listing.pricing?.currency ?? "USD";
   const recordClick = () => {
     const token =
-      typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      typeof window !== "undefined"
+        ? localStorage.getItem("access_token")
+        : null;
 
     if (!token) return;
 
-    void activityAPI.recordActivity(token, listing.listingId, { eventType: "CLICK" });
+    void activityAPI.recordActivity(token, listing.listingId, {
+      eventType: "CLICK",
+    });
   };
 
   return (
-    <Link href={`/rooms/${listing.listingId}`} className="group block" onClick={recordClick}>
+    <Link
+      href={`/rooms/${listing.listingId}`}
+      className="group block"
+      onClick={recordClick}
+    >
       <article>
         <div className="relative aspect-[20/13] overflow-hidden rounded-2xl bg-neutral-100">
           <Image
-            src={coverImageUrl}
+            src={imageSource}
             alt={listing.title}
             fill
             className="object-cover transition duration-500 group-hover:scale-[1.03]"
             sizes="(max-width: 767px) 92vw, (max-width: 1535px) 44vw, 28vw"
+            unoptimized={
+              imageSource !== fallbackImage &&
+              shouldBypassImageOptimizer(imageSource)
+            }
+            onError={() => setFailedSrc(coverImageUrl)}
           />
 
           <button

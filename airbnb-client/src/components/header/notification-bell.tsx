@@ -352,13 +352,13 @@ export default function NotificationBell() {
 
       setLoading(true);
       try {
-        const [listResponse, countResponse] = await Promise.all([
-          notificationAPI.getMyNotifications(false, limit),
-          notificationAPI.getUnreadCount(),
-        ]);
+        const listResponse = await notificationAPI.getMyNotifications(
+          false,
+          limit,
+        );
 
         const rawItems = listResponse.data.items ?? [];
-        const nextUnread = countResponse.data.count ?? listResponse.data.totalUnread ?? 0;
+        const nextUnread = listResponse.data.totalUnread ?? 0;
 
         setItems(rawItems);
         setUnreadCount(nextUnread);

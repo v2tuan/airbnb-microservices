@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Calendar,
-  CirclePlus,
-  Download,
-  MoreHorizontal,
-  Search,
-  X,
-} from "lucide-react";
+import { Calendar, MoreHorizontal, Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type AdminPaymentOverview,
@@ -291,16 +284,6 @@ export function TransactionsManagementModule() {
               placeholder="Search"
               className="h-11 rounded-[8px] border-0 bg-[#f3f6fb] pl-11 text-[#1a2b49] shadow-none focus-visible:ring-[#635bff]"
             />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button className="h-10 rounded-[8px] bg-[#635bff] px-4 font-semibold text-white hover:bg-[#4f46e5]">
-              <CirclePlus className="size-4" />
-              Create payment
-            </Button>
-            <Button variant="outline" className="h-10 rounded-[8px]">
-              <Download className="size-4" />
-              Export
-            </Button>
           </div>
         </div>
 

@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/sheet";
 import { logout } from "@/features/auth/authSlice";
 import { authStorage } from "@/lib/auth-storage";
-import { hasRealmRole, parseJwt } from "@/lib/jwt";
+import { hasRealmRole, isJwtExpired, parseJwt } from "@/lib/jwt";
 import { cn } from "@/lib/utils";
 import type { AppDispatch, RootState } from "@/store";
 
@@ -97,12 +97,13 @@ function useEffectiveToken() {
 
 export function useAdminToken() {
   const { token, hydrated } = useEffectiveToken();
+  const validToken = token && !isJwtExpired(token) ? token : null;
   const isAdmin = useMemo(
-    () => !!token && hasRealmRole(token, "ADMIN"),
-    [token],
+    () => !!validToken && hasRealmRole(validToken, "ADMIN"),
+    [validToken],
   );
 
-  return { token, hydrated, isAdmin };
+  return { token: validToken, hydrated, isAdmin };
 }
 
 function getInitials(name?: string | null, email?: string | null) {

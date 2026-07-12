@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import authAPI from "@/api/endpoints/auth";
 import { authStorage, type StoredAuthUser } from "@/lib/auth-storage";
-import { parseJwt } from "@/lib/jwt";
+import { isJwtExpired, parseJwt } from "@/lib/jwt";
 import type { RootState } from "@/store";
 
 interface User extends StoredAuthUser {
@@ -41,7 +41,9 @@ const isRecord = (value: unknown): value is UnknownRecord => {
   return typeof value === "object" && value !== null;
 };
 
-const decodeKeycloakUserIdFromToken = (token?: string | null): string | null => {
+const decodeKeycloakUserIdFromToken = (
+  token?: string | null,
+): string | null => {
   if (!token) return null;
   return parseJwt(token)?.sub ?? null;
 };
@@ -241,6 +243,14 @@ const authSlice = createSlice({
       const token = authStorage.getAccessToken();
       const user = authStorage.getUser<User>();
 
+      if (isJwtExpired(token)) {
+        authStorage.clearAuth();
+        state.token = null;
+        state.user = null;
+        state.isAuthenticated = false;
+        return;
+      }
+
       state.token = token;
       state.user = user;
       state.isAuthenticated = !!token;
@@ -293,7 +303,9 @@ const authSlice = createSlice({
         state.isAuthenticated = !!normalized.token;
 
         if (state.user && normalized.token) {
-          const keycloakUserId = decodeKeycloakUserIdFromToken(normalized.token);
+          const keycloakUserId = decodeKeycloakUserIdFromToken(
+            normalized.token,
+          );
           if (keycloakUserId) {
             state.user.keycloakUserId = keycloakUserId;
           }
@@ -324,7 +336,9 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
 
           if (state.user) {
-            const keycloakUserId = decodeKeycloakUserIdFromToken(normalized.token);
+            const keycloakUserId = decodeKeycloakUserIdFromToken(
+              normalized.token,
+            );
             if (keycloakUserId) {
               state.user.keycloakUserId = keycloakUserId;
             }

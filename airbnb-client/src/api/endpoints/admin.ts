@@ -481,6 +481,18 @@ export async function listAdminUsers(
   );
 }
 
+export async function syncAdminUsersFromKeycloak(
+  token: string | null,
+): Promise<ApiResponse<number>> {
+  return unwrap(
+    await apiClient.put(
+      `${prefix}/users/admin/users/sync-keycloak`,
+      undefined,
+      authConfig(token),
+    ),
+  );
+}
+
 export async function blockAdminUser(
   token: string | null,
   keycloakUserId: string,

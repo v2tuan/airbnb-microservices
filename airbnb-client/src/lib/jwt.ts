@@ -30,6 +30,18 @@ export const getRealmRoles = (token: string): string[] => {
   return parseJwt(token)?.realm_access?.roles || [];
 };
 
+export const isJwtExpired = (
+  token: string | null | undefined,
+  skewSeconds = 0,
+): boolean => {
+  if (!token) return true;
+
+  const payload = parseJwt(token);
+  if (!payload?.exp) return true;
+
+  return payload.exp * 1000 <= Date.now() + skewSeconds * 1000;
+};
+
 export const hasRealmRole = (token: string, role: string): boolean => {
   const normalizedRole = role.toUpperCase();
   const normalizedRoleWithPrefix = normalizedRole.startsWith("ROLE_")

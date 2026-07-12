@@ -613,11 +613,6 @@ export function AdminOverviewModule() {
                 Reservation Status
               </CardTitle>
               <CardDescription>Booking lifecycle distribution</CardDescription>
-              <CardAction>
-                <Button variant="outline" className="h-9 rounded-[8px]">
-                  Export
-                </Button>
-              </CardAction>
             </CardHeader>
             <CardContent>
               {reservationsStatus === "loading" ? (
@@ -739,11 +734,6 @@ export function AdminOverviewModule() {
               <CardTitle className="text-base text-[#222222]">
                 Recent Transactions
               </CardTitle>
-              <CardAction>
-                <Button variant="outline" className="h-9 rounded-[8px]">
-                  Export
-                </Button>
-              </CardAction>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               {reservationsStatus === "loading" ? (
@@ -826,11 +816,6 @@ export function AdminOverviewModule() {
               <CardDescription>
                 Listings ranked by reservation count
               </CardDescription>
-              <CardAction>
-                <Button variant="outline" className="h-9 rounded-[8px]">
-                  Export
-                </Button>
-              </CardAction>
             </CardHeader>
             <CardContent className="space-y-2">
               {reservationsStatus === "loading" ? (

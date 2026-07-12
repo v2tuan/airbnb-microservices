@@ -6,15 +6,17 @@ import {
   ChevronLeft,
   ChevronRight,
   LockOpen,
+  RefreshCw,
   ShieldCheck,
   UsersRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AdminUserRecord,
   blockAdminUser,
   listAdminUsers,
   type PageResponse,
+  syncAdminUsersFromKeycloak,
   unblockAdminUser,
 } from "@/api/endpoints/admin";
 import { useAdminToken } from "@/components/admin/admin-shell";
@@ -95,39 +97,47 @@ export function UsersManagementModule() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadUsers = useCallback(
+    (active: () => boolean = () => true) => {
+      setLoading(true);
+      setError(null);
+
+      return listAdminUsers(token, { page, size: pageSize, role: roleFilter })
+        .then((response) => {
+          if (!active()) return;
+          const data = response.data;
+          setPageData(data ?? null);
+          setItems(data?.content ?? []);
+          setActionMessage(null);
+        })
+        .catch((err) => {
+          if (!active()) return;
+          setItems([]);
+          setPageData(null);
+          setError(
+            getAdminErrorMessage(
+              err,
+              "Unable to load users from /users/admin/users.",
+            ),
+          );
+        })
+        .finally(() => {
+          if (active()) setLoading(false);
+        });
+    },
+    [page, roleFilter, token],
+  );
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
-
-    listAdminUsers(token, { page, size: pageSize, role: roleFilter })
-      .then((response) => {
-        if (!active) return;
-        const data = response.data;
-        setPageData(data ?? null);
-        setItems(data?.content ?? []);
-        setActionMessage(null);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setItems([]);
-        setPageData(null);
-        setError(
-          getAdminErrorMessage(
-            err,
-            "Unable to load users from /users/admin/users.",
-          ),
-        );
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    void loadUsers(() => active);
 
     return () => {
       active = false;
     };
-  }, [token, page, roleFilter]);
+  }, [loadUsers]);
 
   const metrics = useMemo(
     () => ({
@@ -180,6 +190,24 @@ export function UsersManagementModule() {
     }
   }
 
+  async function syncKeycloakUsers() {
+    setSyncing(true);
+    setActionMessage(null);
+    try {
+      const response = await syncAdminUsersFromKeycloak(token);
+      await loadUsers();
+      setActionMessage(
+        `${response.data ?? 0} user account${response.data === 1 ? "" : "s"} synced from Keycloak.`,
+      );
+    } catch (err) {
+      setActionMessage(
+        getAdminErrorMessage(err, "Sync users from Keycloak failed."),
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <>
       <AdminPageHeader
@@ -212,20 +240,37 @@ export function UsersManagementModule() {
           />
           <div className="overflow-x-auto p-5">
             <div className="mb-4 flex flex-wrap gap-2">
-              {roleFilters.map((filter) => (
-                <Button
-                  key={filter.value}
-                  type="button"
-                  variant={roleFilter === filter.value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setRoleFilter(filter.value);
-                    setPage(0);
-                  }}
-                >
-                  {filter.label}
-                </Button>
-              ))}
+              <div className="flex flex-1 flex-wrap gap-2">
+                {roleFilters.map((filter) => (
+                  <Button
+                    key={filter.value}
+                    type="button"
+                    variant={
+                      roleFilter === filter.value ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() => {
+                      setRoleFilter(filter.value);
+                      setPage(0);
+                    }}
+                  >
+                    {filter.label}
+                  </Button>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={syncing || loading}
+                onClick={() => void syncKeycloakUsers()}
+                className="gap-2"
+              >
+                <RefreshCw
+                  className={`size-4 ${syncing ? "animate-spin" : ""}`}
+                />
+                Sync Keycloak
+              </Button>
             </div>
             {actionMessage ? (
               <p className="mb-4 text-sm leading-6 text-[#6a6a6a]">

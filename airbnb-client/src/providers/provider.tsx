@@ -10,15 +10,17 @@ import {
   fetchMeThunk,
   hydrateAuthFromStorage,
 } from "@/features/auth/authSlice";
+import { AUTH_SESSION_EXPIRED_EVENT } from "@/lib/auth-session";
 import { authStorage } from "@/lib/auth-storage";
-import { getRealmRoles } from "@/lib/jwt";
+import { hasRealmRole, isJwtExpired } from "@/lib/jwt";
 import type { AppDispatch, RootState } from "@/store";
 import { store } from "@/store";
 import SocketProvider from "./SocketProvider";
 
 function hasAdminRole(token: string | null) {
   if (!token) return false;
-  return getRealmRoles(token).some((role) => role.toUpperCase() === "ADMIN");
+  if (isJwtExpired(token)) return false;
+  return hasRealmRole(token, "ADMIN");
 }
 
 function AuthInitializer() {
@@ -28,7 +30,10 @@ function AuthInitializer() {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const token = useSelector((state: RootState) => state.auth.token);
   const [storageToken, setStorageToken] = useState<string | null>(null);
-  const effectiveToken = token ?? storageToken;
+  const effectiveToken = token ?? (isAuthenticated ? storageToken : null);
+  const hasValidToken = Boolean(
+    effectiveToken && !isJwtExpired(effectiveToken),
+  );
 
   useEffect(() => {
     // Lần render client đầu tiên: dựng lại Redux auth state từ localStorage.
@@ -53,15 +58,21 @@ function AuthInitializer() {
     const syncStorageToken = () => {
       setStorageToken(authStorage.getAccessToken());
     };
+    const clearStorageToken = () => {
+      setStorageToken(null);
+    };
 
     syncStorageToken();
     window.addEventListener("auth-token-refreshed", syncStorageToken);
-    return () =>
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, clearStorageToken);
+    return () => {
       window.removeEventListener("auth-token-refreshed", syncStorageToken);
+      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, clearStorageToken);
+    };
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && token) {
+    if (isAuthenticated && token && !isJwtExpired(token)) {
       // Đồng bộ user profile theo token hiện tại. Cố ý tách khỏi interceptor:
       // refresh token là concern recover network request, còn /me là concern
       // hydrate UI state.
@@ -74,11 +85,19 @@ function AuthInitializer() {
   }, [dispatch, isAuthenticated, token]);
 
   useEffect(() => {
-    if (!hasAdminRole(effectiveToken)) return;
-    if (pathname === "/" || pathname === "/login") {
-      router.replace("/admin");
+    if (!hasValidToken) return;
+
+    if (hasAdminRole(effectiveToken)) {
+      if (!pathname.startsWith("/admin")) {
+        router.replace("/admin");
+      }
+      return;
     }
-  }, [effectiveToken, pathname, router]);
+
+    if (pathname === "/login" || pathname === "/register") {
+      router.replace("/");
+    }
+  }, [effectiveToken, hasValidToken, pathname, router]);
 
   return null;
 }

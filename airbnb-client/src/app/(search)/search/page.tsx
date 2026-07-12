@@ -50,18 +50,6 @@ function normalizeDestination(value: string) {
   return destinationAliases[trimmed.toLowerCase()] ?? trimmed;
 }
 
-function addDaysToDateKey(value: string, amount: number) {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + amount);
-
-  const nextYear = date.getFullYear();
-  const nextMonth = String(date.getMonth() + 1).padStart(2, "0");
-  const nextDay = String(date.getDate()).padStart(2, "0");
-
-  return `${nextYear}-${nextMonth}-${nextDay}`;
-}
-
 function filterListings(
   listings: ListingResponse[],
   destination: string,
@@ -209,8 +197,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const checkIn = query.checkIn;
   const checkOut = query.checkOut;
   const hasDateRange = Boolean(checkIn && checkOut && checkOut > checkIn);
-  const availabilityEndDate =
-    hasDateRange && checkOut ? addDaysToDateKey(checkOut, -1) : undefined;
 
   let listings: ListingResponse[] = [];
   let errorMessage = "";
@@ -229,36 +215,6 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       checkOut,
     });
     listings = unwrapApiData(response.data);
-
-    if (hasDateRange) {
-      const availability = await Promise.all(
-        listings.map(async (listing) => {
-          try {
-            const response = await listingAPI.checkAvailability(
-              listing.listingId,
-              {
-                startDate: checkIn as string,
-                endDate: availabilityEndDate as string,
-              },
-            );
-
-            return {
-              listing,
-              available: unwrapApiData(response.data),
-            };
-          } catch {
-            return {
-              listing,
-              available: false,
-            };
-          }
-        }),
-      );
-
-      listings = availability
-        .filter((item) => item.available)
-        .map((item) => item.listing);
-    }
   } catch {
     errorMessage = "Unable to load search results.";
   }
@@ -300,7 +256,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       : "Any price";
   const mapDestination = hasNearbySearch
     ? "Nearby"
-    : query.locationKeyword ?? destination;
+    : (query.locationKeyword ?? destination);
 
   return (
     <main className="min-h-screen bg-white pt-41">
