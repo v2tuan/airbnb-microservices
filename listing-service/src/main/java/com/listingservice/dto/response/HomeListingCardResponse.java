@@ -20,6 +20,7 @@ public class HomeListingCardResponse {
     UUID listingId;
     String title;
     String city;
+    String state;
     String country;
     String coverImageUrl;
     BigDecimal basePrice;

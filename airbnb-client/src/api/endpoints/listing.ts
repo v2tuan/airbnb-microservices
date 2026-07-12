@@ -34,6 +34,7 @@ export interface HomeListingCardResponse {
   listingId: string;
   title: string;
   city: string;
+  state?: string;
   country: string;
   coverImageUrl: string;
   basePrice: number;
@@ -48,6 +49,10 @@ export interface HomeSectionResponse {
   sectionKey: string;
   title: string;
   city: string;
+  state?: string;
+  country?: string;
+  viewAllHref?: string;
+  hasMore?: boolean;
   listings: HomeListingCardResponse[];
 }
 
