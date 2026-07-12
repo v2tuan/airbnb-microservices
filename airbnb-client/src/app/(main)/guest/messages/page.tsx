@@ -390,13 +390,40 @@ const getAttachmentDisplayLabel = (attachment: ChatAttachment) => {
 
 const listingPreviewCache = new Map<string, ListingPreview>();
 
-const QUICK_MESSAGE_SUGGESTIONS = [
-  "Phòng này gần chợ không ạ?",
-  "Có cho nuôi thú cưng không?",
-  "Giờ check-in và check-out là mấy giờ?",
-  "Phòng này có chỗ đậu xe không?",
-  "Có thể xem thêm ảnh phòng được không?",
+type QuickMessageSuggestion = {
+  label: string;
+  text: string;
+};
+
+const DEFAULT_QUICK_MESSAGE_SUGGESTIONS: QuickMessageSuggestion[] = [
+  { label: "Gần chợ?", text: "Phòng này gần chợ không ạ?" },
+  { label: "Thú cưng?", text: "Có cho nuôi thú cưng không?" },
+  { label: "Giờ nhận phòng", text: "Giờ check-in và check-out là mấy giờ?" },
+  { label: "Chỗ đậu xe", text: "Phòng này có chỗ đậu xe không?" },
+  { label: "Thêm ảnh", text: "Có thể xem thêm ảnh phòng được không?" },
 ];
+
+const HOST_RESERVATION_QUICK_MESSAGE_SUGGESTIONS = (
+  listingId?: string | null,
+  listingTitle?: string | null,
+): QuickMessageSuggestion[] => {
+  const suggestions: QuickMessageSuggestion[] = [
+    { label: "Hỏi cảm nhận", text: "Phòng này bạn có ưng ý không?" },
+    { label: "Hỏi hỗ trợ", text: "Bạn cần hỗ trợ gì không?" },
+  ];
+
+  if (listingId) {
+    const roomPath = `/rooms/${listingId}`;
+    suggestions.push({
+      label: "Gửi link phòng",
+      text: listingTitle?.trim()
+        ? `Mình gửi bạn link phòng ${listingTitle.trim()} nhé.\n${roomPath}`
+        : `Mình gửi bạn link phòng này nhé.\n${roomPath}`,
+    });
+  }
+
+  return suggestions;
+};
 
 const fetchListingPreview = async (
   listingId: string,
@@ -597,6 +624,10 @@ function GuestMessagesPageContent() {
   const params = useParams<{ id?: string }>();
   const routeConversationId = typeof params?.id === "string" ? params.id : null;
   const hostId = searchParams.get("hostId")?.trim() || null;
+  const conversationOrigin = searchParams.get("origin")?.trim() || null;
+  const reservationListingId = searchParams.get("listingId")?.trim() || null;
+  const reservationListingTitle = searchParams.get("listingTitle")?.trim() || null;
+  const searchParamsString = searchParams.toString();
   const [resolvedConversationId, setResolvedConversationId] = useState<string | null>(null);
   const [isResolvingConversation, setIsResolvingConversation] = useState(
     () => !!searchParams.get("hostId") && !routeConversationId,
@@ -629,7 +660,12 @@ function GuestMessagesPageContent() {
         if (cancelled || !nextConversationId) return;
 
         setResolvedConversationId(nextConversationId);
-        router.replace(`/guest/messages/${nextConversationId}`);
+        const nextQueryParams = new URLSearchParams(searchParamsString);
+        nextQueryParams.delete("hostId");
+        const queryString = nextQueryParams.toString();
+        router.replace(
+          `/guest/messages/${nextConversationId}${queryString ? `?${queryString}` : ""}`,
+        );
       } catch {
         // keep the query route; the page will render the loading/empty state
       } finally {
@@ -644,9 +680,10 @@ function GuestMessagesPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [hostId, routeConversationId, router]);
+  }, [hostId, routeConversationId, router, searchParamsString]);
 
   const conversationId = routeConversationId ?? resolvedConversationId;
+  const isHostReservationContext = conversationOrigin === "host-reservation";
   const { conversations, updateConversationLastMessage } = useConversations({
     activeConversationId: conversationId,
   });
@@ -716,9 +753,18 @@ function GuestMessagesPageContent() {
     ? activeConversationIdentity.avatarUrl
     : "";
   const activeAvatarLabel = activeConversationIdentity.displayName.trim();
+  const quickMessageSuggestions = useMemo(() => {
+    if (isHostReservationContext) {
+      return HOST_RESERVATION_QUICK_MESSAGE_SUGGESTIONS(
+        reservationListingId,
+        reservationListingTitle,
+      );
+    }
+
+    return DEFAULT_QUICK_MESSAGE_SUGGESTIONS;
+  }, [isHostReservationContext, reservationListingId, reservationListingTitle]);
 
   const draftListingId = extractListingId(draftText);
-  const visibleHostRooms = useMemo(() => hostRooms.slice(0, 3), [hostRooms]);
 
   const isRoomsPanelOpen = roomPickerOpen || sidebarTab === "rooms";
 
@@ -1826,30 +1872,31 @@ function GuestMessagesPageContent() {
                             </div>
                           );
                         })
-                      ) : (
-                        <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 py-8 text-center text-sm text-zinc-500">
-                          <p className="font-medium text-zinc-700">
-                            No messages in this conversation yet.
-                          </p>
-                          <p className="mt-1 max-w-md text-xs text-zinc-500">
-                            Start with a quick question or send a room link.
-                          </p>
-
-                          <div className="mt-5 flex flex-wrap justify-center gap-2">
-                            {QUICK_MESSAGE_SUGGESTIONS.map((suggestion) => (
-                              <button
-                                key={suggestion}
-                                type="button"
-                                onClick={() => setDraftText(suggestion)}
-                                className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-left text-xs font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900"
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )
                     ) : (
+                      <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 py-8 text-center text-sm text-zinc-500">
+                        <p className="font-medium text-zinc-700">
+                          No messages in this conversation yet.
+                        </p>
+                        <p className="mt-1 max-w-md text-xs text-zinc-500">
+                          {isHostReservationContext
+                            ? "Start with a quick question about the stay or send the room link."
+                            : "Start with a quick question or send a room link."}
+                        </p>
+
+                        <div className="mt-5 flex flex-wrap justify-center gap-2">
+                          {quickMessageSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion.label}
+                              type="button"
+                              onClick={() => setDraftText(suggestion.text)}
+                              className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-left text-xs font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900"
+                            >
+                              {suggestion.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )) : (
                       <div className="flex min-h-60 items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 px-6 text-center text-sm text-zinc-500">
                         Select a conversation to open its thread.
                       </div>

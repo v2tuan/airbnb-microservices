@@ -28,6 +28,7 @@ import {
   type PageResponse,
   unwrapApiData,
 } from "@/api/endpoints/listing";
+import SendMessageButton from "@/components/messages/SendMessageButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -372,6 +373,28 @@ function guestCount(reservation: HostReservationResponse) {
   );
 }
 
+function getReservationMessageRecipientId(
+  reservation: HostReservationResponse,
+) {
+  return (
+    reservation.guest?.keycloakUserId?.trim() ||
+    reservation.guestId?.trim() ||
+    reservation.guest?.userId?.trim() ||
+    ""
+  );
+}
+
+function buildReservationConversationQuery(
+  reservation: HostReservationResponse,
+) {
+  return {
+    origin: "host-reservation",
+    reservationId: reservation.reservationId,
+    listingId: reservation.listingId,
+    listingTitle: reservation.listingTitle,
+  };
+}
+
 function reservationImage(reservation: HostReservationResponse) {
   return reservation.listingCoverImageUrl || fallbackImage;
 }
@@ -698,13 +721,15 @@ function ReservationCard({
 }) {
   const payment = paymentStatusMeta(reservation);
   const phase = reservationPhaseMeta(reservation);
+  const guestMessageUserId = getReservationMessageRecipientId(reservation);
+  const conversationQuery = buildReservationConversationQuery(reservation);
 
   return (
-    <Link
-      href={`/host/reservations/${reservation.reservationId}`}
-      className="group grid gap-4 rounded-[14px] border border-[#dddddd] bg-white p-4 transition hover:shadow-[rgba(0,0,0,0.02)_0_0_0_1px,rgba(0,0,0,0.04)_0_2px_6px_0,rgba(0,0,0,0.1)_0_4px_8px_0] md:grid-cols-[168px_minmax(0,1fr)]"
-    >
-      <div className="relative aspect-[4/3] overflow-hidden rounded-[14px] bg-[#f7f7f7] md:aspect-auto">
+    <article className="group grid gap-4 rounded-[14px] border border-[#dddddd] bg-white p-4 transition hover:shadow-[rgba(0,0,0,0.02)_0_0_0_1px,rgba(0,0,0,0.04)_0_2px_6px_0,rgba(0,0,0,0.1)_0_4px_8px_0] md:grid-cols-[168px_minmax(0,1fr)]">
+      <Link
+        href={`/host/reservations/${reservation.reservationId}`}
+        className="group relative aspect-[4/3] overflow-hidden rounded-[14px] bg-[#f7f7f7] md:aspect-auto"
+      >
         <Image
           src={reservationImage(reservation)}
           alt={reservation.listingTitle || "Reservation"}
@@ -717,7 +742,7 @@ function ReservationCard({
             {phase.label}
           </span>
         ) : null}
-      </div>
+      </Link>
 
       <div className="min-w-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -776,18 +801,34 @@ function ReservationCard({
           </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between border-t border-[#ebebeb] pt-4">
+        <div className="mt-4 border-t border-[#ebebeb] pt-4">
           <p className="line-clamp-1 text-sm leading-[1.43] text-[#6a6a6a]">
             {reservation.listingTitle ?? "Listing"}
             {reservation.listingCity ? ` in ${reservation.listingCity}` : ""}
           </p>
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-[#222222]">
-            Details
-            <ArrowRight className="size-4 transition group-hover:translate-x-1" />
-          </span>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <SendMessageButton
+                otherUserId={guestMessageUserId}
+                label="Message guest"
+                compact
+                conversationQuery={conversationQuery}
+                className="min-w-[140px]"
+              />
+            </div>
+
+            <Link
+              href={`/host/reservations/${reservation.reservationId}`}
+              className="inline-flex items-center justify-center gap-2 text-sm font-medium text-[#222222]"
+            >
+              Details
+              <ArrowRight className="size-4 transition group-hover:translate-x-1" />
+            </Link>
+          </div>
         </div>
       </div>
-    </Link>
+    </article>
   );
 }
 
@@ -1355,8 +1396,8 @@ export default function HostReservationsPage() {
                 Reservations
               </h1>
               <p className="mt-2 max-w-2xl text-base leading-[1.5] text-[#3f3f3f]">
-                Review guest stays, payment state, dates, and stay phases
-                across your listings.
+                Review guest stays, payment state, dates, and stay phases across
+                your listings.
               </p>
             </div>
 

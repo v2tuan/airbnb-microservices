@@ -92,7 +92,7 @@ export function HostCard({ host, onContact }: HostCardProps) {
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-3 text-sm font-medium text-white transition-all duration-200 hover:bg-slate-800 hover:shadow-md"
       >
         <MessageCircle className="h-4 w-4" />
-        Message host
+        Message
       </button>
     </div>
   );
